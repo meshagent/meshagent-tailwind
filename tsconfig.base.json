@@ -1,0 +1,31 @@
+{
+    "compilerOptions": {
+        "module": "CommonJS",
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "allowImportingTsExtensions": true,
+        "target": "ES2020",
+        "lib": ["ES2020", "DOM"],
+        "useDefineForClassFields": true,
+        "moduleResolution": "bundler",
+        "skipLibCheck": true,
+        "allowJs": true,
+        "checkJs": false,
+        "strict": true,
+        "esModuleInterop": true,
+        "jsx": "react-jsx",
+        "baseUrl": "./src",
+        "rootDir": "./src",
+        "typeRoots": [
+            "./types",
+            "./node_modules/@types",
+            "../node_modules/@types"
+        ]
+    },
+    "exclude": [
+        "dist"
+    ],
+    "include": [
+        "src"
+    ]
+}
