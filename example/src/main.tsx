@@ -1,8 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import '@meshagent/meshagent-tailwind/dist/index.css';
 import './index.css'
-import './ui-lib.css'
 
 import App from './App.tsx'
 

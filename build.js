@@ -9,7 +9,6 @@ const define = {
 
 const options = {
     entryPoints: ["src/**/*.ts", "src/**/*.tsx"],
-    //entryPoints: ["src/index.ts"],
     outbase: "src",
     bundle: false,
     platform: "neutral",
@@ -18,10 +17,6 @@ const options = {
         '.tsx': 'tsx',
         '.css': 'css',
     },
-//    outExtension: {
-//         '.ts': '.js',
-//         '.tsx': '.js',
-//    },
     resolveExtensions: [ '.tsx', '.ts', '.js', '.jsx', '.json' ],
     tsconfig: "tsconfig.json",
     define,
