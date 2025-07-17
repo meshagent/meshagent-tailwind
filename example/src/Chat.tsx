@@ -61,7 +61,7 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
         return () => connection.client!.messaging.off('change', onChange);
     }, [connection, connection.ready]);
 
-    const participants = useMemo(() => [agent], [agent]);
+    const participants = useMemo<Participant[]>(() => agent ? [agent] : [], [agent]);
 
     return (
         <main className="flex flex-col min-h-0">
