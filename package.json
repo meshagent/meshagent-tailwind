@@ -1,6 +1,6 @@
 {
     "name": "@meshagent/meshagent-tailwind",
-    "version": "0.4.2",
+    "version": "0.4.3",
     "description": "Meshagent Tailwind Components",
     "scripts": {
         "build:js": "node build.js",
@@ -29,8 +29,8 @@
         "CHANGELOG.md"
     ],
     "dependencies": {
-        "@meshagent/meshagent": "^0.4.2",
-        "@meshagent/meshagent-react": "^0.4.2",
+        "@meshagent/meshagent": "^0.4.3",
+        "@meshagent/meshagent-react": "^0.4.3",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-slot": "^1.2.3",
         "class-variance-authority": "^0.7.1",
