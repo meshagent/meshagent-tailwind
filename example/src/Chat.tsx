@@ -64,7 +64,7 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
     const participants = useMemo<Participant[]>(() => agent ? [agent] : [], [agent]);
 
     return (
-        <main className="flex flex-col min-h-0">
+        <main className="flex flex-col min-h-0 flex-1">
             <LoadingOverlay isLoading={!connection.ready && agent === null} className="flex-1">
                 {connection.ready && (<Chat room={connection.client!} path={path} participants={participants} />)}
             </LoadingOverlay>
