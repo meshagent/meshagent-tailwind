@@ -18,7 +18,7 @@ function onAuthorization(config: ProjectConfigFormValues): () => Promise<{ url: 
         const jwt = await token.toJwt({ token: config.secret });
         const url = websocketRoomUrl({
             roomName: config.roomName,
-            apiUrl: config.apiUrl,
+            apiUrl: 'https://api.meshagent.life',
         });
 
         return { url, jwt };
