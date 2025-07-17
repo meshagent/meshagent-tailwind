@@ -21,6 +21,13 @@
         "./dist/index.css": "./dist/index.css",
         "./package.json": "./package.json"
     },
+    "files": [
+        "dist",
+        "!dist/**/test",
+        "LICENSE",
+        "README.md",
+        "CHANGELOG.md"
+    ],
     "dependencies": {
         "@meshagent/meshagent": "^0.3.1",
         "@meshagent/meshagent-react": "^0.3.1",
