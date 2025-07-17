@@ -1,4 +1,4 @@
-import { RoomClient } from '@meshagent/meshagent';
+import { RoomClient, Participant } from "@meshagent/meshagent";
 import { useChat } from "@meshagent/meshagent-react";
 
 import { ChatThread } from "./ChatThread";
@@ -9,14 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 export interface ChatProps {
     room: RoomClient;
     path: string;
+    participants?: Participant[]; // List of participant names
 }
 
-export function Chat({room, path}: ChatProps) {
+export function Chat({room, path, participants}: ChatProps) {
     const {
         messages,
         sendMessage,
         selectAttachments,
-    } = useChat({room, path});
+    } = useChat({room, path, participants});
 
     const localParticipantName = room.localParticipant!.getAttribute("name");
 

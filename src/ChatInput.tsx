@@ -4,14 +4,13 @@ import { ChatMessage } from "@meshagent/meshagent-react";
 
 import { Button } from "./components/ui/button";
 import { Textarea } from "./components/ui/textarea";
-import { FileUploader } from "./FileUploader";
 
 interface ChatInputProps {
   onSubmit: (message: ChatMessage) => void;
   onFilesSelected: (files: File[]) => void;
 }
 
-export function ChatInput({ onSubmit, onFilesSelected }: ChatInputProps) {
+export function ChatInput({ onSubmit }: ChatInputProps) {
   const [value, setValue] = React.useState("");
 
   const handleSend = () => {
@@ -33,10 +32,10 @@ export function ChatInput({ onSubmit, onFilesSelected }: ChatInputProps) {
     }
   };
 
+  // <FileUploader onFilesSelected={onFilesSelected} />
+
   return (
     <div className="border-t p-3 flex gap-3">
-      <FileUploader onFilesSelected={onFilesSelected} />
-
       <Textarea
         placeholder="Type a message and press Ctrl+Enter…"
         className="flex-1 resize-none h-20"

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { participantToken, websocketRoomUrl } from '@meshagent/meshagent';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Participant, participantToken, websocketRoomUrl } from '@meshagent/meshagent';
 import { useRoomConnection } from '@meshagent/meshagent-react';
 import { LoadingOverlay } from "@/components/ui/spinner";
 
@@ -26,6 +26,8 @@ function onAuthorization(config: ProjectConfigFormValues): () => Promise<{ url: 
 }
 
 export function ChatApp({config} : {config: ProjectConfigFormValues }): React.ReactElement {
+    const [agent, setAgent] = useState<Participant| null>(null);
+
     const path = useMemo(() => {
         const userName = config.userName.toLowerCase().replace(/[^A-Za-z0-9]+/g, '-');
 
@@ -37,10 +39,34 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
         enableMessaging: true
     });
 
+    useEffect(() => {
+        if (!connection.ready) {
+            return;
+        }
+
+        function onChange() {
+            const participants = Array.from(connection.client!.messaging.remoteParticipants);
+
+            const agentParticipant = participants.find(p => p.role === 'agent');
+
+            if (agentParticipant) {
+                setAgent(agentParticipant);
+            }
+        }
+
+        connection.client!.messaging.on('change', onChange);
+
+        onChange();
+
+        return () => connection.client!.messaging.off('change', onChange);
+    }, [connection, connection.ready]);
+
+    const participants = useMemo(() => [agent], [agent]);
+
     return (
         <main className="flex flex-col min-h-0">
-            <LoadingOverlay isLoading={!connection.ready}>
-                {connection.ready && (<Chat room={connection.client!} path={path} />)}
+            <LoadingOverlay isLoading={!connection.ready && agent === null} className="flex-1">
+                {connection.ready && (<Chat room={connection.client!} path={path} participants={participants} />)}
             </LoadingOverlay>
         </main>
     );

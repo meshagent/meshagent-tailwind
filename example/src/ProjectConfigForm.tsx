@@ -10,6 +10,7 @@ interface ProjectConfigFormValuesProps {
     secret: string;
     userName: string;
     roomName: string;
+    apiUrl: string;
 }
 
 export class ProjectConfigFormValues {
@@ -18,19 +19,22 @@ export class ProjectConfigFormValues {
     public secret: string;
     public userName: string;
     public roomName: string;
+    public apiUrl: string;
 
     constructor(
         projectId: string = '',
         apiKey: string = '',
         secret: string = '',
         userName: string = '',
-        roomName: string = ''
+        roomName: string = '',
+        apiUrl: string = 'https://api.meshagent.com',
     ) {
         this.projectId = projectId;
         this.apiKey = apiKey;
         this.secret = secret;
         this.userName = userName;
         this.roomName = roomName;
+        this.apiUrl = apiUrl;
     }
 }
 
@@ -105,6 +109,17 @@ export function ProjectConfigForm ({ onSubmit }: ProjectConfigFormProps): React.
               )}
               <p className="mt-1 text-sm text-muted-foreground">
                   Specify the name of the room you want to join or create. View existing rooms under <strong>Meshagent Studio &rarr; Rooms &rarr; List</strong>.
+              </p>
+          </div>
+
+          <div className="space-y-2">
+              <Label htmlFor="apiUrl">API URL</Label>
+              <Input id="apiUrl" defaultValue="https://api.meshagent.com" {...register("apiUrl", { required: "API URL is required" })} />
+              {errors.apiUrl && (
+                  <p className="mt-1 text-sm text-red-600">{errors.apiUrl.message}</p>
+              )}
+              <p className="mt-1 text-sm text-muted-foreground">
+                  Specify the API URL for your Meshagent instance.
               </p>
           </div>
 
