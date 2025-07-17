@@ -55,7 +55,8 @@ export function ProjectConfigForm ({ onSubmit }: ProjectConfigFormProps): React.
       data.apiKey,
       data.secret,
       data.userName,
-      data.roomName
+      data.roomName,
+      data.apiUrl,
     );
 
     onSubmit(config);
