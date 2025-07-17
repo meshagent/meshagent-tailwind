@@ -9,7 +9,7 @@
 
 #root {
   max-width: 1280px;
-  min-height: 100vh;
+  height: 100vh;
 
   margin: 0 auto;
   padding: 0 2rem;

@@ -21,12 +21,12 @@ export function Chat({room, path}: ChatProps) {
     const localParticipantName = room.localParticipant!.getAttribute("name");
 
     return (
-        <Card className="flex flex-col h-full">
-            <CardHeader className="border-b">
+        <Card className="flex flex-col min-h-0">
+            <CardHeader className="border-b flex-0">
                 <CardTitle>Chat</CardTitle>
             </CardHeader>
 
-            <CardContent className="flex flex-col flex-1 gap-2 p-0">
+            <CardContent className="flex flex-col flex-1 min-h-0 gap-2 p-0">
                 <ChatThread messages={messages} localParticipantName={localParticipantName} />
                 <ChatTypingIndicator room={room} path={path} />
                 <ChatInput onSubmit={sendMessage} onFilesSelected={selectAttachments} />

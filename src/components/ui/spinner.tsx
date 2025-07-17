@@ -44,7 +44,7 @@ export interface LoadingOverlayProps {
  */
 export function LoadingOverlay({ isLoading, className, children }: LoadingOverlayProps) {
   return (
-    <div className="relative h-full">
+    <div className="flex flex-col min-h-0 relative flex-1">
       {children}
 
       {isLoading && (

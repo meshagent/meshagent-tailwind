@@ -1,47 +1,19 @@
-import React from 'react';
-import { participantToken, websocketRoomUrl } from '@meshagent/meshagent';
-import { useRoomConnection } from '@meshagent/meshagent-react';
-import { LoadingOverlay } from "@/components/ui/spinner";
+import { useState } from 'react';
+import { ProjectConfigForm, ProjectConfigFormValues } from './ProjectConfigForm';
+import { ChatApp } from './Chat.tsx';
 
-import { Chat } from '@meshagent/meshagent-tailwind';
+export default function Main() {
+  const [config, setConfig] = useState<ProjectConfigFormValues | null>(null);
 
-const participantName = 'John Smith';
-const roomName = 'my-room';
-const path = '.threads/meshagent.chatbot-josef.kohout@timu.com.thread';
+  return (
+    <div className="h-full flex flex-col">
+      <nav className="flex-0 p-4 bg-white shadow mb-6 ">
+        <h1 className="text-2xl font-bold">Meshagent Chat Application</h1>
+      </nav>
 
-const importMetaEnv = import.meta.env as ImportMetaEnv;
-
-const projectId = importMetaEnv['VITE_MESHAGENT_PROJECT_ID'];
-const apiKeyId = importMetaEnv['VITE_MESHAGENT_KEY_ID'];
-const apiUrl = importMetaEnv['VITE_MESHAGENT_API_URL'];
-const secret = importMetaEnv['VITE_MESHAGENT_SECRET'];
-
-async function onAuthorization() {
-    const token = participantToken({
-        participantName,
-        roomName,
-        projectId,
-        apiKeyId,
-    });
-
-    const jwt = await token.toJwt({ token: secret });
-    const url = websocketRoomUrl({ roomName, apiUrl });
-
-    return { url, jwt };
+      <div className="flex-1 min-h-0 flex flex-col">
+        {config ? (<ChatApp config={config} />) : (<ProjectConfigForm onSubmit={setConfig} />)}
+      </div>
+    </div>
+  );
 }
-
-export default function App(): React.ReactElement {
-    const connection = useRoomConnection({
-        authorization: onAuthorization,
-        enableMessaging: true
-    });
-
-    return (
-        <main className="h-[100vh]">
-            <LoadingOverlay isLoading={!connection.ready}>
-                {connection.ready && (<Chat room={connection.client!} path={path} />)}
-            </LoadingOverlay>
-        </main>
-    );
-}
-
