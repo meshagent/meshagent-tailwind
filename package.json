@@ -29,8 +29,10 @@
         "README.md",
         "CHANGELOG.md"
     ],
+    "peerDependencies": {
+        "@meshagent/meshagent": "^0.4.3"
+    },
     "dependencies": {
-        "@meshagent/meshagent": "^0.4.3",
         "@meshagent/meshagent-react": "^0.4.3",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-slot": "^1.2.3",

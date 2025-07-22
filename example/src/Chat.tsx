@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Participant, participantToken, websocketRoomUrl } from '@meshagent/meshagent';
-import { useRoomConnection } from '@meshagent/meshagent-react';
+import { useRoomConnection, useWaitForAgentParticipant } from '@meshagent/meshagent-react';
 import { LoadingOverlay } from "@/components/ui/spinner";
 
 import { Chat } from '@meshagent/meshagent-tailwind';
@@ -26,8 +26,6 @@ function onAuthorization(config: ProjectConfigFormValues): () => Promise<{ url: 
 }
 
 export function ChatApp({config} : {config: ProjectConfigFormValues }): React.ReactElement {
-    const [agent, setAgent] = useState<Participant| null>(null);
-
     const path = useMemo(() => {
         const userName = config.userName.toLowerCase().replace(/[^A-Za-z0-9]+/g, '-');
 
@@ -39,29 +37,17 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
         enableMessaging: true
     });
 
-    useEffect(() => {
-        if (!connection.ready) {
-            return;
+    const agent = useWaitForAgentParticipant(connection);
+
+    const participants = useMemo<Participant[]>(() => {
+        const localParticipant = connection.client?.localParticipant;
+
+        if (!localParticipant) {
+            return [];
         }
 
-        function onChange() {
-            const participants = Array.from(connection.client!.messaging.remoteParticipants);
-
-            const agentParticipant = participants.find(p => p.role === 'agent');
-
-            if (agentParticipant) {
-                setAgent(agentParticipant);
-            }
-        }
-
-        connection.client!.messaging.on('change', onChange);
-
-        onChange();
-
-        return () => connection.client!.messaging.off('change', onChange);
-    }, [connection, connection.ready]);
-
-    const participants = useMemo<Participant[]>(() => agent ? [agent] : [], [agent]);
+        return agent ? [agent, localParticipant] : [];
+    }, [agent, connection.client]);
 
     return (
         <main className="flex flex-col min-h-0 flex-1">
