@@ -1,4 +1,6 @@
 const esbuild = require("esbuild");
+const alias      = require("esbuild-plugin-alias");
+const path       = require("path");
 
 const options = {
     entryPoints: ["src/**/*.ts", "src/**/*.tsx"],
@@ -12,6 +14,11 @@ const options = {
     },
     resolveExtensions: [ '.tsx', '.ts', '.js', '.jsx', '.json' ],
     tsconfig: "tsconfig.json",
+    plugins: [
+        alias({
+            "@": path.resolve(__dirname, "src"),
+        }),
+    ],
 };
 
 Promise.all([
