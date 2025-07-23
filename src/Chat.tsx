@@ -27,15 +27,15 @@ export function Chat({room, path, participants}: ChatProps) {
             <ChatThread
                 room={room}
                 messages={messages}
-                localParticipantName={localParticipantName}
-            />
+                localParticipantName={localParticipantName} />
+
             <ChatTypingIndicator room={room} path={path} />
+
             <ChatInput
                 onSubmit={sendMessage}
                 attachments={attachments}
                 onFilesSelected={selectAttachments}
-                setAttachments={setAttachments}
-            />
+                setAttachments={setAttachments} />
         </div>
     );
 }

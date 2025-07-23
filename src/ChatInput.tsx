@@ -5,7 +5,7 @@ import { ChatMessage, FileUpload } from "@meshagent/meshagent-react";
 import { Button } from "./components/ui/button";
 import { Textarea } from "./components/ui/textarea";
 import { FileUploader } from "./FileUploader";
-
+import { UploadPill } from "./UploadPill";
 
 interface ChatInputProps {
     onSubmit: (message: ChatMessage) => void;
@@ -19,7 +19,10 @@ export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachmen
 
     const handleSend = useCallback(() => {
         const trimmed = value.trim();
-        if (!trimmed) return;
+
+        if (attachments.length === 0 && !trimmed) {
+            return;
+        }
 
         onSubmit(new ChatMessage({
             id: uuidV4(),
@@ -38,21 +41,33 @@ export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachmen
         }
     };
 
+    const cancelAttachment = useCallback((attachment: FileUpload) => {
+        setAttachments(attachments.filter((f) => f.path !== attachment.path));
+    }, [attachments, setAttachments]);
+
     const trimmed = value.trim();
     const disabled = !trimmed && attachments.length === 0;
 
     return (
-        <div className="border-t p-3 flex gap-3">
-            <FileUploader onFilesSelected={onFilesSelected} />
+        <div className="border-t py-3 gap-3 flex flex-col">
+            <div className="flex flex-0 gap-2 flex-wrap">
+                {attachments.map((attachment) => (<UploadPill
+                    attachment={attachment}
+                    onCancel={cancelAttachment} />))}
+            </div>
 
-            <Textarea
-                placeholder="Type a message and press Enter"
-                className="flex-1 resize-none h-20"
-                value={value}
-                onChange={(e) => setValue(e.currentTarget.value)}
-                onKeyDown={onKeyDown} />
+            <div className="flex flex-0 gap-3">
+                <FileUploader onFilesSelected={onFilesSelected} />
 
-            <Button onClick={handleSend} disabled={disabled}>Send</Button>
+                <Textarea
+                    placeholder="Type a message and press Enter"
+                    className="flex-1 resize-none h-20"
+                    value={value}
+                    onChange={(e) => setValue(e.currentTarget.value)}
+                    onKeyDown={onKeyDown} />
+
+                <Button onClick={handleSend} disabled={disabled}>Send</Button>
+            </div>
         </div>
     );
 }

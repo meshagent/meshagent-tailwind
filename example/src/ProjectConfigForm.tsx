@@ -36,6 +36,29 @@ export class ProjectConfigFormValues {
         this.roomName = roomName;
         this.apiUrl = apiUrl;
     }
+
+    toJSON(): string {
+        return JSON.stringify({
+            projectId: this.projectId,
+            apiKey: this.apiKey,
+            secret: this.secret,
+            userName: this.userName,
+            roomName: this.roomName,
+            apiUrl: this.apiUrl,
+        });
+    }
+
+    static fromJSON(json: string): ProjectConfigFormValues {
+        const data = JSON.parse(json);
+        return new ProjectConfigFormValues(
+            data.projectId,
+            data.apiKey,
+            data.secret,
+            data.userName,
+            data.roomName,
+            data.apiUrl,
+        );
+    }
 }
 
 export interface ProjectConfigFormProps {

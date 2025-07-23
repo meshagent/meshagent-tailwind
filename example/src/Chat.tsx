@@ -57,4 +57,3 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
         </main>
     );
 }
-
