@@ -1,6 +1,6 @@
 {
     "name": "@meshagent/meshagent-tailwind",
-    "version": "0.4.3",
+    "version": "0.5.1",
     "description": "Meshagent Tailwind Components",
     "homepage": "https://github.com/meshagent/meshagent-tailwind",
     "scripts": {
@@ -29,11 +29,10 @@
         "README.md",
         "CHANGELOG.md"
     ],
-    "peerDependencies": {
-        "@meshagent/meshagent": "^0.4.3"
-    },
     "dependencies": {
         "@meshagent/meshagent-react": "^0.4.3",
+        "@meshagent/meshagent": "^0.5.1",
+        "@meshagent/meshagent-react": "^0.5.1",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-progress": "^1.1.7",
         "@radix-ui/react-slot": "^1.2.3",
