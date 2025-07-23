@@ -9,9 +9,7 @@ export interface UploadPillProps {
 }
 
 export function UploadPill({attachment, onCancel}: UploadPillProps): React.ReactElement {
-    const [progress, setProgress] = useState<number>(
-        Math.round((attachment.bytesUploaded * 100.0) / attachment.size)
-    );
+    const [progress, setProgress] = useState<number>(0);
 
     const handleCancel = useCallback(() => onCancel(attachment), [attachment, onCancel]);
 

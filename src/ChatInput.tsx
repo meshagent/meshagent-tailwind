@@ -52,6 +52,7 @@ export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachmen
         <div className="border-t py-3 gap-3 flex flex-col">
             <div className="flex flex-0 gap-2 flex-wrap">
                 {attachments.map((attachment) => (<UploadPill
+                    key={attachment.path}
                     attachment={attachment}
                     onCancel={cancelAttachment} />))}
             </div>

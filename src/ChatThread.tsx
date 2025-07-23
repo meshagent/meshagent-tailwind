@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { Element, RoomClient } from "@meshagent/meshagent";
+import { Download } from "lucide-react";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -58,7 +59,7 @@ export function ChatThread({room, messages, localParticipantName}: {
   }, [messages]);
 
   return (
-    <div className="flex-1 flex-shrink-1 basis-0 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col flex-1 flex-shrink-1 basis-0 overflow-y-auto p-4 space-y-4">
       {messages.map((message: Element) => (<ChatMessage
         key={message.id}
         room={room}
@@ -71,23 +72,19 @@ export function ChatThread({room, messages, localParticipantName}: {
   );
 }
 
-function ChatImage({room, path}: {
+function ChatImage({room, path, alt}: {
     room: RoomClient;
     path: string;
+    alt?: string;
 }): React.ReactElement | null {
-
     const [url, setUrl] = React.useState<string>("");
 
     useEffect(() => {
         room.storage.downloadUrl(path).then(setUrl);
-
     }, [path]);
 
     return url === "" ? null : (
-        <img
-            src={url}
-            alt="Image Attachment"
-            className="max-h-48 max-w-full rounded-lg" />
+        <img src={url} alt={alt} className="max-h-48 max-w-full rounded-lg" />
     );
 }
 
@@ -100,7 +97,7 @@ function ChatMessage({room, message, localParticipantName}: {
     const attachments = ((message.children as Element[]) ?? []).filter((child: Element) => child.tagName === "file");
 
     return (
-        <div className={cn("flex flex-col max-w-prose items-start gap-1", { "justify-end": mine, "justify-start": !mine })}>
+        <div className={cn("flex flex-col max-w-prose gap-1", { "items-end self-end": mine, "items-start self-start": !mine })}>
             <div className="mb-0.5 text-xs text-muted-foreground">
                 By {message.getAttribute("author_name")} at {timeAgo(message.getAttribute("created_at"))}
             </div>
@@ -108,16 +105,36 @@ function ChatMessage({room, message, localParticipantName}: {
             <ChatBubble key={message.id} text={message.getAttribute("text")} mine={mine} />
 
             {attachments && attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
+                <div className={cn("flex flex-wrap gap-2 mt-2", {"text-right": mine})}>
                     {attachments.map((attachment: Element) => {
                         const path = attachment.getAttribute("path") || "";
                         const isImage = isImageFilename(path);
+                        const filename = path.split("/").pop();
 
                         if (isImage) {
-                            return (<ChatImage key={attachment.id} room={room} path={path} />);
+                            return (
+                                <ChatImage
+                                    key={attachment.id}
+                                    room={room}
+                                    path={path}
+                                    alt={filename || "Image Attachment"}
+                                    />
+                            );
                         }
 
-                        return (<span>{attachment.getAttribute("path")}</span>);
+                        return (
+                            <button
+                                key={attachment.id}
+                                type="button"
+                                onClick={() => {
+                                    room.storage.downloadUrl(path).then((url) => window.open(url, "_blank"));
+                                }}
+                                className="relative inline-flex max-w-full items-center border bg-muted pl-3 pr-1 py-1 gap-2 cursor-pointer hover:bg-muted-foreground/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                rel="noopener noreferrer">
+                                <span className="truncate text-sm font-medium leading-none">{filename}</span>
+                                <Download className="inline-block mr-1" />
+                            </button>
+                        );
                     })}
                 </div>
             )}
@@ -126,6 +143,10 @@ function ChatMessage({room, message, localParticipantName}: {
 }
 
 function ChatBubble({text, mine}: {text: string; mine: boolean}): React.ReactElement {
+    if (!text || text.trim() === "") {
+        return (<></>);
+    }
+
     return (
         <div className={cn(
             "rounded-lg px-4 py-2 text-sm max-w-prose whitespace-pre-wrap",
@@ -138,12 +159,9 @@ function ChatBubble({text, mine}: {text: string; mine: boolean}): React.ReactEle
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeSanitize, rehypeHighlight]}
                 components={{
-                    pre: ({ node, className, children, ...props }) => (
-                        <pre {...props} className={cn("overflow-x-auto rounded-lg", className)}>{children}</pre>),
-                            p: ({ node, children, ...props }) => (
-                                <p {...props} className="mb-2 last:mb-0">{children}</p>),
-                                    code: ({ className, children, ...props }) => (
-                                        <code {...props} className={className}>{children}</code>),
+                    pre: ({ node, className, children, ...props }) => (<pre {...props} className={cn("overflow-x-auto rounded-lg", className)}>{children}</pre>),
+                    p: ({ node, children, ...props }) => (<p {...props} className="mb-2 last:mb-0">{children}</p>),
+                    code: ({ className, children, ...props }) => (<code {...props} className={className}>{children}</code>),
                 }}>{text}</ReactMarkdown>
         </div>
     );
