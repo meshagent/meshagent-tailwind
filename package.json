@@ -30,7 +30,6 @@
         "CHANGELOG.md"
     ],
     "dependencies": {
-        "@meshagent/meshagent-react": "^0.4.3",
         "@meshagent/meshagent": "^0.5.1",
         "@meshagent/meshagent-react": "^0.5.1",
         "@radix-ui/react-avatar": "^1.1.10",
