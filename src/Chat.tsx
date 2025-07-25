@@ -18,9 +18,21 @@ export function Chat({room, path, participants}: ChatProps) {
         selectAttachments,
         attachments,
         setAttachments,
+        schemaFileExists,
     } = useChat({room, path, participants});
 
     const localParticipantName = room.localParticipant!.getAttribute("name");
+
+    if (schemaFileExists === false) {
+        return (
+            <div className="flex flex-col flex-1 min-h-0 gap-2 p-4">
+                <p className="text-red-500">
+                    No AI agent found in this room.
+                    Run `meshagent chatbot join --room [room-name] --agent-name "Chat Agent" --name "Chat Friend" and try again.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col flex-1 min-h-0 gap-2 p-0">
