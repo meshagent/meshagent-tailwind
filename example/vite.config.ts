@@ -14,6 +14,7 @@ export default defineConfig({
     optimizeDeps: {
         include: [
             '@meshagent/meshagent',
+            '@meshagent/meshagent-react',
             '@meshagent/meshagent-tailwind',
         ],
     },
@@ -24,7 +25,6 @@ export default defineConfig({
         ],
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
-            '@meshagent/meshagent': fileURLToPath(new URL('../../meshagent-ts/dist/esm/index.js', import.meta.url)),
         },
     },
 });
