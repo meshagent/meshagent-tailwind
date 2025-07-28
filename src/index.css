@@ -1,17 +1,19 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@source "../../src/**/*.{js,ts,jsx,tsx}";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @custom-variant dark (&:is(.dark *));
 
+.josef {
+  font-family: "Josefin Sans", sans-serif;
+}
+
 #root {
   max-width: 1280px;
-  height: 100vh;
+  min-height: 100vh;
 
   margin: 0 auto;
   padding: 0 2rem;

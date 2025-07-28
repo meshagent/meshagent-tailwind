@@ -4,12 +4,11 @@ import { useChat } from "@meshagent/meshagent-react";
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
 import { ChatTypingIndicator } from "./ChatTypingIndicator";
-import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 
 export interface ChatProps {
     room: RoomClient;
     path: string;
-    participants?: Participant[]; // List of participant names
+    participants?: Participant[];
 }
 
 export function Chat({room, path, participants}: ChatProps) {
@@ -17,21 +16,38 @@ export function Chat({room, path, participants}: ChatProps) {
         messages,
         sendMessage,
         selectAttachments,
+        attachments,
+        setAttachments,
+        schemaFileExists,
     } = useChat({room, path, participants});
 
     const localParticipantName = room.localParticipant!.getAttribute("name");
 
-    return (
-        <Card className="flex flex-col min-h-0">
-            <CardHeader className="border-b flex-0">
-                <CardTitle>Chat</CardTitle>
-            </CardHeader>
+    if (schemaFileExists === false) {
+        return (
+            <div className="flex flex-col flex-1 min-h-0 gap-2 p-4">
+                <p className="text-red-500">
+                    No AI agent found in this room.
+                    Run `meshagent chatbot join --room [room-name] --agent-name "Chat Agent" --name "Chat Friend" and try again.
+                </p>
+            </div>
+        );
+    }
 
-            <CardContent className="flex flex-col flex-1 min-h-0 gap-2 p-0">
-                <ChatThread messages={messages} localParticipantName={localParticipantName} />
-                <ChatTypingIndicator room={room} path={path} />
-                <ChatInput onSubmit={sendMessage} onFilesSelected={selectAttachments} />
-            </CardContent>
-        </Card>
+    return (
+        <div className="flex flex-col flex-1 min-h-0 gap-2 p-0">
+            <ChatThread
+                room={room}
+                messages={messages}
+                localParticipantName={localParticipantName} />
+
+            <ChatTypingIndicator room={room} path={path} />
+
+            <ChatInput
+                onSubmit={sendMessage}
+                attachments={attachments}
+                onFilesSelected={selectAttachments}
+                setAttachments={setAttachments} />
+        </div>
     );
 }
