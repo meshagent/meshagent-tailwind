@@ -1,6 +1,6 @@
 {
     "name": "my-chat-app-tailwind",
-    "version": "0.5.2",
+    "version": "0.5.3",
     "private": true,
     "type": "module",
     "scripts": {
@@ -11,9 +11,9 @@
         "preview": "vite preview"
     },
     "dependencies": {
-        "@meshagent/meshagent": "^0.5.2",
-        "@meshagent/meshagent-react": "^0.5.2",
-        "@meshagent/meshagent-tailwind": "^0.5.2",
+        "@meshagent/meshagent": "^0.5.3",
+        "@meshagent/meshagent-react": "^0.5.3",
+        "@meshagent/meshagent-tailwind": "^0.5.3",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-label": "^2.1.7",
         "@radix-ui/react-progress": "^1.1.7",
