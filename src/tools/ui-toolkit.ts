@@ -1,5 +1,9 @@
 import { RoomClient, RemoteToolkit } from '@meshagent/meshagent';
+
 import { AskUser } from './ask-user';
+import { AskUserForFile } from './ask-user-for-file';
+import { DisplayDocument } from './display-document';
+import { Toast } from './toast';
 
 export class UIToolkit extends RemoteToolkit {
     constructor({room}:  {room: RoomClient}) {
@@ -9,14 +13,10 @@ export class UIToolkit extends RemoteToolkit {
             description: "User interface tools",
             room,
             tools: [
-                // Add your tool instances here, e.g.:
                 new AskUser(),
-                // new AskUserForFile({context}),
-                // new ShowAlert({context}),
-                // new ShowErrorAlert({context}),
-                // new Toast({context}),
-                // new DisplayDocument({context}),
-                // new DisplaySlide({context}),
+                new AskUserForFile(),
+                new Toast(),
+                new DisplayDocument(),
             ]
         });
     }

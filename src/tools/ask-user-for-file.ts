@@ -17,7 +17,7 @@ const askUserForFileSchema = {
             description: 'helpful information that explains why this information is being collected and how it will be used',
         },
     },
-};
+} as const;
 
 export class AskUserForFile extends Tool {
     constructor({name, description, title}: {
@@ -28,7 +28,7 @@ export class AskUserForFile extends Tool {
         super({
             name: name ?? 'ask_user_for_file',
             description: description ?? 'ask the user for a file (will be accessible as a blob url to other tools)',
-            title: title || 'ask user for file',
+            title: title ?? 'ask user for file',
             inputSchema: askUserForFileSchema,
         });
     }
