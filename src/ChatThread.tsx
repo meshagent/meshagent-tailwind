@@ -32,6 +32,8 @@ export function timeAgo(iso: string): string {
   const date = new Date(iso);
   const now = new Date();
 
+  if (isNaN(date.getTime())) return ""; // Return empty string if date is invalid
+
   const seconds = Math.round((date.getTime() - now.getTime()) / 1000);
   const minutes = Math.round(seconds / 60);
   const hours   = Math.round(minutes / 60);

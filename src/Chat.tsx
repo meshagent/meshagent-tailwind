@@ -24,7 +24,9 @@ export function Chat({room, path, participants}: ChatProps) {
         schemaFileExists,
     } = useChat({room, path, participants});
 
-    const toolkits = useMemo(() => [new UIToolkit({room})], [room]);
+    const toolkits = useMemo(() => [
+        new UIToolkit({room}),
+    ], [room]);
 
     useClientToolkits({
         toolkits,

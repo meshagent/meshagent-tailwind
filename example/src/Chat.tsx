@@ -15,7 +15,10 @@ function onAuthorization(config: ProjectConfigFormValues): () => Promise<{ url: 
             apiKeyId: config.apiKey,
         });
 
-        const jwt = await token.toJwt({ token: config.secret });
+        const jwt = await token.toJwt({
+            token: config.secret
+        });
+
         const url = websocketRoomUrl({
             roomName: config.roomName,
             apiUrl: config.apiUrl,
@@ -34,7 +37,7 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
 
     const connection = useRoomConnection({
         authorization: onAuthorization(config),
-        enableMessaging: true
+        enableMessaging: true,
     });
 
     const agent = useWaitForAgentParticipant(connection);
