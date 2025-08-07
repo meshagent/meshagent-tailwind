@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { RoomClient, Participant } from "@meshagent/meshagent";
-import { useChat, useClientToolkits } from "@meshagent/meshagent-react";
+import { useChat, useClientToolkits, useRoomParticipants } from "@meshagent/meshagent-react";
 
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
@@ -33,6 +33,22 @@ export function Chat({room, path, participants}: ChatProps) {
         public: true,
     });
 
+    // const p = useRoomParticipants(room);
+    // console.log("jkkkk Participants in room:", p);
+
+    const onTextChange = useCallback((_: string) => {
+        const removeParticipant = room.messaging.remoteParticipants;
+
+        for (const part of removeParticipant) {
+            room.messaging.sendMessage({
+                to: part,
+                type: "typing",
+                message: { path },
+            });
+        }
+    }, [room]);
+
+
     const localParticipantName = room.localParticipant!.getAttribute("name");
 
     if (schemaFileExists === false) {
@@ -60,7 +76,8 @@ export function Chat({room, path, participants}: ChatProps) {
                 onSubmit={sendMessage}
                 attachments={attachments}
                 onFilesSelected={selectAttachments}
-                setAttachments={setAttachments} />
+                setAttachments={setAttachments}
+                onTextChange={onTextChange} />
         </div>
     );
 }

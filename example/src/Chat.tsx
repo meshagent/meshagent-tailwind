@@ -52,10 +52,12 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
         return agent ? [agent, localParticipant] : [];
     }, [agent, connection.client]);
 
+    const isReady = connection.ready; // || agent !== null;
+
     return (
         <main className="flex flex-col min-h-0 flex-1">
-            <LoadingOverlay isLoading={!connection.ready && agent === null} className="flex-1">
-                {connection.ready && (<Chat room={connection.client!} path={path} participants={participants} />)}
+            <LoadingOverlay isLoading={!isReady} className="flex-1">
+                {isReady && (<Chat room={connection.client!} path={path} participants={participants} />)}
             </LoadingOverlay>
         </main>
     );

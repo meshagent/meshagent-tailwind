@@ -12,9 +12,10 @@ interface ChatInputProps {
     onFilesSelected: (files: File[]) => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
+    onTextChange?: (text: string) => void;
 }
 
-export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachments }: ChatInputProps) {
+export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachments, onTextChange }: ChatInputProps) {
     const [value, setValue] = React.useState("");
 
     const handleSend = useCallback(() => {
@@ -45,6 +46,11 @@ export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachmen
         setAttachments(attachments.filter((f) => f.path !== attachment.path));
     }, [attachments, setAttachments]);
 
+    const _onChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setValue(e.currentTarget.value);
+        onTextChange?.(e.currentTarget.value);
+    }, [onTextChange]);
+
     const trimmed = value.trim();
     const disabled = !trimmed && attachments.length === 0;
 
@@ -64,7 +70,7 @@ export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachmen
                     placeholder="Type a message and press Enter"
                     className="flex-1 resize-none h-20"
                     value={value}
-                    onChange={(e) => setValue(e.currentTarget.value)}
+                    onChange={_onChange}
                     onKeyDown={onKeyDown} />
 
                 <Button onClick={handleSend} disabled={disabled}>Send</Button>
