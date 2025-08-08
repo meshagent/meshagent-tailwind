@@ -1,7 +1,7 @@
 import { Tool, FileResponse } from '@meshagent/meshagent';
 import type { Response } from '@meshagent/meshagent';
 
-import { showFileDialog } from './file-dialog.tsx';
+import { showFileDialog } from './file-dialog';
 
 const askUserForFileSchema = {
     type: 'object',

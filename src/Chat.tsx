@@ -24,17 +24,9 @@ export function Chat({room, path, participants}: ChatProps) {
         schemaFileExists,
     } = useChat({room, path, participants});
 
-    const toolkits = useMemo(() => [
-        new UIToolkit({room}),
-    ], [room]);
+    const toolkits = useMemo(() => [new UIToolkit({room})], [room]);
 
-    useClientToolkits({
-        toolkits,
-        public: true,
-    });
-
-    // const p = useRoomParticipants(room);
-    // console.log("jkkkk Participants in room:", p);
+    useClientToolkits({ toolkits, public: true });
 
     const onTextChange = useCallback((_: string) => {
         const removeParticipant = room.messaging.remoteParticipants;
@@ -48,8 +40,7 @@ export function Chat({room, path, participants}: ChatProps) {
         }
     }, [room]);
 
-
-    const localParticipantName = room.localParticipant!.getAttribute("name");
+    const localParticipantName = room.localParticipant?.getAttribute("name");
 
     if (schemaFileExists === false) {
         return (
