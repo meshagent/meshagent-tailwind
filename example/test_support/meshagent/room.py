@@ -1,10 +1,16 @@
 import asyncio
 from meshagent.api import (
-    RoomClient, ParticipantToken, RemoteParticipant, WebSocketClientProtocol,
-    RoomException, ParticipantGrant, ApiScope,
+    RoomClient,
+    ParticipantToken,
+    RemoteParticipant,
+    WebSocketClientProtocol,
+    RoomException,
+    ParticipantGrant,
+    ApiScope,
 )
 from test_support.tools.ui import UIToolkit
 from test_support import config
+
 
 async def get_remote_participants(room: RoomClient) -> list[RemoteParticipant]:
     participants = room.messaging.remote_participants
@@ -24,6 +30,7 @@ async def get_remote_participants(room: RoomClient) -> list[RemoteParticipant]:
         return await future
     finally:
         room.messaging.off("participant_added", _handler)
+
 
 async def show_toast(
     *,
@@ -49,8 +56,10 @@ async def show_toast(
             name="Test Agent",
             project_id=project_id,
             api_key_id=key_id,
-            grants=[ParticipantGrant(name="room", scope=room_name),
-                    ParticipantGrant(name="role", scope="agent")],
+            grants=[
+                ParticipantGrant(name="room", scope=room_name),
+                ParticipantGrant(name="role", scope="agent"),
+            ],
         )
         token.add_api_grant(ApiScope.agent_default())
         jwt = token.to_jwt(token=secret)

@@ -2,6 +2,7 @@ import pytest
 from playwright.async_api import expect
 from test_support.meshagent.room import show_toast
 
+
 @pytest.mark.asyncio
 async def test_toast_shown_to_user(logged_in_context):
     page = logged_in_context.pages[0]
