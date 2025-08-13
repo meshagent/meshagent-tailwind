@@ -7,21 +7,25 @@ import pytest_asyncio
 from playwright.async_api import async_playwright, expect
 
 from meshagent.api import (
-    RoomClient, ParticipantToken,
-    RemoteParticipant, 
-    WebSocketClientProtocol, RoomException,
-    ParticipantGrant, JsonResponse, ApiScope
+    RoomClient,
+    ParticipantToken,
+    RemoteParticipant,
+    WebSocketClientProtocol,
+    RoomException,
+    ParticipantGrant,
+    JsonResponse,
+    ApiScope,
 )
 
 from meshagent.tools import Tool, RemoteToolkit
 
 room_name = "room-1"
 user_name = "John Doe"
-api_url=f"ws://localhost:8080/rooms/{room_name}"
+api_url = f"ws://localhost:8080/rooms/{room_name}"
 meshagent_url = "http://localhost:8080"
 meshagent_key_id = "testkey"
 meshagent_project_id = "testproject"
-meshagent_secret="testsecret"
+meshagent_secret = "testsecret"
 
 toast_title = "Hello from the AI Agent!"
 toast_description = "This is a message from the AI agent invoked via the chat."
@@ -39,7 +43,7 @@ toastSchema = {
             "type": "string",
             "description": "a longer description that explains the toast message in more detail",
         },
-    }
+    },
 }
 
 askUserSchema = {
@@ -49,7 +53,7 @@ askUserSchema = {
     "properties": {
         "subject": {
             "type": "string",
-            "description": "a very short description suitable for a dialog title"
+            "description": "a very short description suitable for a dialog title",
         },
         "help": {
             "type": "string",
@@ -67,7 +71,12 @@ askUserSchema = {
                             "input": {
                                 "type": "object",
                                 "additionalProperties": False,
-                                "required": ["multiline", "name", "description", "default_value"],
+                                "required": [
+                                    "multiline",
+                                    "name",
+                                    "description",
+                                    "default_value",
+                                ],
                                 "properties": {
                                     "name": {"type": "string"},
                                     "description": {"type": "string"},
@@ -98,13 +107,17 @@ askUserSchema = {
                         "type": "object",
                         "additionalProperties": False,
                         "required": ["radio_group"],
-                        "description":
-                            "allows the user to select a single option from a list of options. best for multiple choice questions or surveys",
+                        "description": "allows the user to select a single option from a list of options. best for multiple choice questions or surveys",
                         "properties": {
                             "radio_group": {
                                 "type": "object",
                                 "additionalProperties": False,
-                                "required": ["name", "default_value", "description", "options"],
+                                "required": [
+                                    "name",
+                                    "default_value",
+                                    "description",
+                                    "options",
+                                ],
                                 "properties": {
                                     "name": {"type": "string"},
                                     "description": {"type": "string"},
@@ -133,7 +146,12 @@ askUserSchema = {
                             "select": {
                                 "type": "object",
                                 "additionalProperties": False,
-                                "required": ["name", "options", "description", "default_value"],
+                                "required": [
+                                    "name",
+                                    "options",
+                                    "description",
+                                    "default_value",
+                                ],
                                 "properties": {
                                     "name": {"type": "string"},
                                     "description": {"type": "string"},
@@ -160,49 +178,60 @@ askUserSchema = {
     },
 }
 
+
 class AskUser(Tool):
     """
     Ask the user for information using a form.
     """
 
-    def __init__(self, *, name: str = "ask_user", description: str = "ask user question", title: str = "Ask User"):
+    def __init__(
+        self,
+        *,
+        name: str = "ask_user",
+        description: str = "ask user question",
+        title: str = "Ask User",
+    ):
         super().__init__(
-                name=name,
-                description=description,
-                title=title,
-                input_schema=askUserSchema)
+            name=name, description=description, title=title, input_schema=askUserSchema
+        )
 
     async def execute(self, context: Any, **kwargs: Any):
-        return JsonResponse(json={
-            "subject": kwargs.get("subject", ""),
-            "form": kwargs.get("form", []),
-            "help": kwargs.get("help", ""),
-        })
+        return JsonResponse(
+            json={
+                "subject": kwargs.get("subject", ""),
+                "form": kwargs.get("form", []),
+                "help": kwargs.get("help", ""),
+            }
+        )
+
 
 class Toast(Tool):
     """
     Show a toast message to the user.
     """
 
-    def __init__(self, *, 
-         name: str = "show_toast",
-         description: str = "let the user know something important (will be shown as a toast)",
-         title: str = "show user a toast"):
-
+    def __init__(
+        self,
+        *,
+        name: str = "show_toast",
+        description: str = "let the user know something important (will be shown as a toast)",
+        title: str = "show user a toast",
+    ):
         super().__init__(
-                name=name,
-                description=description,
-                title=title,
-                input_schema=toastSchema)
+            name=name, description=description, title=title, input_schema=toastSchema
+        )
 
     async def execute(self, context: Any, **kwargs: Any):
-        print(f"Showing toast with title: {kwargs.get('title', '')} and description: {kwargs.get('description', '')}")
+        print(
+            f"Showing toast with title: {kwargs.get('title', '')} and description: {kwargs.get('description', '')}"
+        )
 
-        return JsonResponse(json={
-            "title": kwargs.get("title", ""),
-            "description": kwargs.get("description", ""),
-        })
-
+        return JsonResponse(
+            json={
+                "title": kwargs.get("title", ""),
+                "description": kwargs.get("description", ""),
+            }
+        )
 
 
 class UIToolkit(RemoteToolkit):
@@ -220,6 +249,7 @@ class UIToolkit(RemoteToolkit):
                 Toast(),
             ],
         )
+
 
 async def get_remote_participants(room: RoomClient) -> list[RemoteParticipant]:
     participants = room.messaging.remote_participants
@@ -240,13 +270,13 @@ async def get_remote_participants(room: RoomClient) -> list[RemoteParticipant]:
         if participants and not future.done():
             future.set_result(participants)
 
-    room.messaging.on('participant_added', _handler)
+    room.messaging.on("participant_added", _handler)
 
     try:
         return await future
 
     finally:
-        room.messaging.off('participant_added', _handler)
+        room.messaging.off("participant_added", _handler)
 
 
 async def show_toast():
@@ -257,13 +287,14 @@ async def show_toast():
         print(f"Connecting to room {room_name} at {api_url}...")
 
         token = ParticipantToken(
-                name="Test Agent",
-                project_id=meshagent_project_id,
-                api_key_id=meshagent_key_id,
-                grants=[
-                    ParticipantGrant(name="room", scope=room_name),
-                    ParticipantGrant(name="role", scope="agent"),
-                ])
+            name="Test Agent",
+            project_id=meshagent_project_id,
+            api_key_id=meshagent_key_id,
+            grants=[
+                ParticipantGrant(name="room", scope=room_name),
+                ParticipantGrant(name="role", scope="agent"),
+            ],
+        )
 
         token.add_api_grant(ApiScope.agent_default())
 
@@ -297,10 +328,12 @@ async def show_toast():
                     arguments={
                         "title": toast_title,
                         "description": toast_description,
-                    })
+                    },
+                )
 
     except RoomException as e:
         print(f"error: {e}")
+
 
 @pytest_asyncio.fixture(scope="function")
 async def logged_in_context():
@@ -316,19 +349,22 @@ async def logged_in_context():
         await page.get_by_role("textbox", name="Project ID").press("Tab")
         await page.get_by_role("textbox", name="API Key Secret").fill(meshagent_key_id)
         await page.get_by_role("textbox", name="API Key Secret").press("Tab")
-        await page.get_by_role("textbox", name="Enter your secret key").fill(meshagent_secret)
+        await page.get_by_role("textbox", name="Enter your secret key").fill(
+            meshagent_secret
+        )
         await page.get_by_role("textbox", name="Enter your secret key").press("Tab")
         await page.get_by_role("textbox", name="User Name").fill(user_name)
         await page.get_by_role("textbox", name="User Name").press("Tab")
         await page.get_by_role("textbox", name="Room Name").fill(room_name)
         await page.get_by_role("textbox", name="Room Name").press("Tab")
         await page.get_by_role("textbox", name="API URL").fill(meshagent_url)
-        await page.get_by_role("button", name="Save Configuration").click() 
+        await page.get_by_role("button", name="Save Configuration").click()
 
         yield context
 
         await context.close()
         await browser.close()
+
 
 @pytest.mark.asyncio
 async def test_with_login(logged_in_context):
