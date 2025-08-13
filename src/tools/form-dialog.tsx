@@ -12,9 +12,9 @@ import {
     DialogTitle,
     DialogFooter,
     DialogClose,
-} from "@/components/ui/dialog";
+} from "../components/ui/dialog";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 import { FormField } from "./form";
 
 export function showUserFormDialog({formSchema, title}: {
