@@ -13,9 +13,19 @@ interface ChatInputProps {
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
     onTextChange?: (text: string) => void;
+    onCancelRequest?: () => void;
+    showCancelButton?: boolean;
 }
 
-export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachments, onTextChange }: ChatInputProps) {
+export function ChatInput({
+    onSubmit,
+    onFilesSelected,
+    attachments,
+    setAttachments,
+    onTextChange,
+    onCancelRequest,
+    showCancelButton}: ChatInputProps) {
+
     const [value, setValue] = React.useState("");
 
     const handleSend = useCallback(() => {
@@ -73,7 +83,11 @@ export function ChatInput({ onSubmit, onFilesSelected, attachments, setAttachmen
                     onChange={_onChange}
                     onKeyDown={onKeyDown} />
 
-                <Button onClick={handleSend} disabled={disabled}>Send</Button>
+                {showCancelButton === true ? (
+                    <Button onClick={onCancelRequest}>Cancel</Button>
+                ) : (
+                    <Button onClick={handleSend} disabled={disabled}>Send</Button>
+                )}
             </div>
         </div>
     );

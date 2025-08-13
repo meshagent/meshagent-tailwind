@@ -1,12 +1,13 @@
 import { useMemo, useCallback } from "react";
 import { RoomClient, Participant } from "@meshagent/meshagent";
-import { useChat, useClientToolkits, useRoomParticipants } from "@meshagent/meshagent-react";
+import { useChat, useClientToolkits, useRoomIndicators } from "@meshagent/meshagent-react";
 
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
 import { ChatTypingIndicator } from "./ChatTypingIndicator";
 
 import { UIToolkit } from "./tools/ui-toolkit";
+import { Toaster } from "./components/ui/sonner";
 
 export interface ChatProps {
     room: RoomClient;
@@ -22,9 +23,14 @@ export function Chat({room, path, participants}: ChatProps) {
         attachments,
         setAttachments,
         schemaFileExists,
+        cancelRequest,
     } = useChat({room, path, participants});
 
-    const toolkits = useMemo(() => [new UIToolkit({room})], [room]);
+    const { thinking } = useRoomIndicators({ room, path });
+
+    const toolkits = useMemo(() => [
+        new UIToolkit({room}),
+    ], [room]);
 
     useClientToolkits({ toolkits, public: true });
 
@@ -38,7 +44,7 @@ export function Chat({room, path, participants}: ChatProps) {
                 message: { path },
             });
         }
-    }, [room]);
+    }, [room, path]);
 
     const localParticipantName = room.localParticipant?.getAttribute("name");
 
@@ -68,7 +74,11 @@ export function Chat({room, path, participants}: ChatProps) {
                 attachments={attachments}
                 onFilesSelected={selectAttachments}
                 setAttachments={setAttachments}
-                onTextChange={onTextChange} />
+                onTextChange={onTextChange} 
+                onCancelRequest={cancelRequest}
+                showCancelButton={thinking} />
+
+            <Toaster />
         </div>
     );
 }
