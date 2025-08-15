@@ -9,9 +9,9 @@ export interface ChatTypingIndicatorProps {
 }
 
 export function ChatTypingIndicator({room, path}: ChatTypingIndicatorProps): React.ReactElement | null {
-    const { typing } = useRoomIndicators({ room, path });
+    const { typing, thinking } = useRoomIndicators({ room, path });
 
-    return typing ? (
+    return typing || thinking ? (
         <div className="flex items-end space-x-1 h-6 p-6">
             {[0, 1, 2].map((index) => (
                 <span
