@@ -1,6 +1,12 @@
 ## [0.5.12]
 - Stability
 
+<<<<<<< HEAD
+=======
+## [0.5.11]
+- Stability
+
+>>>>>>> prod-v0.5.12
 ## [0.5.8]
 - Stability
 
