@@ -46,7 +46,7 @@ export function Chat({room, path, participants}: ChatProps) {
         }
     }, [room, path]);
 
-    const localParticipantName = room.localParticipant?.getAttribute("name");
+    const localParticipantName = room?.localParticipant?.getAttribute("name");
 
     if (schemaFileExists === false) {
         return (

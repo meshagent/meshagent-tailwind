@@ -4,6 +4,21 @@ import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from "url"
 
 export default defineConfig({
+    server: {
+        watch: {
+            usePolling: true,        // especially on Docker/WSL
+            interval: 100,
+            ignored: [
+                '**/node_modules/**',
+                '**/.git/**',
+                '**/dist/**',
+                '**/data/**',
+                '**/test_support/**',
+                '**/tests/**',
+                '**/venv/**',
+            ]
+        }
+    },
     plugins: [
         react(),
         tailwindcss(),

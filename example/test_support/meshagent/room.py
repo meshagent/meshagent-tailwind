@@ -11,6 +11,7 @@ from meshagent.api import (
 from test_support.tools.ui import UIToolkit
 from test_support import config
 
+# import ipdb
 
 async def get_remote_participants(room: RoomClient) -> list[RemoteParticipant]:
     participants = room.messaging.remote_participants
@@ -51,6 +52,8 @@ async def show_toast(
     key_id = key_id or config.MESHAGENT_KEY_ID
     secret = secret or config.MESHAGENT_SECRET
 
+    print(f"jkkkk connecting to room: {room_name} at {ws_api_url} with project_id: {project_id} and key_id: {key_id}")
+
     try:
         token = ParticipantToken(
             name="Test Agent",
@@ -61,25 +64,36 @@ async def show_toast(
                 ParticipantGrant(name="role", scope="agent"),
             ],
         )
+
         token.add_api_grant(ApiScope.agent_default())
+
         jwt = token.to_jwt(token=secret)
 
         protocol = WebSocketClientProtocol(url=ws_api_url, token=jwt)
+
         room = RoomClient(protocol=protocol)
 
         async with room as client:
             await client.messaging.enable()
 
             participants = await get_remote_participants(client)
+
             toolkit = UIToolkit()
+
             await toolkit.start(room=client)
+            print(f"Registering toolkit {toolkit.name}...")
 
             for participant in participants:
+                print(f"Participant id '{participant.id}'")
+
                 await room.agents.invoke_tool(
                     toolkit="ui",
                     tool="show_toast",
                     participant_id=participant.id,
-                    arguments={"title": title, "description": description},
+                    arguments={
+                        "title": title,
+                        "description": description,
+                    },
                 )
     except RoomException as e:
         print(f"error: {e}")

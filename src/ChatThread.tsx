@@ -61,7 +61,7 @@ export function ChatThread({room, messages, localParticipantName}: {
   }, [messages]);
 
   return (
-    <div className="flex flex-col flex-1 flex-shrink-1 basis-0 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col flex-1 flex-shrink-1 basis-0 overflow-y-auto overflow-x-hidden p-4 space-y-4">
       {messages.map((message: Element) => (<ChatMessage
         key={message.id}
         room={room}
