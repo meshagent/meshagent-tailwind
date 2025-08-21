@@ -52,8 +52,6 @@ async def show_toast(
     key_id = key_id or config.MESHAGENT_KEY_ID
     secret = secret or config.MESHAGENT_SECRET
 
-    print(f"jkkkk connecting to room: {room_name} at {ws_api_url} with project_id: {project_id} and key_id: {key_id}")
-
     try:
         token = ParticipantToken(
             name="Test Agent",

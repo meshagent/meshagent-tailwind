@@ -7,5 +7,6 @@ if (!root) {
     throw new Error('Root element not found');
 }
 
-createRoot(root).render(<App />);
+createRoot(root)
+    .render(<App />);
 

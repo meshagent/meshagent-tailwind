@@ -87,14 +87,13 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
     return (
         <main className="flex flex-col min-h-0 flex-1">
             <LoadingOverlay isLoading={!connection.ready} className="flex-1">
-                {connection.ready && (agent ? 
-                    <Chat
-                        room={connection.client!}
-                        path={path}
-                        participants={participants} /> :
-
-                    <WaitingForAgent />
+                {connection.ready ? (
+                    <Chat room={connection.client!} path={path} participants={participants} />
+                ) : (
+                    <div>Waiting</div>
                 )}
+                {//connection.ready ? () : (<div>Please wait while we connect to the room...</div>)
+                }
             </LoadingOverlay>
         </main>
     );
