@@ -1,0 +1,18 @@
+
+1)
+git switch main-josef
+
+2)
+cd meshagent-server/meshagent-sdk/meshagent-tailwind/example
+
+3)
+npm i && npm run dev:local -- --force
+
+4)
+edit show_toast.py
+change room, project_id, etc
+
+python show_toast.py - At this point, you should see a toast notification in the browser
+
+python show_toast.py - No notification is shown
+

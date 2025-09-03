@@ -13,6 +13,7 @@ from test_support import config
 
 # import ipdb
 
+
 async def get_remote_participants(room: RoomClient) -> list[RemoteParticipant]:
     participants = room.messaging.remote_participants
     if participants:

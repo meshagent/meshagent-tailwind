@@ -7,6 +7,6 @@ MESHAGENT_PROJECT_ID = "testproject"
 MESHAGENT_SECRET = "testsecret"
 
 MESHAGENT_URL = "http://localhost:8080"
-MESHAGENT_API_URL = 'http://localhost:8080'
+MESHAGENT_API_URL = "http://localhost:8080"
 APP_URL = "http://localhost:8081"
 WS_API_URL = f"ws://localhost:8080/rooms/{ROOM_NAME}"

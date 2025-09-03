@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",                // make all imports relative to project root
+    "paths": {
+      "@/*": ["src/*"]            // map "@/..." to "./src/..."
+    }
+  }
+}
