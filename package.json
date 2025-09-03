@@ -1,6 +1,6 @@
 {
     "name": "@meshagent/meshagent-tailwind",
-    "version": "0.5.16",
+    "version": "0.5.17",
     "description": "Meshagent Tailwind Components",
     "homepage": "https://github.com/meshagent/meshagent-tailwind",
     "scripts": {
@@ -30,8 +30,8 @@
         "CHANGELOG.md"
     ],
     "dependencies": {
-        "@meshagent/meshagent": "^0.5.16",
-        "@meshagent/meshagent-react": "^0.5.16",
+        "@meshagent/meshagent": "^0.5.17",
+        "@meshagent/meshagent-react": "^0.5.17",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-checkbox": "^1.3.2",
         "@radix-ui/react-dialog": "^1.1.14",
