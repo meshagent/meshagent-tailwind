@@ -12,6 +12,10 @@ const toastSchema = {
             type: "string",
             description: "a very short summary suitable for a toast title",
         },
+        description: {
+            type: "string",
+            description: "a longer description suitable for a toast description",
+        },
     },
 } as const;
 

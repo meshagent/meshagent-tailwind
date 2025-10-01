@@ -32,7 +32,7 @@ export function Chat({room, path, participants}: ChatProps) {
         new UIToolkit({room}),
     ], [room]);
 
-    useClientToolkits({ toolkits, public: true });
+    useClientToolkits({ toolkits, public: false});
 
     const onTextChange = useCallback((_: string) => {
         const removeParticipant = room.messaging.remoteParticipants;
