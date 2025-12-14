@@ -1,3 +1,6 @@
+## [0.12.0]
+- Expose Luau buffer APIs in the web WASM JavaScript bindings (newbuffer, buffer length, copy-in/copy-out, and primitive read/write helpers) to enable binary data transfer
+
 ## [0.11.0]
 - Stability
 
