@@ -1,3 +1,6 @@
+## [0.16.0]
+- Stability
+
 ## [0.15.0]
 - Updated the bundled Luau WASM JavaScript bindings to support per-script environments (`envIndex`) and expose additional Lua operations (metatable/fenv and stack removal).
 
