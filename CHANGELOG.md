@@ -1,3 +1,6 @@
+## [0.17.1]
+- Stability
+
 ## [0.17.0]
 - Updated `yjs` dependency from `^13.6.7` to `^13.6.28`
 - Prevented “maximum call stack size exceeded” when encoding large document state/state vectors by switching to chunked base64 conversion in the entrypoint
