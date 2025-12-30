@@ -1,3 +1,9 @@
+## [0.17.0]
+- Updated `yjs` dependency from `^13.6.7` to `^13.6.28`
+- Prevented “maximum call stack size exceeded” when encoding large document state/state vectors by switching to chunked base64 conversion in the entrypoint
+- Breaking: removed `AgentDescription.requires` from the TypeScript agent client model/serialization
+- Updated the Dart/Flutter entrypoint build target to output the bundled JS into the Flutter package
+
 ## [0.16.0]
 - Stability
 
