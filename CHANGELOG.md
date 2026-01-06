@@ -1,3 +1,6 @@
+## [0.18.1]
+- Stability
+
 ## [0.18.0]
 - yjs dependency updated from `^13.6.28` to `^13.6.29`
 - Updated Yjs transaction cleanup behavior to reduce noisy logging and improve cleanup sequencing
