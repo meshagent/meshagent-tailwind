@@ -1,3 +1,6 @@
+## [0.19.2]
+- Add boolean data type support in TypeScript schema types.
+
 ## [0.19.1]
 - Stability
 
