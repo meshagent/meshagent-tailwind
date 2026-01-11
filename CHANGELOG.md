@@ -1,3 +1,6 @@
+## [0.20.1]
+- Stability
+
 ## [0.20.0]
 - Breaking: mailbox create/update APIs now require an `isPublic` parameter and send it as `public` in requests
 
