@@ -1,3 +1,6 @@
+## [0.22.0]
+- JS/TS entrypoints now use base-64 encode/decode helpers instead of browser btoa/atob for Node compatibility.
+
 ## [0.21.0]
 - Stability
 
