@@ -1,3 +1,7 @@
+## [0.24.0]
+- Breaking: removed `AgentsClient.ask` and `listAgents` from the TypeScript SDK.
+- Breaking: renamed `AgentCallContext` to `TaskContext` and removed RemoteTaskRunner agent ask handler registration.
+
 ## [0.23.0]
 - Stability
 
