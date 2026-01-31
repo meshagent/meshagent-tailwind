@@ -1,3 +1,8 @@
+## [0.25.0]
+- Added SQL query support with TableRef and typed params in the database client.
+- Added a SecretsClient on RoomClient (set/get/list/delete, including `for_identity` support).
+- Exported the secrets client from the package entrypoint.
+
 ## [0.24.5]
 - Stability
 
