@@ -1,3 +1,8 @@
+## [0.27.0]
+- No Node.js/TypeScript source changes were introduced in this range; updates are dependency-focused.
+- Updated third-party Node dev dependency `mocha` from `^11.1.0` to `^11.3.0` across SDK packages.
+- Updated npm lockfile dependency resolution, including `yjs` to `13.6.29` and aligned Mocha transitives (`diff`, `minimatch`, `workerpool`).
+
 ## [0.26.0]
 - Stability
 
