@@ -1,3 +1,6 @@
+## [0.27.1]
+- Stability
+
 ## [0.27.0]
 - No Node.js/TypeScript source changes were introduced in this range; updates are dependency-focused.
 - Updated third-party Node dev dependency `mocha` from `^11.1.0` to `^11.3.0` across SDK packages.
