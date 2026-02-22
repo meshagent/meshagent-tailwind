@@ -1,4 +1,4 @@
-import { Tool, JsonResponse } from '@meshagent/meshagent';
+import { Tool, JsonChunk } from '@meshagent/meshagent';
 import type { Response } from '@meshagent/meshagent';
 
 import type { FormSchema } from './form-schema';
@@ -146,7 +146,7 @@ export class AskUser extends Tool {
             throw new Error("User cancelled the form dialog");
         }
 
-        return new JsonResponse({json: result});
+        return new JsonChunk({json: result});
     }
 }
 

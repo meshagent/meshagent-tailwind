@@ -1,4 +1,4 @@
-import { Tool, FileResponse } from '@meshagent/meshagent';
+import { Tool, FileChunk } from '@meshagent/meshagent';
 import type { Response } from '@meshagent/meshagent';
 
 import { showFileDialog } from './file-dialog';
@@ -44,7 +44,7 @@ export class AskUserForFile extends Tool {
             const name = file ? file.name : 'unknown';
             const mimeType = file ? file.type : 'application/octet-stream';
 
-            return new FileResponse({
+            return new FileChunk({
                 data: data ?? new Uint8Array(),
                 name,
                 mimeType,

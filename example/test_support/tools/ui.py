@@ -1,6 +1,6 @@
 from typing import Any
 from meshagent.tools import Tool, RemoteToolkit
-from meshagent.api import JsonResponse
+from meshagent.api import JsonChunk
 
 toastSchema = {
     "type": "object",
@@ -151,7 +151,7 @@ class AskUser(Tool):
         )
 
     async def execute(self, context: Any, **kwargs: Any):
-        return JsonResponse(
+        return JsonChunk(
             json={
                 "subject": kwargs.get("subject", ""),
                 "form": kwargs.get("form", []),
@@ -176,7 +176,7 @@ class Toast(Tool):
         print(
             f"Showing toast with title: {kwargs.get('title', '')} and description: {kwargs.get('description', '')}"
         )
-        return JsonResponse(
+        return JsonChunk(
             json={
                 "title": kwargs.get("title", ""),
                 "description": kwargs.get("description", ""),

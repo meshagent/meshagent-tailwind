@@ -1,4 +1,4 @@
-import { Tool, EmptyResponse } from '@meshagent/meshagent';
+import { Tool, EmptyChunk } from '@meshagent/meshagent';
 import type { Response } from '@meshagent/meshagent';
 
 import { toast } from 'sonner';
@@ -38,6 +38,6 @@ export class Toast extends Tool {
             description: arguments_.description ?? "",
         });
 
-        return new EmptyResponse();
+        return new EmptyChunk();
     }
 }

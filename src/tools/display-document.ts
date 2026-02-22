@@ -1,4 +1,4 @@
-import { Tool, EmptyResponse } from '@meshagent/meshagent';
+import { Tool, EmptyChunk } from '@meshagent/meshagent';
 import type { Response } from '@meshagent/meshagent';
 
 const displayDocumentSchema = {
@@ -31,6 +31,6 @@ export class DisplayDocument extends Tool {
 
         console.log("Navigate to document:", path);
 
-        return new EmptyResponse();
+        return new EmptyChunk();
     }
 }
