@@ -89,7 +89,7 @@ async def show_toast(
                     toolkit="ui",
                     tool="show_toast",
                     participant_id=participant.id,
-                    arguments={
+                    input={
                         "title": title,
                         "description": description,
                     },
