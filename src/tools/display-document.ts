@@ -1,5 +1,5 @@
-import { Tool, EmptyChunk } from '@meshagent/meshagent';
-import type { Response } from '@meshagent/meshagent';
+import { Tool, EmptyContent } from '@meshagent/meshagent';
+import type { Content } from '@meshagent/meshagent';
 
 const displayDocumentSchema = {
     type: "object",
@@ -26,11 +26,11 @@ export class DisplayDocument extends Tool {
         });
     }
 
-    async execute(arguments_: Record<string, any>): Promise<Response> {
+    async execute(arguments_: Record<string, any>): Promise<Content> {
         const { path } = arguments_;
 
         console.log("Navigate to document:", path);
 
-        return new EmptyChunk();
+        return new EmptyContent();
     }
 }

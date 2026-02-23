@@ -1,5 +1,5 @@
-import { Tool, EmptyChunk } from '@meshagent/meshagent';
-import type { Response } from '@meshagent/meshagent';
+import { Tool, EmptyContent } from '@meshagent/meshagent';
+import type { Content } from '@meshagent/meshagent';
 
 import { toast } from 'sonner';
 
@@ -33,11 +33,11 @@ export class Toast extends Tool {
         });
     }
 
-    async execute(arguments_: Record<string, any>): Promise<Response> {
+    async execute(arguments_: Record<string, any>): Promise<Content> {
         toast(arguments_.title, {
             description: arguments_.description ?? "",
         });
 
-        return new EmptyChunk();
+        return new EmptyContent();
     }
 }

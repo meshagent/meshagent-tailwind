@@ -1,5 +1,5 @@
-import { Tool, JsonChunk } from '@meshagent/meshagent';
-import type { Response } from '@meshagent/meshagent';
+import { Tool, JsonContent } from '@meshagent/meshagent';
+import type { Content } from '@meshagent/meshagent';
 
 import type { FormSchema } from './form-schema';
 import { showUserFormDialog } from './form-dialog';
@@ -136,7 +136,7 @@ export class AskUser extends Tool {
         });
     }
 
-    async execute(arguments_: Record<string, any>): Promise<Response> {
+    async execute(arguments_: Record<string, any>): Promise<Content> {
         const result = await showUserFormDialog({
             formSchema: arguments_.form as FormSchema,
             title: arguments_.subject,
@@ -146,7 +146,6 @@ export class AskUser extends Tool {
             throw new Error("User cancelled the form dialog");
         }
 
-        return new JsonChunk({json: result});
+        return new JsonContent({json: result});
     }
 }
-

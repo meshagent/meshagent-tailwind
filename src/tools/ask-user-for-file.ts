@@ -1,5 +1,5 @@
-import { Tool, FileChunk } from '@meshagent/meshagent';
-import type { Response } from '@meshagent/meshagent';
+import { Tool, FileContent } from '@meshagent/meshagent';
+import type { Content } from '@meshagent/meshagent';
 
 import { showFileDialog } from './file-dialog';
 
@@ -33,7 +33,7 @@ export class AskUserForFile extends Tool {
         });
     }
 
-    async execute(arguments_: Record<string, any>): Promise<Response> {
+    async execute(arguments_: Record<string, any>): Promise<Content> {
         const file = await showFileDialog({
             title: arguments_.title,
             description: arguments_.description,
@@ -44,7 +44,7 @@ export class AskUserForFile extends Tool {
             const name = file ? file.name : 'unknown';
             const mimeType = file ? file.type : 'application/octet-stream';
 
-            return new FileChunk({
+            return new FileContent({
                 data: data ?? new Uint8Array(),
                 name,
                 mimeType,
