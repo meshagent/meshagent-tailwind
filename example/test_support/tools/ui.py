@@ -1,5 +1,5 @@
 from typing import Any
-from meshagent.tools import Tool, RemoteToolkit
+from meshagent.tools import FunctionTool, RemoteToolkit
 from meshagent.api import JsonContent
 
 toastSchema = {
@@ -138,7 +138,7 @@ askUserSchema = {
 }
 
 
-class AskUser(Tool):
+class AskUser(FunctionTool):
     def __init__(
         self,
         *,
@@ -160,7 +160,7 @@ class AskUser(Tool):
         )
 
 
-class Toast(Tool):
+class Toast(FunctionTool):
     def __init__(
         self,
         *,
