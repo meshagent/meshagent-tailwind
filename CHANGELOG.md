@@ -1,3 +1,6 @@
+## [0.28.1]
+- Stability
+
 ## [0.28.0]
 - BREAKING: AgentChatContext and TaskContext were removed from the TypeScript agent API, and RemoteTaskRunner.ask now accepts only argument payloads.
 
