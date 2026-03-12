@@ -1,3 +1,9 @@
+## [0.30.0]
+- Breaking: tool invocation now uses toolkit-based `room.invoke`/`room.*` events with streaming tool-call chunks, and `RemoteToolkit` registration follows the new room-scoped protocol.
+- Added a Containers client with image listing/pulling, container lifecycle operations, and exec/log streaming.
+- Storage client replaced handle-based writes with streaming upload/download, download URLs, and size metadata.
+- Database and Sync clients now stream inserts/queries/search and sync updates with typed value handling; messaging/queues/developer clients updated to toolkit invocation.
+
 ## [0.29.4]
 - Stability
 
