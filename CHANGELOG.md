@@ -1,3 +1,6 @@
+## [0.30.1]
+- Stability
+
 ## [0.30.0]
 - Breaking: tool invocation now uses toolkit-based `room.invoke`/`room.*` events with streaming tool-call chunks, and `RemoteToolkit` registration follows the new room-scoped protocol.
 - Added a Containers client with image listing/pulling, container lifecycle operations, and exec/log streaming.
