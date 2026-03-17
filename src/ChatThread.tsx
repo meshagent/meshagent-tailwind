@@ -129,7 +129,7 @@ function ChatMessage({room, message, localParticipantName}: {
                                 key={attachment.id}
                                 type="button"
                                 onClick={() => {
-                                    room.storage.downloadUrl(path).then((url) => window.open(url, "_blank"));
+                                  room.storage.downloadUrl(path).then((url: string) => window.open(url, "_blank"));
                                 }}
                                 className="relative inline-flex max-w-full items-center border bg-muted pl-3 pr-1 py-1 gap-2 cursor-pointer hover:bg-muted-foreground/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                 rel="noopener noreferrer">

@@ -19,7 +19,7 @@ function onAuthorization(config: ProjectConfigFormValues): () => Promise<{ url: 
         });
 
         const jwt = await token.toJwt({
-            token: config.secret
+            token: config.secret,
         });
 
         const url = websocketRoomUrl({
