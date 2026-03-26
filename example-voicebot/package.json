@@ -1,6 +1,6 @@
 {
     "name": "meshagent-tailwind-voicebot-example",
-    "version": "0.33.3",
+    "version": "0.34.0",
     "private": true,
     "type": "module",
     "scripts": {
@@ -13,9 +13,9 @@
     "dependencies": {
         "@hookform/resolvers": "^5.2.0",
         "@livekit/components-react": "^2.9.14",
-        "@meshagent/meshagent": "^0.33.3",
-        "@meshagent/meshagent-react": "^0.33.3",
-        "@meshagent/meshagent-tailwind": "^0.33.3",
+        "@meshagent/meshagent": "^0.34.0",
+        "@meshagent/meshagent-react": "^0.34.0",
+        "@meshagent/meshagent-tailwind": "^0.34.0",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-checkbox": "^1.3.2",
         "@radix-ui/react-dialog": "^1.1.14",
