@@ -1,3 +1,6 @@
+## [0.35.1]
+- Stability
+
 ## [0.35.0]
 - TypeScript client adds managed secret models with project/room CRUD using base64 payloads, plus external OAuth registration CRUD for project and room scopes; legacy secret helpers now resolve managed secret data.
 - Memory client expanded with typed entities/relationships/datasets and operations for inspect/query/upsert/ingest/recall/delete/optimize, including decoding of row-encoded results and binary values.
