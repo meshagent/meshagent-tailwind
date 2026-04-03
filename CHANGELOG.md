@@ -1,3 +1,11 @@
+## [0.35.7]
+- Added container build lifecycle and image management in the TS SDK (start/build returning build IDs, list/cancel/delete builds, build logs, load/save/push/delete images) plus exec stderr streams and stricter status decoding.
+- Breaking: container build APIs now return build IDs and `stop` defaults to non-forced.
+- Added database namespace support and new operations (count, inspect, restore/checkout, listVersions with metadata) plus typed indexes and search offset.
+- Added secrets client overhaul: OAuth/secret request handlers, offline OAuth tokens, request/provide/reject secret flows, and flexible get/set secret by id/type/name.
+- Added storage enhancements: `stat`, upload MIME inference, storage entries include created/updated timestamps, and file updated/deleted events now include participant IDs.
+- Breaking: messaging stream APIs removed; messaging now uses queued sends with start/stop, and RoomClient starts messaging automatically.
+
 ## [0.35.6]
 - New `@meshagent/meshagent-ts-auth` package provides framework-agnostic OAuth/PKCE login, token storage/refresh, and access-token providers.
 - New `@meshagent/meshagent-react-dev` package adds developer console hooks for logs, terminal sessions, and webterm/ghostty integrations.
