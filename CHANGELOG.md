@@ -1,3 +1,11 @@
+## [0.35.6]
+- New `@meshagent/meshagent-ts-auth` package provides framework-agnostic OAuth/PKCE login, token storage/refresh, and access-token providers.
+- New `@meshagent/meshagent-react-dev` package adds developer console hooks for logs, terminal sessions, and webterm/ghostty integrations.
+- Breaking: `@meshagent/meshagent-react-auth` now builds on `@meshagent/meshagent-ts-auth` and React Query; built-in auth primitives and the LoginScope component were removed in favor of hook-based APIs.
+- TypeScript storage uploads now honor server-provided `chunk_size` pull headers for adaptive chunking.
+- Async-iterable subscriptions in the React package now call iterator `return()` on unsubscribe to clean up resources.
+- Dependency updates: `react`/`react-dom` ^19.1.8, `@tanstack/react-query`/`@tanstack/react-query-devtools` ^5.95.2, `ghostty-web` ^0.4.0, `wasm-webterm` (GitHub), `jest` ^30.3.0, `@types/jest` ^30.0.0, `ts-jest` ^29.4.6, `esbuild` ^0.25.0, `@types/react` ^19.1.8, `@types/react-dom` ^19.1.8.
+
 ## [0.35.5]
 - Stability
 
