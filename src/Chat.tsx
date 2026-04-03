@@ -15,6 +15,11 @@ export interface ChatProps {
     participants?: Participant[];
 }
 
+function getParticipantName(participant: Participant | null | undefined): string {
+    const name = participant?.getAttribute("name");
+    return typeof name === "string" ? name : "";
+}
+
 export function Chat({room, path, participants}: ChatProps) {
     const {
         messages,
@@ -46,7 +51,7 @@ export function Chat({room, path, participants}: ChatProps) {
         }
     }, [room, path]);
 
-    const localParticipantName = room?.localParticipant?.getAttribute("name");
+    const localParticipantName = getParticipantName(room?.localParticipant);
 
     if (schemaFileExists === false) {
         return (
