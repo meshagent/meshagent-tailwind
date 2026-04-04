@@ -1,3 +1,7 @@
+## [0.35.8]
+- `ensureLogin` now uses the current page as the OAuth callback (no stored marker/URL), strips OAuth query params on return, and refreshes the current user profile when already logged in.
+- JavaScript/TypeScript storage download examples now use storage upload and decode bytes, and the docs example build ignores generated JS artifacts alongside TypeScript sources.
+
 ## [0.35.7]
 - Added container build lifecycle and image management in the TS SDK (start/build returning build IDs, list/cancel/delete builds, build logs, load/save/push/delete images) plus exec stderr streams and stricter status decoding.
 - Breaking: container build APIs now return build IDs and `stop` defaults to non-forced.
