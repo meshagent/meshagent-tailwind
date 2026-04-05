@@ -1,3 +1,7 @@
+## [0.36.0]
+- Added container config mounts and agent email/heartbeat settings with typed prompt content (text/file) to TypeScript service specs.
+- Breaking: container API key provisioning was removed from container specs.
+
 ## [0.35.8]
 - `ensureLogin` now uses the current page as the OAuth callback (no stored marker/URL), strips OAuth query params on return, and refreshes the current user profile when already logged in.
 - JavaScript/TypeScript storage download examples now use storage upload and decode bytes, and the docs example build ignores generated JS artifacts alongside TypeScript sources.
