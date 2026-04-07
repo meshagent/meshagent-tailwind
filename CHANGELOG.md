@@ -1,3 +1,6 @@
+## [0.36.1]
+- Stability
+
 ## [0.36.0]
 - Added container config mounts and agent email/heartbeat settings with typed prompt content (text/file) to TypeScript service specs.
 - Breaking: container API key provisioning was removed from container specs.
