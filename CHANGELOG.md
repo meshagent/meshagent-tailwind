@@ -1,3 +1,7 @@
+## [0.36.2]
+- Breaking: Removed share-connect API from the TypeScript client (`connectShare` / RoomShareConnectionInfo).
+- OAuth helpers now default requested scope to `profile` (TS auth + React auth).
+
 ## [0.36.1]
 - Stability
 
