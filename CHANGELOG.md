@@ -1,3 +1,9 @@
+## [0.36.3]
+- Storage client now supports move operations and emits file moved events.
+- Secrets client now supports existence checks.
+- Project user add calls now omit permission fields unless explicitly set.
+- Updated JS toolchain dependencies: esbuild 0.28.0, jest 30.3.0, mocha 12.0.0-beta-9.2, @tailwindcss/vite 4.2.2, @vitejs/plugin-react 6.0.1, vite 8.0.7.
+
 ## [0.36.2]
 - Breaking: Removed share-connect API from the TypeScript client (`connectShare` / RoomShareConnectionInfo).
 - OAuth helpers now default requested scope to `profile` (TS auth + React auth).
