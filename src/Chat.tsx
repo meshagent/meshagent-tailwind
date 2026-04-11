@@ -34,10 +34,10 @@ export function Chat({room, path, participants}: ChatProps) {
     const { thinking } = useRoomIndicators({ room, path });
 
     const toolkits = useMemo(() => [
-        new UIToolkit({room}),
-    ], [room]);
+        new UIToolkit(),
+    ], []);
 
-    useClientToolkits({ toolkits, public: false});
+    useClientToolkits({ room, toolkits, public: false});
 
     const onTextChange = useCallback((_: string) => {
         const removeParticipant = room.messaging.remoteParticipants;
