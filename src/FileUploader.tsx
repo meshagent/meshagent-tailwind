@@ -1,45 +1,49 @@
-import React, { useRef } from 'react'
-import { Plus } from 'lucide-react';
+import * as React from "react";
+import { Paperclip } from "lucide-react";
 
 import { Button } from "./components/ui/button";
 
 export interface FileUploaderProps {
-    onFilesSelected?: (files: File[]) => void
-    accept?: string
+    onFilesSelected?: (files: File[]) => void;
+    accept?: string;
 }
 
-export function FileUploader({onFilesSelected, accept = ''}: FileUploaderProps): React.ReactElement {
-    const inputRef = useRef<HTMLInputElement>(null);
+export function FileUploader({ onFilesSelected, accept = "" }: FileUploaderProps): React.ReactElement {
+    const inputRef = React.useRef<HTMLInputElement>(null);
 
-    const handleButtonClick = () => inputRef.current?.click();
+    const handleButtonClick = React.useCallback(() => {
+        inputRef.current?.click();
+    }, []);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files) {
+    const handleFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!event.target.files) {
             return;
         }
 
-        const fileArray = Array.from(e.target.files);
-
-        onFilesSelected?.(fileArray);
-    }
+        const files = Array.from(event.target.files);
+        onFilesSelected?.(files);
+        event.target.value = "";
+    }, [onFilesSelected]);
 
     return (
-        <div className="space-y-4">
+        <div className="shrink-0">
             <input
                 ref={inputRef}
                 type="file"
                 multiple
                 accept={accept}
                 className="hidden"
-                onChange={handleFileChange} />
+                onChange={handleFileChange}
+            />
 
             <Button
+                type="button"
                 variant="ghost"
                 size="icon"
                 aria-label="Attach file"
+                className="h-9 w-9 rounded-full"
                 onClick={handleButtonClick}>
-
-                <Plus className="w-10 h-10" />
+                <Paperclip className="h-4 w-4" />
             </Button>
         </div>
     );

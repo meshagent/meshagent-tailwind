@@ -1,13 +1,12 @@
-import { useMemo, useCallback } from "react";
-import { RoomClient, Participant } from "@meshagent/meshagent";
-import { useChat, useClientToolkits, useRoomIndicators } from "@meshagent/meshagent-react";
+import * as React from "react";
+import { Participant, RoomClient } from "@meshagent/meshagent";
+import { useClientToolkits, useRoomIndicators } from "@meshagent/meshagent-react";
 
-import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
-import { ChatTypingIndicator } from "./ChatTypingIndicator";
-
-import { UIToolkit } from "./tools/ui-toolkit";
+import { ChatThread } from "./ChatThread";
 import { Toaster } from "./components/ui/sonner";
+import { UIToolkit } from "./tools/ui-toolkit";
+import { useChatThread, useThreadStatus } from "./chat-hooks";
 
 export interface ChatProps {
     room: RoomClient;
@@ -15,12 +14,7 @@ export interface ChatProps {
     participants?: Participant[];
 }
 
-function getParticipantName(participant: Participant | null | undefined): string {
-    const name = participant?.getAttribute("name");
-    return typeof name === "string" ? name : "";
-}
-
-export function Chat({room, path, participants}: ChatProps) {
+export function Chat({ room, path, participants }: ChatProps): React.ReactElement {
     const {
         messages,
         sendMessage,
@@ -28,60 +22,64 @@ export function Chat({room, path, participants}: ChatProps) {
         attachments,
         setAttachments,
         schemaFileExists,
+        onlineParticipants,
+        localParticipantName,
         cancelRequest,
-    } = useChat({room, path, participants});
+    } = useChatThread({ room, path, participants });
+    const { typing, thinking } = useRoomIndicators({ room, path });
+    const threadStatus = useThreadStatus({ room, path });
+    const [showCompletedToolCalls, setShowCompletedToolCalls] = React.useState(false);
 
-    const { thinking } = useRoomIndicators({ room, path });
+    const toolkits = React.useMemo(() => [new UIToolkit({ room })], [room]);
+    useClientToolkits({ toolkits, public: false });
 
-    const toolkits = useMemo(() => [
-        new UIToolkit(),
-    ], []);
-
-    useClientToolkits({ room, toolkits, public: false});
-
-    const onTextChange = useCallback((_: string) => {
-        const removeParticipant = room.messaging.remoteParticipants;
-
-        for (const part of removeParticipant) {
+    const onTextChange = React.useCallback(() => {
+        for (const participant of onlineParticipants) {
             room.messaging.sendMessage({
-                to: part,
+                to: participant,
                 type: "typing",
                 message: { path },
             });
         }
-    }, [room, path]);
-
-    const localParticipantName = getParticipantName(room?.localParticipant);
+    }, [onlineParticipants, path, room]);
 
     if (schemaFileExists === false) {
         return (
-            <div className="flex flex-col flex-1 min-h-0 gap-2 p-4">
-                <p className="text-red-500">
+            <div className="flex flex-1 flex-col justify-center p-6">
+                <div className="mx-auto w-full max-w-[912px] rounded-3xl border border-destructive/30 bg-destructive/5 px-6 py-5 text-sm text-destructive">
                     No AI agent found in this room.
-
+                    <br />
+                    <br />
                     Run `meshagent chatbot join --room [room-name] --agent-name "Chat Agent" --name "Chat Friend"` and try again.
-                </p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col flex-1 min-h-0 gap-2 p-0">
+        <div className="flex min-h-0 flex-1 flex-col">
             <ChatThread
                 room={room}
+                path={path}
                 messages={messages}
-                localParticipantName={localParticipantName} />
-
-            <ChatTypingIndicator room={room} path={path} />
+                localParticipantName={localParticipantName}
+                showCompletedToolCalls={showCompletedToolCalls}
+                onShowCompletedToolCallsChanged={setShowCompletedToolCalls}
+                typing={typing}
+                thinking={thinking}
+                threadStatusText={threadStatus.text}
+                threadStatusStartedAt={threadStatus.startedAt}
+                threadStatusMode={threadStatus.mode}
+                onCancelRequest={cancelRequest}
+            />
 
             <ChatInput
                 onSubmit={sendMessage}
                 attachments={attachments}
                 onFilesSelected={selectAttachments}
                 setAttachments={setAttachments}
-                onTextChange={onTextChange} 
-                onCancelRequest={cancelRequest}
-                showCancelButton={thinking} />
+                onTextChange={onTextChange}
+            />
 
             <Toaster />
         </div>
