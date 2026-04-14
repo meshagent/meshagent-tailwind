@@ -1,3 +1,10 @@
+## [0.37.0]
+- Breaking: Database client now supports `json`, `uuid`, `list`, and `struct` types with typed wrappers (DatabaseJson/DatabaseStruct/DatabaseExpression/DatabaseDate/DatabaseUuid); list/struct values must be wrapped and update now takes `values` only.
+- Breaking: Containers build now streams build contexts (start/data chunks) with `mountPath`/`chunks` and removes `start_build`.
+- Breaking: Toolkit/hosting refactor replaces RemoteToolkit with startHostedToolkit/HostedToolkit, removes ToolkitConfiguration and `supports_context`, and updates React/Tailwind helpers to start hosted toolkits.
+- Participant tokens now include LLM grants and richer grant serialization (including allowed toolkits and extra payload preservation), and schema helpers add `json`/`uuid` data types.
+- The JS SDK now exports its version constant for client-side visibility.
+
 ## [0.36.3]
 - Storage client now supports move operations and emits file moved events.
 - Secrets client now supports existence checks.
