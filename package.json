@@ -16,8 +16,10 @@
     "types": "dist/esm/index.d.ts",
     "exports": {
         ".": {
-            "module": "./dist/esm/index.js",
-            "default": "./dist/cjs/index.js"
+            "types": "./dist/esm/index.d.ts",
+            "import": "./dist/esm/index.js",
+            "require": "./dist/cjs/index.js",
+            "default": "./dist/esm/index.js"
         },
         "./dist/index.css": "./dist/index.css",
         "./package.json": "./package.json"
