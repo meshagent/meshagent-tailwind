@@ -1,6 +1,6 @@
 {
     "name": "@meshagent/meshagent-tailwind",
-    "version": "0.37.0",
+    "version": "0.37.2",
     "description": "Meshagent Tailwind Components",
     "homepage": "https://github.com/meshagent/meshagent-tailwind",
     "scripts": {
@@ -16,8 +16,10 @@
     "types": "dist/esm/index.d.ts",
     "exports": {
         ".": {
-            "module": "./dist/esm/index.js",
-            "default": "./dist/cjs/index.js"
+            "types": "./dist/esm/index.d.ts",
+            "import": "./dist/esm/index.js",
+            "require": "./dist/cjs/index.js",
+            "default": "./dist/esm/index.js"
         },
         "./dist/index.css": "./dist/index.css",
         "./package.json": "./package.json"
@@ -30,8 +32,8 @@
         "CHANGELOG.md"
     ],
     "dependencies": {
-        "@meshagent/meshagent": "^0.37.0",
-        "@meshagent/meshagent-react": "^0.37.0",
+        "@meshagent/meshagent": "^0.37.2",
+        "@meshagent/meshagent-react": "^0.37.2",
         "@radix-ui/react-avatar": "^1.1.10",
         "@radix-ui/react-checkbox": "^1.3.2",
         "@radix-ui/react-dialog": "^1.1.14",
