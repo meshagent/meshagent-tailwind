@@ -1,3 +1,6 @@
+## [0.37.2]
+- Stability
+
 ## [0.37.1]
 - Added `useAuth` to the React auth package to handle OAuth redirect/callback, token refresh, and profile loading without React Query, plus a `useEnsureLogin` compatibility wrapper.
 - React auth `useMAuthResponse` now deduplicates token exchanges per callback parameters to avoid repeated exchanges on re-renders.
