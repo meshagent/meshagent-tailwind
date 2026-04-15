@@ -71,7 +71,7 @@ async def show_toast(
 
         protocol = WebSocketClientProtocol(url=ws_api_url, token=jwt)
 
-        room = RoomClient(protocol=protocol)
+        room = RoomClient(protocol_factory=protocol.create_factory())
 
         async with room as client:
             await client.messaging.enable()
