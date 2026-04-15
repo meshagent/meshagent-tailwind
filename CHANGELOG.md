@@ -1,3 +1,15 @@
+## [0.37.2]
+- Stability
+
+## [0.37.1]
+- Added `useAuth` to the React auth package to handle OAuth redirect/callback, token refresh, and profile loading without React Query, plus a `useEnsureLogin` compatibility wrapper.
+- React auth `useMAuthResponse` now deduplicates token exchanges per callback parameters to avoid repeated exchanges on re-renders.
+- Breaking: React auth no longer exports React Query `QueryClient` or `QueryClientProvider`.
+- Breaking: `useLoginScope` now delegates to `useAuth` and defaults the OAuth scope to `email`.
+- Breaking: the `staticAuthorization` helper was removed from the React room connection utilities.
+- React dev terminal hooks now return `RefObject`-typed `containerRef` values for stronger typing.
+- Meshagent TS client now normalizes binary request bodies for fetch and includes TypeScript declarations for runtime entrypoint functions.
+
 ## [0.37.0]
 - Breaking: Database client now supports `json`, `uuid`, `list`, and `struct` types with typed wrappers (DatabaseJson/DatabaseStruct/DatabaseExpression/DatabaseDate/DatabaseUuid); list/struct values must be wrapped and update now takes `values` only.
 - Breaking: Containers build now streams build contexts (start/data chunks) with `mountPath`/`chunks` and removes `start_build`.
