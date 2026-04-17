@@ -30,8 +30,8 @@ export function Chat({ room, path, participants }: ChatProps): React.ReactElemen
     const threadStatus = useThreadStatus({ room, path });
     const [showCompletedToolCalls, setShowCompletedToolCalls] = React.useState(false);
 
-    const toolkits = React.useMemo(() => [new UIToolkit({ room })], [room]);
-    useClientToolkits({ toolkits, public: false });
+    const toolkits = React.useMemo(() => [new UIToolkit()], []);
+    useClientToolkits({ room, toolkits, public: false });
 
     const onTextChange = React.useCallback(() => {
         for (const participant of onlineParticipants) {

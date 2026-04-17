@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+
 import {
     Element,
     MeshDocument,
@@ -8,6 +9,7 @@ import {
     RoomEvent,
     RoomMessageEvent,
 } from "@meshagent/meshagent";
+
 import {
     ChatMessage,
     FileUpload,
