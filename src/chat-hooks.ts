@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
     Element,
@@ -10,16 +10,10 @@ import {
     RoomMessageEvent,
 } from "@meshagent/meshagent";
 
-import {
-    ChatMessage,
-    FileUpload,
-    MeshagentFileUpload,
-    fileToAsyncIterable,
-    subscribe,
-    useDocumentChanged,
-    useDocumentConnection,
-    useRoomParticipants,
-} from "@meshagent/meshagent-react";
+import { subscribe, useDocumentChanged, useRoomParticipants } from "@meshagent/meshagent-react";
+
+import { ChatMessage } from "./chat-message";
+import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 
 export interface UseChatThreadProps {
     room: RoomClient;
@@ -28,6 +22,7 @@ export interface UseChatThreadProps {
     participantNames?: string[];
     includeLocalParticipant?: boolean;
     initialMessage?: ChatMessage;
+    agentName?: string;
 }
 
 export interface UseChatThreadResult {
@@ -59,6 +54,18 @@ export interface UseThreadStatusProps {
 function getParticipantName(participant: { getAttribute(name: string): unknown }): string {
     const name = participant.getAttribute("name");
     return typeof name === "string" ? name.trim() : "";
+}
+
+function matchesParticipantName(
+    participant: { getAttribute(name: string): unknown },
+    participantName?: string,
+): boolean {
+    const normalizedParticipantName = participantName?.trim();
+    if (!normalizedParticipantName) {
+        return true;
+    }
+
+    return getParticipantName(participant) === normalizedParticipantName;
 }
 
 function ensureParticipants(
@@ -248,6 +255,18 @@ export function formatThreadStatusText(text: string, startedAt?: Date | null): s
     return elapsedSeconds === 0 ? text : `${text} (${elapsedSeconds}s)`;
 }
 
+function getRetryDelayMs(retryCount: number): number {
+    return Math.min(60_000, 500 * 2 ** retryCount);
+}
+
+async function closeDocument(room: RoomClient, path: string): Promise<void> {
+    try {
+        await room.sync.close(path);
+    } catch {
+        // Ignore close errors during teardown/reconnect.
+    }
+}
+
 export function useChatThread({
     room,
     path,
@@ -255,33 +274,81 @@ export function useChatThread({
     participantNames,
     initialMessage,
     includeLocalParticipant,
+    agentName,
 }: UseChatThreadProps): UseChatThreadResult {
-    const { document, schemaFileExists } = useDocumentConnection({
-        room,
-        path,
-        onConnected: (nextDocument) => {
-            ensureParticipants(
-                nextDocument,
-                room.localParticipant!,
-                includeLocalParticipant ?? true,
-                participants ?? [],
-                participantNames ?? [],
-            );
-
-            if (initialMessage) {
-                sendMessage(initialMessage);
-            }
-        },
-        onError: (error) => {
-            console.error("Failed to open document:", error);
-        },
-    });
-
+    const [document, setDocument] = useState<MeshDocument | null>(null);
     const [messages, setMessages] = useState<Element[]>(() => (document ? mapThreadElements(document) : []));
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
     const [documentParticipantNames, setDocumentParticipantNames] = useState<string[]>(() => (
         document ? getDocumentParticipantNames(document) : []
     ));
+    const initialMessageSentRef = useRef(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        let opened = false;
+        let retryCount = 0;
+
+        setDocument(null);
+        setMessages([]);
+        setDocumentParticipantNames([]);
+        initialMessageSentRef.current = false;
+
+        void (async () => {
+            while (!cancelled) {
+                try {
+                    const nextDocument = await room.sync.open(path);
+
+                    if (cancelled) {
+                        await closeDocument(room, path);
+                        return;
+                    }
+
+                    opened = true;
+                    setDocument(nextDocument);
+                    setMessages(mapThreadElements(nextDocument));
+                    setDocumentParticipantNames(getDocumentParticipantNames(nextDocument));
+                    return;
+                } catch (error) {
+                    if (cancelled) {
+                        return;
+                    }
+
+                    setDocument(null);
+                    setMessages([]);
+                    setDocumentParticipantNames([]);
+                    console.error("Failed to open document:", error);
+
+                    await new Promise((resolve) => {
+                        window.setTimeout(resolve, getRetryDelayMs(retryCount));
+                    });
+                    retryCount += 1;
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            if (opened) {
+                void closeDocument(room, path);
+            }
+        };
+    }, [path, room]);
+
+    useEffect(() => {
+        if (!document || !room.localParticipant) {
+            return;
+        }
+
+        ensureParticipants(
+            document,
+            room.localParticipant,
+            includeLocalParticipant ?? true,
+            participants ?? [],
+            participantNames ?? [],
+        );
+        setDocumentParticipantNames(getDocumentParticipantNames(document));
+    }, [document, includeLocalParticipant, participantNames, participants, room.localParticipant]);
 
     useDocumentChanged({
         document,
@@ -329,6 +396,10 @@ export function useChatThread({
         }
 
         for (const participant of onlineParticipants) {
+            if (!matchesParticipantName(participant, agentName)) {
+                continue;
+            }
+
             room.messaging.sendMessage({
                 to: participant,
                 type: "chat",
@@ -339,10 +410,23 @@ export function useChatThread({
                 },
             });
         }
-    }, [document, onlineParticipants, path, room]);
+    }, [agentName, document, onlineParticipants, path, room]);
+
+    useEffect(() => {
+        if (!document || !initialMessage || initialMessageSentRef.current) {
+            return;
+        }
+
+        initialMessageSentRef.current = true;
+        sendMessage(initialMessage);
+    }, [document, initialMessage, sendMessage]);
 
     const cancelRequest = useCallback(() => {
         for (const participant of onlineParticipants) {
+            if (!matchesParticipantName(participant, agentName)) {
+                continue;
+            }
+
             if (participant.role !== "agent") {
                 continue;
             }
@@ -353,7 +437,7 @@ export function useChatThread({
                 message: { path },
             });
         }
-    }, [onlineParticipants, path, room]);
+    }, [agentName, onlineParticipants, path, room]);
 
     return {
         document,
@@ -362,9 +446,9 @@ export function useChatThread({
         selectAttachments,
         attachments,
         setAttachments,
-        schemaFileExists,
+        schemaFileExists: true,
         onlineParticipants,
-        localParticipantName: getParticipantName(room.localParticipant!),
+        localParticipantName: room.localParticipant ? getParticipantName(room.localParticipant) : "",
         cancelRequest,
     };
 }

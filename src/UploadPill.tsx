@@ -1,8 +1,8 @@
 import * as React from "react";
 import { FileUp, LoaderCircle, TriangleAlert, X } from "lucide-react";
-import { FileUpload, UploadStatus } from "@meshagent/meshagent-react";
 
 import { Progress } from "./components/ui/progress";
+import { type FileUpload, UploadStatus } from "./file-attachment";
 import { cn } from "./lib/utils";
 
 export interface UploadPillProps {
@@ -29,17 +29,10 @@ function useUploadState(attachment: FileUpload): { progress: number; status: Upl
         };
 
         updateState();
-
-        const timer = window.setInterval(() => {
-            updateState();
-
-            if (attachment.status === UploadStatus.Completed || attachment.status === UploadStatus.Failed) {
-                window.clearInterval(timer);
-            }
-        }, 100);
+        attachment.on("change", updateState);
 
         return () => {
-            window.clearInterval(timer);
+            attachment.off("change", updateState);
         };
     }, [attachment]);
 

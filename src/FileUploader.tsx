@@ -6,14 +6,23 @@ import { Button } from "./components/ui/button";
 export interface FileUploaderProps {
     onFilesSelected?: (files: File[]) => void;
     accept?: string;
+    disabled?: boolean;
 }
 
-export function FileUploader({ onFilesSelected, accept = "" }: FileUploaderProps): React.ReactElement {
+export function FileUploader({
+    onFilesSelected,
+    accept = "",
+    disabled = false,
+}: FileUploaderProps): React.ReactElement {
     const inputRef = React.useRef<HTMLInputElement>(null);
 
     const handleButtonClick = React.useCallback(() => {
+        if (disabled) {
+            return;
+        }
+
         inputRef.current?.click();
-    }, []);
+    }, [disabled]);
 
     const handleFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
         if (!event.target.files) {
@@ -32,6 +41,7 @@ export function FileUploader({ onFilesSelected, accept = "" }: FileUploaderProps
                 type="file"
                 multiple
                 accept={accept}
+                disabled={disabled}
                 className="hidden"
                 onChange={handleFileChange}
             />
@@ -42,6 +52,7 @@ export function FileUploader({ onFilesSelected, accept = "" }: FileUploaderProps
                 size="icon"
                 aria-label="Attach file"
                 className="h-9 w-9 rounded-full"
+                disabled={disabled}
                 onClick={handleButtonClick}>
                 <Paperclip className="h-4 w-4" />
             </Button>

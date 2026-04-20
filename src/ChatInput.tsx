@@ -1,22 +1,30 @@
 import * as React from "react";
 import { ArrowUp, LoaderCircle, X } from "lucide-react";
 import { v4 as uuidV4 } from "uuid";
-import { ChatMessage, FileUpload, UploadStatus } from "@meshagent/meshagent-react";
 
+import { ChatMessage } from "./chat-message";
 import { Button } from "./components/ui/button";
 import { Textarea } from "./components/ui/textarea";
 import { FileUploader } from "./FileUploader";
 import { UploadPill } from "./UploadPill";
+import { type FileUpload, UploadStatus } from "./file-attachment";
 import { cn } from "./lib/utils";
 
 interface ChatInputProps {
-    onSubmit: (message: ChatMessage) => void;
+    onSubmit: (message: ChatMessage) => void | Promise<void>;
     onFilesSelected: (files: File[]) => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
     onTextChange?: (text: string) => void;
     onCancelRequest?: () => void;
     showCancelButton?: boolean;
+    placeholder?: string;
+    disabled?: boolean;
+    clearOnSubmit?: boolean;
+    autoFocus?: boolean;
+    value?: string;
+    defaultValue?: string;
+    onValueChange?: (value: string) => void;
 }
 
 function useAutoResizingTextarea(
@@ -82,9 +90,26 @@ export function ChatInput({
     onTextChange,
     onCancelRequest,
     showCancelButton = false,
+    placeholder = "Message the room",
+    disabled = false,
+    clearOnSubmit = true,
+    autoFocus = true,
+    value: controlledValue,
+    defaultValue = "",
+    onValueChange,
 }: ChatInputProps): React.ReactElement {
-    const [value, setValue] = React.useState("");
+    const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue);
     const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const value = controlledValue ?? uncontrolledValue;
+
+    const setValue = React.useCallback((nextValue: string) => {
+        if (controlledValue === undefined) {
+            setUncontrolledValue(nextValue);
+        }
+
+        onValueChange?.(nextValue);
+        onTextChange?.(nextValue);
+    }, [controlledValue, onTextChange, onValueChange]);
 
     useAutoResizingTextarea(textareaRef, value);
 
@@ -94,7 +119,7 @@ export function ChatInput({
     );
 
     const hasDraft = value.trim() !== "" || attachments.length > 0;
-    const canSend = hasDraft && allAttachmentsUploaded;
+    const canSend = !disabled && hasDraft && allAttachmentsUploaded;
 
     const handleSend = React.useCallback(() => {
         const trimmed = value.trim();
@@ -102,17 +127,25 @@ export function ChatInput({
             return;
         }
 
-        onSubmit(new ChatMessage({
+        void onSubmit(new ChatMessage({
             id: uuidV4(),
             text: trimmed,
             attachments: attachments.map((attachment) => attachment.path),
         }));
 
+        if (!clearOnSubmit) {
+            return;
+        }
+
         setValue("");
         setAttachments([]);
-    }, [attachments, canSend, onSubmit, setAttachments, value]);
+    }, [attachments, canSend, clearOnSubmit, onSubmit, setAttachments, setValue, value]);
 
     const handleKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (disabled) {
+            return;
+        }
+
         if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
 
@@ -123,17 +156,20 @@ export function ChatInput({
 
             handleSend();
         }
-    }, [handleSend, onCancelRequest, showCancelButton]);
+    }, [disabled, handleSend, onCancelRequest, showCancelButton]);
 
     const handleChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
         const nextValue = event.currentTarget.value;
         setValue(nextValue);
-        onTextChange?.(nextValue);
-    }, [onTextChange]);
+    }, [setValue]);
 
     const cancelAttachment = React.useCallback((attachment: FileUpload) => {
+        if (disabled) {
+            return;
+        }
+
         setAttachments(attachments.filter((currentAttachment) => currentAttachment.path !== attachment.path));
-    }, [attachments, setAttachments]);
+    }, [attachments, disabled, setAttachments]);
 
     const trailingButton = showCancelButton ? (
         <ComposerActionButton onClick={onCancelRequest} showCancelButton />
@@ -159,13 +195,14 @@ export function ChatInput({
                 ) : null}
 
                 <div className="flex items-end gap-2">
-                    <FileUploader onFilesSelected={onFilesSelected} />
+                    <FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />
 
                     <Textarea
                         ref={textareaRef}
-                        autoFocus
-                        placeholder="Message the room"
+                        autoFocus={autoFocus}
+                        placeholder={placeholder}
                         className="min-h-[40px] max-h-48 flex-1 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0"
+                        readOnly={disabled}
                         value={value}
                         onChange={handleChange}
                         onKeyDown={handleKeyDown}
