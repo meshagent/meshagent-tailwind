@@ -39,7 +39,8 @@ function useAutoResizingTextarea(
         }
 
         element.style.height = "0px";
-        element.style.height = `${Math.min(element.scrollHeight, 192)}px`;
+        element.style.height = `${Math.max(20, Math.min(element.scrollHeight, 160))}px`;
+
     }, [textareaRef, value]);
 }
 
@@ -58,7 +59,7 @@ function ComposerActionButton({
                 type="button"
                 size="icon"
                 variant="ghost"
-                className={cn("relative h-9 w-9 rounded-full", disabled && "opacity-55")}
+                className={cn("relative size-9 rounded-full", disabled && "opacity-55")}
                 disabled={disabled}
                 onClick={onClick}
                 title={disabled ? "Cancelling" : "Stop"}>
@@ -74,7 +75,7 @@ function ComposerActionButton({
         <Button
             type="button"
             size="icon"
-            className="h-9 w-9 rounded-full"
+            className="size-9 rounded-full shadow-xs"
             disabled={disabled}
             onClick={onClick}
             title="Send">
@@ -181,10 +182,10 @@ export function ChatInput({
     );
 
     return (
-        <div className="px-4 pb-4 pt-2">
-            <div className="border mx-auto flex w-full max-w-[912px] flex-col gap-3 rounded-[28px] border-2 border-border bg-card px-3 pb-2 pt-3 shadow-sm">
+        <div className="px-4 pt-2">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 rounded-md border border-input/70 bg-background px-2 py-1 shadow-xs">
                 {attachments.length > 0 ? (
-                    <div className="flex max-w-full flex-wrap gap-2 px-1">
+                    <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1">
                         {attachments.map((attachment) => (
                             <UploadPill
                                 key={attachment.path}
@@ -195,14 +196,14 @@ export function ChatInput({
                     </div>
                 ) : null}
 
-                <div className="flex items-end gap-2">
+                <div className="flex items-center gap-2">
                     <FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />
 
                     <Textarea
                         ref={textareaRef}
                         autoFocus={autoFocus}
                         placeholder={placeholder}
-                        className="min-h-[40px] max-h-48 flex-1 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0"
+                        className="min-h-5 max-h-40 flex-1 resize-none border-0 bg-transparent p-0 leading-5 shadow-none focus-visible:border-transparent focus-visible:ring-0"
                         readOnly={disabled}
                         value={value}
                         onChange={handleChange}

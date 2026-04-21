@@ -257,7 +257,7 @@ function MarkdownBlock({ text }: { text: string }): ReactElement {
                 pre: ({ className, children, ...props }) => (
                     <pre
                         {...props}
-                        className={cn("overflow-x-auto rounded-lg border bg-background/80 p-3", className)}>
+                        className={cn("overflow-x-auto rounded-md border bg-background/80 p-3", className)}>
                         {children}
                     </pre>
                 ),
@@ -289,7 +289,7 @@ function ChatImage({
     return (
         <button
             type="button"
-            className="block overflow-hidden rounded-2xl border bg-background"
+            className="block overflow-hidden rounded-md bg-muted/20 shadow-xs transition-opacity hover:opacity-95"
             onClick={() => {
                 window.open(url, "_blank", "noopener,noreferrer");
             }}>
@@ -308,7 +308,7 @@ function FileAttachment({room, path}: {
     return (
         <button
             type="button"
-            className="inline-flex max-w-full items-center gap-2 rounded-2xl border bg-muted/50 px-3 py-2 text-left transition-colors hover:bg-muted"
+            className="inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80"
             onClick={() => {
                 if (url) {
                     window.open(url, "_blank", "noopener,noreferrer");
@@ -352,10 +352,10 @@ function ChatBubble({
     return (
         <div
             className={cn(
-                "max-w-2xl rounded-[22px] px-4 py-3 text-sm leading-6 shadow-sm",
+                "w-fit max-w-[85%] rounded-md px-4 py-3 text-sm leading-6 shadow-xs sm:max-w-2xl",
                 mine
-                    ? "bg-primary text-primary-foreground"
-                    : "border border-border/70 bg-muted/55 text-foreground",
+                    ? "bg-secondary/85 text-foreground"
+                    : "bg-muted/70 text-foreground",
             )}>
             <MarkdownBlock text={text} />
         </div>
@@ -533,13 +533,11 @@ function ThreadMessage({
     room,
     message,
     previous,
-    next,
     localParticipantName,
 }: {
     room: RoomClient;
     message: Element;
     previous: Element | null;
-    next: Element | null;
     localParticipantName: string;
 }): ReactElement {
     const authorName = getTrimmedStringAttribute(message, "author_name");
@@ -548,34 +546,50 @@ function ThreadMessage({
     const text = getStringAttribute(message, "text") ?? "";
     const attachments = getElementChildren(message).filter(isThreadAttachmentElement);
     const previousAuthor = previous ? getTrimmedStringAttribute(previous, "author_name") : "";
-    const shouldShowHeader = previousAuthor !== authorName || next === null;
+    const shouldShowHeader = previousAuthor !== authorName;
 
     return (
-        <div className={cn("flex flex-col gap-2", mine ? "items-end" : "items-start")}>
-            {shouldShowHeader ? (
-                <div className={cn("max-w-2xl px-1", mine ? "text-right" : "text-left")}>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground">
-                            {displayParticipantName(authorName)}
-                        </span>
-                        {createdAt !== "" ? <span>{timeAgo(createdAt)}</span> : null}
+        <div className="flex flex-col gap-2">
+            {shouldShowHeader && (authorName !== "" || createdAt !== "") ? (
+                <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
+                    <div className={cn("max-w-[85%] px-1 sm:max-w-2xl", mine ? "text-right" : "text-left")}>
+                        <div
+                            className={cn(
+                                "flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground",
+                                mine ? "justify-end" : "justify-start",
+                            )}>
+                            {authorName !== "" ? (
+                                <span className="font-semibold text-foreground">
+                                    {displayParticipantName(authorName)}
+                                </span>
+                            ) : null}
+                            {createdAt !== "" ? <span>{timeAgo(createdAt)}</span> : null}
+                        </div>
                     </div>
                 </div>
             ) : null}
 
             {text.trim() !== "" ? (
-                <ChatBubble text={text} mine={mine} />
+                <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
+                    <ChatBubble text={text} mine={mine} />
+                </div>
             ) : null}
 
             {attachments.length > 0 ? (
-                <div className={cn("flex max-w-2xl flex-wrap gap-3 px-1", mine ? "justify-end" : "justify-start")}>
-                    {attachments.map((attachment) => (
-                        <ThreadAttachment
-                            key={attachment.id}
-                            room={room}
-                            attachment={attachment}
-                        />
-                    ))}
+                <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
+                    <div
+                        className={cn(
+                            "flex max-w-[85%] flex-wrap gap-3 px-1 sm:max-w-2xl",
+                            mine ? "justify-end" : "justify-start",
+                        )}>
+                        {attachments.map((attachment) => (
+                            <ThreadAttachment
+                                key={attachment.id}
+                                room={room}
+                                attachment={attachment}
+                            />
+                        ))}
+                    </div>
                 </div>
             ) : null}
         </div>
@@ -656,7 +670,7 @@ export function ChatThread({
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
                 <div
                     className={cn(
-                        "mx-auto flex w-full max-w-[912px] flex-col gap-10 px-4 pt-6",
+                        "mx-auto flex w-full max-w-[912px] flex-col gap-8 px-4 pt-6",
                         hasOverlay ? "pb-24" : "pb-6",
                     )}>
                     {visibleMessages.length === 0 && emptyStateTitle ? (
@@ -665,7 +679,6 @@ export function ChatThread({
 
                     {visibleMessages.map((message, index) => {
                         const previous = index > 0 ? visibleMessages[index - 1] : null;
-                        const next = index < visibleMessages.length - 1 ? visibleMessages[index + 1] : null;
 
                         if (message.tagName === "message") {
                             return (
@@ -674,7 +687,6 @@ export function ChatThread({
                                     room={room}
                                     message={message}
                                     previous={previous}
-                                    next={next}
                                     localParticipantName={localParticipantName}
                                 />
                             );

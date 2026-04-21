@@ -234,9 +234,9 @@ function ResolvedChatView({
                     <div className="mx-auto flex w-full max-w-[912px] justify-end">
                         <Button
                             type="button"
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="rounded-full border"
+                            className="rounded-full shadow-xs"
                             onClick={onStartNewThread}>
                             <Plus className="mr-2 h-4 w-4" />
                             New thread
@@ -515,8 +515,8 @@ export function Chat({
                     onStartNewThread={openNewThreadComposer}
                 />
             ) : centerComposer ? (
-                <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-                    <div className="w-full max-w-[912px] space-y-4">
+                <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
+                    <div className="w-full max-w-[912px] space-y-5">
                         <div className="space-y-2 text-center">
                             <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
                                 Start a new thread
