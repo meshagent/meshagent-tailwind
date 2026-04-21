@@ -183,7 +183,7 @@ export function ChatInput({
 
     return (
         <div className="px-4 pt-2">
-            <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 rounded-md border border-input/70 bg-background px-2 py-1 shadow-xs">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 rounded-md border border-input/70 bg-background px-2 py-1 shadow-xs focus-within:border-primary focus-within:[outline:1px_solid_var(--color-primary)]">
                 {attachments.length > 0 ? (
                     <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1">
                         {attachments.map((attachment) => (

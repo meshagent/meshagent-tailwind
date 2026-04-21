@@ -51,7 +51,7 @@ export function FileUploader({
                 variant="ghost"
                 size="icon"
                 aria-label="Attach file"
-                className="h-9 w-9 rounded-full"
+                className="h-9 w-9 rounded-md"
                 disabled={disabled}
                 onClick={handleButtonClick}>
                 <Paperclip className="h-4 w-4" />

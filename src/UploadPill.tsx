@@ -49,7 +49,7 @@ export function UploadPill({ attachment, onCancel }: UploadPillProps): React.Rea
     return (
         <div
             className={cn(
-                "relative inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border bg-muted/60 pl-3 pr-2 py-2 text-sm",
+                "relative inline-flex max-w-full items-center gap-2 overflow-hidden rounded-md border bg-muted/60 pl-3 pr-2 py-2 text-sm",
                 status === UploadStatus.Failed && "border-destructive/40 bg-destructive/5 text-destructive",
             )}>
             {status === UploadStatus.Failed ? (
@@ -66,7 +66,7 @@ export function UploadPill({ attachment, onCancel }: UploadPillProps): React.Rea
                 type="button"
                 onClick={handleCancel}
                 aria-label="Remove attachment"
-                className="rounded-full p-1 transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                className="rounded-md p-1 transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <X className="h-4 w-4" />
             </button>
 
