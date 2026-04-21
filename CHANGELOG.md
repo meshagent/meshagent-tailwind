@@ -1,3 +1,7 @@
+## [0.38.1]
+- Updated the TypeScript HTML schema example to use `SimpleValue.string` for value properties.
+- Removed the JavaScript and TypeScript schema registry example scripts as part of the example refresh.
+
 ## [0.38.0]
 - Stability
 
