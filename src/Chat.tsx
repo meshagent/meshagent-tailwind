@@ -1,9 +1,7 @@
-import * as React from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import type { RefObject, ReactElement } from "react";
 import { JsonContent, Participant, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
-import {
-    useClientToolkits,
-    useRoomIndicators,
-} from "@meshagent/meshagent-react";
+import { useClientToolkits, useRoomIndicators } from "@meshagent/meshagent-react";
 import { Plus } from "lucide-react";
 
 import { ChatInput } from "./ChatInput";
@@ -67,7 +65,7 @@ function findTargetAgent(room: RoomClient, agentName?: string): RemoteParticipan
     return null;
 }
 
-function ensureOperationActive(operationId: number, activeOperationRef: React.MutableRefObject<number>): void {
+function ensureOperationActive(operationId: number, activeOperationRef: RefObject<number>): void {
     if (activeOperationRef.current !== operationId) {
         throw new NewThreadCancelledError();
     }
@@ -83,7 +81,7 @@ async function waitForTargetAgent(params: {
     room: RoomClient;
     agentName?: string;
     operationId: number;
-    activeOperationRef: React.MutableRefObject<number>;
+    activeOperationRef: RefObject<number>;
 }): Promise<RemoteParticipant> {
     const { room, agentName, operationId, activeOperationRef } = params;
 
@@ -104,7 +102,7 @@ async function waitForToolkitAvailable(params: {
     participantId: string;
     toolkit: string;
     operationId: number;
-    activeOperationRef: React.MutableRefObject<number>;
+    activeOperationRef: RefObject<number>;
 }): Promise<void> {
     const {
         room,
@@ -161,7 +159,7 @@ function EmptyState({
 }: {
     title: string;
     description?: string;
-}): React.ReactElement {
+}): ReactElement {
     return (
         <div className="mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
             <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
@@ -176,7 +174,7 @@ function EmptyState({
     );
 }
 
-function ErrorBanner({ message }: { message: string }): React.ReactElement {
+function ErrorBanner({ message }: { message: string }): ReactElement {
     return (
         <div className="mx-auto w-full max-w-[912px] whitespace-pre-wrap rounded-3xl border border-destructive/30 bg-destructive/5 px-6 py-5 text-sm text-destructive">
             {message}
@@ -204,7 +202,7 @@ function ResolvedChatView({
     emptyStateDescription,
     showNewThreadButton = false,
     onStartNewThread,
-}: ResolvedChatViewProps): React.ReactElement {
+}: ResolvedChatViewProps): ReactElement {
     const {
         messages,
         sendMessage,
@@ -217,9 +215,9 @@ function ResolvedChatView({
     } = useChatThread({ room, path, participants, agentName });
     const { typing, thinking } = useRoomIndicators({ room, path });
     const threadStatus = useThreadStatus({ room, path, agentName });
-    const [showCompletedToolCalls, setShowCompletedToolCalls] = React.useState(false);
+    const [showCompletedToolCalls, setShowCompletedToolCalls] = useState(false);
 
-    const onTextChange = React.useCallback(() => {
+    const onTextChange = useCallback(() => {
         for (const participant of onlineParticipants) {
             room.messaging.sendMessage({
                 to: participant,
@@ -299,34 +297,34 @@ export function Chat({
     emptyStateTitle,
     emptyStateDescription,
     onThreadResolved,
-}: ChatProps): React.ReactElement {
-    const [internalThreadPath, setInternalThreadPath] = React.useState<string | null>(null);
-    const [newThreadDraft, setNewThreadDraft] = React.useState("");
-    const [newThreadAttachments, setNewThreadAttachments] = React.useState<FileUpload[]>([]);
-    const [newThreadError, setNewThreadError] = React.useState<string | null>(null);
-    const [creatingNewThread, setCreatingNewThread] = React.useState(false);
-    const [waitingForAgent, setWaitingForAgent] = React.useState(false);
-    const activeOperationRef = React.useRef(0);
-    const controlledPath = React.useMemo(() => normalizeThreadPath(path), [path]);
+}: ChatProps): ReactElement {
+    const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
+    const [newThreadDraft, setNewThreadDraft] = useState("");
+    const [newThreadAttachments, setNewThreadAttachments] = useState<FileUpload[]>([]);
+    const [newThreadError, setNewThreadError] = useState<string | null>(null);
+    const [creatingNewThread, setCreatingNewThread] = useState(false);
+    const [waitingForAgent, setWaitingForAgent] = useState(false);
+    const activeOperationRef = useRef(0);
+    const controlledPath = useMemo(() => normalizeThreadPath(path), [path]);
     const managesOwnThread = controlledPath === null;
     const activePath = controlledPath ?? internalThreadPath;
 
-    const toolkits = React.useMemo(() => [new UIToolkit()], []);
+    const toolkits = useMemo(() => [new UIToolkit()], []);
     useClientToolkits({ room, toolkits, public: false });
 
-    React.useEffect(() => {
+    useEffect(() => {
         return () => {
             activeOperationRef.current += 1;
         };
     }, []);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (controlledPath !== null) {
             setInternalThreadPath(null);
         }
     }, [controlledPath]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         activeOperationRef.current += 1;
         setInternalThreadPath(null);
         setNewThreadDraft("");
@@ -336,7 +334,7 @@ export function Chat({
         setWaitingForAgent(false);
     }, [agentName, managesOwnThread, room]);
 
-    const selectNewThreadAttachments = React.useCallback((files: File[]) => {
+    const selectNewThreadAttachments = useCallback((files: File[]) => {
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
             room,
             `uploaded-files/${file.name}`,
@@ -347,14 +345,14 @@ export function Chat({
         setNewThreadAttachments((currentAttachments) => [...currentAttachments, ...nextAttachments]);
     }, [room]);
 
-    const cancelPendingNewThread = React.useCallback(() => {
+    const cancelPendingNewThread = useCallback(() => {
         activeOperationRef.current += 1;
         setCreatingNewThread(false);
         setWaitingForAgent(false);
         setNewThreadError(null);
     }, []);
 
-    const openNewThreadComposer = React.useCallback(() => {
+    const openNewThreadComposer = useCallback(() => {
         activeOperationRef.current += 1;
         setInternalThreadPath(null);
         setNewThreadDraft("");
@@ -364,7 +362,7 @@ export function Chat({
         setWaitingForAgent(false);
     }, []);
 
-    const handleCreateThread = React.useCallback(async () => {
+    const handleCreateThread = useCallback(async () => {
         const text = newThreadDraft.trim();
         const hasDraft = text !== "" || newThreadAttachments.length > 0;
         if (!hasDraft || creatingNewThread || waitingForAgent) {
@@ -450,7 +448,7 @@ export function Chat({
         waitingForAgent,
     ]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (!managesOwnThread) {
             return;
         }
@@ -470,7 +468,7 @@ export function Chat({
         };
     }, [managesOwnThread, openNewThreadComposer]);
 
-    const targetAgentLabel = React.useMemo(() => {
+    const targetAgentLabel = useMemo(() => {
         const knownAgentName = agentName?.trim();
         if (knownAgentName) {
             return displayParticipantName(knownAgentName);

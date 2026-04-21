@@ -1,4 +1,5 @@
-import * as React from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
+import type { ReactElement } from "react";
 import { Element, RoomClient } from "@meshagent/meshagent";
 import { Download, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -217,9 +218,9 @@ function isCancellingThreadStatusText(statusText: string | null | undefined): bo
 }
 
 function useDownloadUrl(room: RoomClient, path: string): string | null {
-    const [url, setUrl] = React.useState<string | null>(null);
+    const [url, setUrl] = useState<string | null>(null);
 
-    React.useEffect(() => {
+    useEffect(() => {
         let cancelled = false;
 
         if (path.trim() === "") {
@@ -247,7 +248,7 @@ function useDownloadUrl(room: RoomClient, path: string): string | null {
     return url;
 }
 
-function MarkdownBlock({ text }: { text: string }): React.ReactElement {
+function MarkdownBlock({ text }: { text: string }): ReactElement {
     return (
         <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -279,7 +280,7 @@ function ChatImage({
     room: RoomClient;
     path: string;
     alt: string;
-}): React.ReactElement | null {
+}): ReactElement | null {
     const url = useDownloadUrl(room, path);
     if (!url) {
         return null;
@@ -297,13 +298,10 @@ function ChatImage({
     );
 }
 
-function FileAttachment({
-    room,
-    path,
-}: {
+function FileAttachment({room, path}: {
     room: RoomClient;
     path: string;
-}): React.ReactElement {
+}): ReactElement {
     const url = useDownloadUrl(room, path);
     const filename = path.split("/").pop() ?? path;
 
@@ -323,13 +321,10 @@ function FileAttachment({
     );
 }
 
-function ThreadAttachment({
-    room,
-    attachment,
-}: {
+function ThreadAttachment({room, attachment}: {
     room: RoomClient;
     attachment: Element;
-}): React.ReactElement | null {
+}): ReactElement | null {
     const path = getTrimmedStringAttribute(attachment, "path");
     if (path === "") {
         return null;
@@ -349,7 +344,7 @@ function ChatBubble({
 }: {
     text: string;
     mine: boolean;
-}): React.ReactElement | null {
+}): ReactElement | null {
     if (text.trim() === "") {
         return null;
     }
@@ -367,7 +362,7 @@ function ChatBubble({
     );
 }
 
-function ThreadReasoning({ message }: { message: Element }): React.ReactElement | null {
+function ThreadReasoning({ message }: { message: Element }): ReactElement | null {
     const summary = getTrimmedStringAttribute(message, "summary");
     if (summary === "") {
         return null;
@@ -380,7 +375,7 @@ function ThreadReasoning({ message }: { message: Element }): React.ReactElement 
     );
 }
 
-function ThreadExec({ message }: { message: Element }): React.ReactElement {
+function ThreadExec({ message }: { message: Element }): ReactElement {
     const command = getTrimmedStringAttribute(message, "command");
     const result = getTrimmedStringAttribute(message, "result");
     const stdout = getTrimmedStringAttribute(message, "stdout");
@@ -463,7 +458,7 @@ function EventRow({
 }: {
     room: RoomClient;
     message: Element;
-}): React.ReactElement | null {
+}): ReactElement | null {
     const method = getTrimmedStringAttribute(message, "method") || "agent/event";
     const eventName = getTrimmedStringAttribute(message, "name")
         || getTrimmedStringAttribute(message, "event_type")
@@ -546,7 +541,7 @@ function ThreadMessage({
     previous: Element | null;
     next: Element | null;
     localParticipantName: string;
-}): React.ReactElement {
+}): ReactElement {
     const authorName = getTrimmedStringAttribute(message, "author_name");
     const mine = authorName !== "" && authorName === localParticipantName.trim();
     const createdAt = getTrimmedStringAttribute(message, "created_at");
@@ -593,7 +588,7 @@ function EmptyState({
 }: {
     title: string;
     description?: string;
-}): React.ReactElement {
+}): ReactElement {
     return (
         <div className="mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
             <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
@@ -622,18 +617,18 @@ export function ChatThread({
     onCancelRequest,
     emptyStateTitle,
     emptyStateDescription,
-}: ChatThreadProps): React.ReactElement {
-    const visibleMessages = React.useMemo(
+}: ChatThreadProps): ReactElement {
+    const visibleMessages = useMemo(
         () => messages.filter((message) => shouldRenderThreadElement(message, showCompletedToolCalls)),
         [messages, showCompletedToolCalls],
     );
-    const hiddenCompletedToolCallCount = React.useMemo(
+    const hiddenCompletedToolCallCount = useMemo(
         () => messages.filter(isCompletedToolCallEvent).length,
         [messages],
     );
-    const bottomRef = React.useRef<HTMLDivElement | null>(null);
+    const bottomRef = useRef<HTMLDivElement | null>(null);
 
-    React.useEffect(() => {
+    useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }, [thinking, threadStatusText, typing, visibleMessages]);
 

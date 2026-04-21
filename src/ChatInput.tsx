@@ -1,4 +1,5 @@
-import * as React from "react";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import type { ReactElement, RefObject, KeyboardEvent, ChangeEvent } from "react";
 import { ArrowUp, LoaderCircle, X } from "lucide-react";
 import { v4 as uuidV4 } from "uuid";
 
@@ -28,10 +29,10 @@ interface ChatInputProps {
 }
 
 function useAutoResizingTextarea(
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+    textareaRef: RefObject<HTMLTextAreaElement | null>,
     value: string,
 ): void {
-    React.useEffect(() => {
+    useEffect(() => {
         const element = textareaRef.current;
         if (!element) {
             return;
@@ -50,7 +51,7 @@ function ComposerActionButton({
     onClick?: () => void;
     disabled?: boolean;
     showCancelButton?: boolean;
-}): React.ReactElement {
+}): ReactElement {
     if (showCancelButton) {
         return (
             <Button
@@ -97,12 +98,12 @@ export function ChatInput({
     value: controlledValue,
     defaultValue = "",
     onValueChange,
-}: ChatInputProps): React.ReactElement {
-    const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue);
-    const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+}: ChatInputProps): ReactElement {
+    const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const value = controlledValue ?? uncontrolledValue;
 
-    const setValue = React.useCallback((nextValue: string) => {
+    const setValue = useCallback((nextValue: string) => {
         if (controlledValue === undefined) {
             setUncontrolledValue(nextValue);
         }
@@ -113,7 +114,7 @@ export function ChatInput({
 
     useAutoResizingTextarea(textareaRef, value);
 
-    const allAttachmentsUploaded = React.useMemo(
+    const allAttachmentsUploaded = useMemo(
         () => attachments.every((attachment) => attachment.status === UploadStatus.Completed),
         [attachments],
     );
@@ -121,7 +122,7 @@ export function ChatInput({
     const hasDraft = value.trim() !== "" || attachments.length > 0;
     const canSend = !disabled && hasDraft && allAttachmentsUploaded;
 
-    const handleSend = React.useCallback(() => {
+    const handleSend = useCallback(() => {
         const trimmed = value.trim();
         if (!canSend) {
             return;
@@ -141,7 +142,7 @@ export function ChatInput({
         setAttachments([]);
     }, [attachments, canSend, clearOnSubmit, onSubmit, setAttachments, setValue, value]);
 
-    const handleKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
         if (disabled) {
             return;
         }
@@ -158,12 +159,12 @@ export function ChatInput({
         }
     }, [disabled, handleSend, onCancelRequest, showCancelButton]);
 
-    const handleChange = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
         const nextValue = event.currentTarget.value;
         setValue(nextValue);
     }, [setValue]);
 
-    const cancelAttachment = React.useCallback((attachment: FileUpload) => {
+    const cancelAttachment = useCallback((attachment: FileUpload) => {
         if (disabled) {
             return;
         }
@@ -181,7 +182,7 @@ export function ChatInput({
 
     return (
         <div className="px-4 pb-4 pt-2">
-            <div className="mx-auto flex w-full max-w-[912px] flex-col gap-3 rounded-[28px] border-2 border-border bg-card px-3 pb-2 pt-3 shadow-sm">
+            <div className="border mx-auto flex w-full max-w-[912px] flex-col gap-3 rounded-[28px] border-2 border-border bg-card px-3 pb-2 pt-3 shadow-sm">
                 {attachments.length > 0 ? (
                     <div className="flex max-w-full flex-wrap gap-2 px-1">
                         {attachments.map((attachment) => (

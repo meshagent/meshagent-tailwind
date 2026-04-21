@@ -136,6 +136,20 @@ function getDocumentParticipantNames(document: MeshDocument): string[] {
     return participantNames;
 }
 
+function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+    return (
+        left.length === right.length &&
+        left.every((value, index) => value === right[index])
+    );
+}
+
+function elementArraysEqual(left: readonly Element[], right: readonly Element[]): boolean {
+    return (
+        left.length === right.length &&
+        left.every((value, index) => value === right[index])
+    );
+}
+
 function getOnlineParticipants(
     roomParticipants: Iterable<RemoteParticipant>,
     participantNames: readonly string[],
@@ -284,6 +298,18 @@ export function useChatThread({
     ));
     const initialMessageSentRef = useRef(false);
 
+    const syncDocumentState = useCallback((nextDocument: MeshDocument) => {
+        const nextMessages = mapThreadElements(nextDocument);
+        const nextParticipantNames = getDocumentParticipantNames(nextDocument);
+
+        setMessages((current) => (
+            elementArraysEqual(current, nextMessages) ? current : nextMessages
+        ));
+        setDocumentParticipantNames((current) => (
+            stringArraysEqual(current, nextParticipantNames) ? current : nextParticipantNames
+        ));
+    }, []);
+
     useEffect(() => {
         let cancelled = false;
         let opened = false;
@@ -306,8 +332,7 @@ export function useChatThread({
 
                     opened = true;
                     setDocument(nextDocument);
-                    setMessages(mapThreadElements(nextDocument));
-                    setDocumentParticipantNames(getDocumentParticipantNames(nextDocument));
+                    syncDocumentState(nextDocument);
                     return;
                 } catch (error) {
                     if (cancelled) {
@@ -333,7 +358,7 @@ export function useChatThread({
                 void closeDocument(room, path);
             }
         };
-    }, [path, room]);
+    }, [path, room, syncDocumentState]);
 
     useEffect(() => {
         if (!document || !room.localParticipant) {
@@ -347,15 +372,15 @@ export function useChatThread({
             participants ?? [],
             participantNames ?? [],
         );
-        setDocumentParticipantNames(getDocumentParticipantNames(document));
+        setDocumentParticipantNames((current) => {
+            const nextParticipantNames = getDocumentParticipantNames(document);
+            return stringArraysEqual(current, nextParticipantNames) ? current : nextParticipantNames;
+        });
     }, [document, includeLocalParticipant, participantNames, participants, room.localParticipant]);
 
     useDocumentChanged({
         document,
-        onChanged: (nextDocument) => {
-            setMessages(mapThreadElements(nextDocument));
-            setDocumentParticipantNames(getDocumentParticipantNames(nextDocument));
-        },
+        onChanged: syncDocumentState,
     });
 
     const selectAttachments = useCallback((files: File[]) => {
