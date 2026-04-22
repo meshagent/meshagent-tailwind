@@ -23,6 +23,7 @@ export interface MultiThreadViewProps {
 
 function normalizeSelectedThreadPath(path?: string | null): string | null {
     const normalized = path?.trim();
+
     return normalized ? normalized : null;
 }
 

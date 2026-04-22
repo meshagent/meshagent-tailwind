@@ -389,7 +389,7 @@ function ThreadListPanel({
                     {`Unable to load threads: ${describeError(error)}`}
                 </div>
             ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto py-1">
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-1">
                     <ThreadListRow
                         title="New thread"
                         selected={showPendingNewThreadSelection}
@@ -400,7 +400,7 @@ function ThreadListPanel({
                     />
 
                     {entries.length === 0 && showPendingNewThreadSelection ? (
-                        <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-sm text-muted-foreground">
                             No threads yet
                         </div>
                     ) : null}
@@ -637,16 +637,12 @@ export function ChatBotView({
     }
 
     return (
-        <div
-            className={cn(
-                "flex min-h-0 flex-1",
-                isWideLayout ? "flex-row items-stretch" : "flex-col",
-            )}>
-            <div className="min-h-0 min-w-0 flex-1">
+        <div className={cn("flex flex-1 h-full", isWideLayout ? "flex-row items-stretch" : "flex-col")}>
+            <div className="flex flex-col h-full min-h-0 min-w-0 flex-1">
                 {content}
             </div>
 
-            <div className={cn("shrink-0", isWideLayout ? "ml-3" : "mt-3")}
+            <div className={cn("shrink-0 mr-4", isWideLayout ? "ml-3" : "mt-3")}
                 style={isWideLayout ? { width: threadListWidth } : { height: threadListCollapsedHeight }}>
                 <ThreadListPanel
                     room={room}

@@ -117,7 +117,7 @@ function ensureParticipants(
 function mapThreadElements(document: MeshDocument): Element[] {
     const children = document.root.getChildren() as Element[];
     const thread = children.find((child) => child.tagName === "messages");
-    return (thread?.getChildren() as Element[]) ?? [];
+    return [...((thread?.getChildren() as Element[]) ?? [])];
 }
 
 function getDocumentParticipantNames(document: MeshDocument): string[] {
@@ -137,13 +137,6 @@ function getDocumentParticipantNames(document: MeshDocument): string[] {
 }
 
 function stringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
-    return (
-        left.length === right.length &&
-        left.every((value, index) => value === right[index])
-    );
-}
-
-function elementArraysEqual(left: readonly Element[], right: readonly Element[]): boolean {
     return (
         left.length === right.length &&
         left.every((value, index) => value === right[index])
@@ -302,9 +295,9 @@ export function useChatThread({
         const nextMessages = mapThreadElements(nextDocument);
         const nextParticipantNames = getDocumentParticipantNames(nextDocument);
 
-        setMessages((current) => (
-            elementArraysEqual(current, nextMessages) ? current : nextMessages
-        ));
+        // MeshDocument mutates thread elements in place, so React needs a fresh
+        // array on every document change to render new inserts and attribute updates.
+        setMessages(nextMessages);
         setDocumentParticipantNames((current) => (
             stringArraysEqual(current, nextParticipantNames) ? current : nextParticipantNames
         ));
