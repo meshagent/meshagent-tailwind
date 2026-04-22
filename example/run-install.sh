@@ -11,7 +11,8 @@ uv pip install --no-cache-dir \
     ../../meshagent-agents \
     ../../meshagent-tools \
     ../../meshagent-openai \
+    ../../meshagent-anthropic \
+    ../../meshagent-llm-proxy \
     ../../meshagent-otel \
     ../../../meshagent-cloud \
     ../../../meshagent-server 
-
