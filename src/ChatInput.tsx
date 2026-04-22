@@ -28,6 +28,28 @@ interface ChatInputProps {
     onValueChange?: (value: string) => void;
 }
 
+function useAttachmentStatusVersion(attachments: readonly FileUpload[]): number {
+    const [version, setVersion] = useState(0);
+
+    useEffect(() => {
+        const handleChange = () => {
+            setVersion((currentVersion) => currentVersion + 1);
+        };
+
+        for (const attachment of attachments) {
+            attachment.on("change", handleChange);
+        }
+
+        return () => {
+            for (const attachment of attachments) {
+                attachment.off("change", handleChange);
+            }
+        };
+    }, [attachments]);
+
+    return version;
+}
+
 function useAutoResizingTextarea(
     textareaRef: RefObject<HTMLTextAreaElement | null>,
     value: string,
@@ -38,9 +60,12 @@ function useAutoResizingTextarea(
             return;
         }
 
-        element.style.height = "0px";
-        element.style.height = `${Math.max(20, Math.min(element.scrollHeight, 160))}px`;
-
+        if (value === "") {
+            element.style.height = "20px";
+        } else {
+            element.style.height = "0px";
+            element.style.height = `${Math.max(20, Math.min(element.scrollHeight, 160))}px`;
+        }
     }, [textareaRef, value]);
 }
 
@@ -103,6 +128,7 @@ export function ChatInput({
     const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const value = controlledValue ?? uncontrolledValue;
+    const attachmentStatusVersion = useAttachmentStatusVersion(attachments);
 
     const setValue = useCallback((nextValue: string) => {
         if (controlledValue === undefined) {
@@ -117,7 +143,7 @@ export function ChatInput({
 
     const allAttachmentsUploaded = useMemo(
         () => attachments.every((attachment) => attachment.status === UploadStatus.Completed),
-        [attachments],
+        [attachmentStatusVersion, attachments],
     );
 
     const hasDraft = value.trim() !== "" || attachments.length > 0;
@@ -170,7 +196,7 @@ export function ChatInput({
             return;
         }
 
-        setAttachments(attachments.filter((currentAttachment) => currentAttachment.path !== attachment.path));
+        setAttachments(attachments.filter((currentAttachment) => currentAttachment !== attachment));
     }, [attachments, disabled, setAttachments]);
 
     const trailingButton = showCancelButton ? (
@@ -186,9 +212,9 @@ export function ChatInput({
             <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 rounded-md border border-input/70 bg-background px-2 py-1 shadow-xs focus-within:border-primary focus-within:[outline:1px_solid_var(--color-primary)]">
                 {attachments.length > 0 ? (
                     <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1">
-                        {attachments.map((attachment) => (
+                        {attachments.map((attachment, index) => (
                             <UploadPill
-                                key={attachment.path}
+                                key={`${attachment.path}-${index}`}
                                 attachment={attachment}
                                 onCancel={cancelAttachment}
                             />

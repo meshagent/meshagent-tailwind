@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import type { RefObject, ReactElement } from "react";
 import { JsonContent, Participant, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
-import { useClientToolkits, useRoomIndicators } from "@meshagent/meshagent-react";
+import { useRoomIndicators } from "@meshagent/meshagent-react";
 import { Plus } from "lucide-react";
 
 import { ChatInput } from "./ChatInput";
@@ -9,7 +9,6 @@ import { ChatThread } from "./ChatThread";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
-import { UIToolkit } from "./tools/ui-toolkit";
 import { useChatThread, useThreadStatus } from "./chat-hooks";
 
 class NewThreadCancelledError extends Error {
@@ -204,6 +203,7 @@ function ResolvedChatView({
     onStartNewThread,
 }: ResolvedChatViewProps): ReactElement {
     const {
+        document,
         messages,
         sendMessage,
         selectAttachments,
@@ -249,6 +249,7 @@ function ResolvedChatView({
                 room={room}
                 path={path}
                 messages={messages}
+                isLoading={document === null}
                 localParticipantName={localParticipantName}
                 showCompletedToolCalls={showCompletedToolCalls}
                 onShowCompletedToolCallsChanged={setShowCompletedToolCalls}
@@ -309,8 +310,8 @@ export function Chat({
     const managesOwnThread = controlledPath === null;
     const activePath = controlledPath ?? internalThreadPath;
 
-    const toolkits = useMemo(() => [new UIToolkit()], []);
-    useClientToolkits({ room, toolkits, public: false });
+    // const toolkits = useMemo(() => [new UIToolkit()], []);
+    // useClientToolkits({ room, toolkits, public: false });
 
     useEffect(() => {
         return () => {

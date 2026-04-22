@@ -15,16 +15,21 @@ import { useThreadStatus } from "./chat-hooks";
 import { Chat } from "./Chat";
 import { Button } from "./components/ui/button";
 import { Spinner } from "./components/ui/spinner";
+import {
+    ChatThreadDisplayMode,
+    chatDocumentPath,
+    defaultThreadDisplayNameFromPath,
+    resolvedThreadListPath,
+} from "./conversation-descriptor";
 import { cn } from "./lib/utils";
+import { MultiThreadView } from "./multi-thread-view";
 
-const defaultUntitledThreadName = "New Chat";
 const multiThreadLayoutBreakpointPx = 920;
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
-export enum ChatThreadDisplayMode {
-    SingleThread,
-    MultiThreadComposer,
-}
+export {
+    ChatThreadDisplayMode,
+    chatDocumentPath,
+    resolvedThreadListPath,
+} from "./conversation-descriptor";
 
 interface ChatThreadListEntry {
     element: Element;
@@ -69,92 +74,6 @@ export interface ChatBotViewProps {
 function normalizePath(path?: string | null): string | null {
     const normalized = path?.trim();
     return normalized ? normalized : null;
-}
-
-function normalizedThreadDir(threadDir?: string | null): string | null {
-    const trimmed = threadDir?.trim();
-    if (!trimmed) {
-        return null;
-    }
-
-    return trimmed.replace(/\/+$/u, "");
-}
-
-function defaultThreadDocumentDir(agentName?: string | null): string | null {
-    const trimmed = agentName?.trim();
-    if (!trimmed) {
-        return null;
-    }
-
-    return `.threads/${trimmed}`;
-}
-
-export function resolvedThreadListPath(
-    threadListPath?: string,
-    threadDir?: string,
-    agentName?: string,
-): string | null {
-    const normalizedThreadListPath = normalizePath(threadListPath);
-    if (normalizedThreadListPath !== null) {
-        return normalizedThreadListPath;
-    }
-
-    const normalizedDir = normalizedThreadDir(threadDir);
-    if (normalizedDir === null) {
-        const defaultThreadDir = defaultThreadDocumentDir(agentName);
-        if (defaultThreadDir === null) {
-            return null;
-        }
-
-        return `${defaultThreadDir}/index.threadl`;
-    }
-
-    return `${normalizedDir}/index.threadl`;
-}
-
-export function chatDocumentPath(
-    agentName?: string,
-    threadDir?: string,
-    fallbackPath = ".threads/main.thread",
-): string {
-    const normalizedDir = normalizedThreadDir(threadDir);
-    if (normalizedDir !== null) {
-        return `${normalizedDir}/main.thread`;
-    }
-
-    const defaultThreadDir = defaultThreadDocumentDir(agentName);
-    if (defaultThreadDir !== null) {
-        return `${defaultThreadDir}/main.thread`;
-    }
-
-    return fallbackPath;
-}
-
-function basename(path: string): string {
-    const segments = path.split("/");
-    return segments[segments.length - 1] ?? path;
-}
-
-function defaultThreadDisplayNameFromPath(path: string): string {
-    const rawName = basename(path).replace(/\.thread$/u, "").trim();
-    if (!rawName || uuidPattern.test(rawName)) {
-        return defaultUntitledThreadName;
-    }
-
-    const normalized = rawName.replace(/[_-]+/gu, " ").replace(/\s+/gu, " ").trim();
-    if (!normalized) {
-        return defaultUntitledThreadName;
-    }
-
-    return normalized
-        .split(" ")
-        .filter((segment) => segment !== "")
-        .map((segment) => (
-            segment.length === 1
-                ? segment.toUpperCase()
-                : `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`
-        ))
-        .join(" ");
 }
 
 function parseDate(value: string): Date {
@@ -552,7 +471,7 @@ export function ChatBotView({
         [documentPath, path],
     );
     const resolvedSingleThreadPath = useMemo(
-        () => resolvedDocumentPath ?? chatDocumentPath(agentName, threadDir),
+        () => resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir }),
         [agentName, resolvedDocumentPath, threadDir],
     );
     const explicitSelectedThreadPath = selectedThreadPath !== undefined
@@ -568,7 +487,7 @@ export function ChatBotView({
     const previousNewThreadResetVersionRef = useRef(newThreadResetVersion);
     const activeSelectedThreadPath = explicitSelectedThreadPath ?? internalSelectedThreadPath;
     const resolvedThreadListDocumentPath = useMemo(
-        () => resolvedThreadListPath(threadListPath, threadDir, agentName),
+        () => resolvedThreadListPath(threadListPath, { threadDir, agentName }),
         [agentName, threadDir, threadListPath],
     );
     const threadList = useThreadListDocument({
@@ -608,7 +527,7 @@ export function ChatBotView({
         onThreadResolved?.(nextPath, displayName);
     }, [onSelectedThreadResolved, onThreadResolved]);
 
-    const setSelectedThread = useCallback((nextPath: string | null, displayName: string | null) => {
+    const handleSelectedThreadPathChanged = useCallback((nextPath: string | null) => {
         const normalizedNextPath = normalizePath(nextPath);
 
         if (explicitSelectedThreadPath === undefined) {
@@ -616,8 +535,14 @@ export function ChatBotView({
         }
 
         onSelectedThreadPathChanged?.(normalizedNextPath);
+    }, [explicitSelectedThreadPath, onSelectedThreadPathChanged]);
+
+    const setSelectedThread = useCallback((nextPath: string | null, displayName: string | null) => {
+        const normalizedNextPath = normalizePath(nextPath);
+
+        handleSelectedThreadPathChanged(normalizedNextPath);
         emitResolvedThread(normalizedNextPath, displayName);
-    }, [emitResolvedThread, explicitSelectedThreadPath, onSelectedThreadPathChanged]);
+    }, [emitResolvedThread, handleSelectedThreadPathChanged]);
 
     useEffect(() => {
         if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
@@ -679,19 +604,31 @@ export function ChatBotView({
     }
 
     const content = (
-        <Chat
+        <MultiThreadView
             room={room}
-            path={activeSelectedThreadPath ?? undefined}
-            participants={participants}
             agentName={agentName}
             toolkit={toolkit}
             tool={tool}
+            selectedThreadPath={activeSelectedThreadPath}
+            onSelectedThreadPathChanged={handleSelectedThreadPathChanged}
+            onSelectedThreadResolved={emitResolvedThread}
+            newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
             emptyStateTitle={emptyStateTitle}
             emptyStateDescription={emptyStateDescription}
-            onThreadResolved={(nextPath, displayName) => {
-                setSelectedThread(nextPath, displayName);
-            }}
+            builder={(threadPath) => (
+                <Chat
+                    room={room}
+                    path={threadPath}
+                    participants={participants}
+                    agentName={agentName}
+                    toolkit={toolkit}
+                    tool={tool}
+                    centerComposer={centerComposer}
+                    emptyStateTitle={emptyStateTitle}
+                    emptyStateDescription={emptyStateDescription}
+                />
+            )}
         />
     );
 
@@ -709,14 +646,8 @@ export function ChatBotView({
                 {content}
             </div>
 
-            <div
-                className={cn(
-                    "shrink-0",
-                    isWideLayout ? "ml-3" : "mt-3",
-                )}
-                style={isWideLayout
-                    ? { width: threadListWidth }
-                    : { height: threadListCollapsedHeight }}>
+            <div className={cn("shrink-0", isWideLayout ? "ml-3" : "mt-3")}
+                style={isWideLayout ? { width: threadListWidth } : { height: threadListCollapsedHeight }}>
                 <ThreadListPanel
                     room={room}
                     threadList={threadList}

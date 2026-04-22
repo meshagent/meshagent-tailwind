@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactElement } from "react";
 import { Element, RoomClient } from "@meshagent/meshagent";
 import { Download, FileText } from "lucide-react";
@@ -8,6 +8,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "./components/ui/button";
+import { Spinner } from "./components/ui/spinner";
 import { ChatTypingIndicator } from "./ChatTypingIndicator";
 import { cn } from "./lib/utils";
 
@@ -28,6 +29,7 @@ const supportedEventKinds = new Set([
 export interface ChatThreadProps {
     room: RoomClient;
     messages: Element[];
+    isLoading?: boolean;
     localParticipantName: string;
     path?: string;
     showCompletedToolCalls?: boolean;
@@ -41,6 +43,8 @@ export interface ChatThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
 }
+
+const stickyBottomThresholdPx = 24;
 
 function getStringAttribute(element: Element, name: string): string | null {
     const value = element.getAttribute(name);
@@ -109,6 +113,40 @@ function isImagePath(path: string): boolean {
 
 function isThreadAttachmentElement(element: Element): boolean {
     return element.tagName === "file" || element.tagName === "image";
+}
+
+function isImageAttachmentElement(element: Element): boolean {
+    if (!isThreadAttachmentElement(element)) {
+        return false;
+    }
+
+    const path = getTrimmedStringAttribute(element, "path");
+    return element.tagName === "image" || (path !== "" && isImagePath(path));
+}
+
+function getAttachmentTrackingId(attachment: Element): string {
+    const path = getTrimmedStringAttribute(attachment, "path");
+    return attachment.id || `${attachment.tagName}:${path}`;
+}
+
+function collectImageAttachmentIds(messages: readonly Element[]): string[] {
+    const ids: string[] = [];
+
+    for (const message of messages) {
+        if (message.tagName !== "message") {
+            continue;
+        }
+
+        for (const attachment of getElementChildren(message)) {
+            if (!isImageAttachmentElement(attachment)) {
+                continue;
+            }
+
+            ids.push(getAttachmentTrackingId(attachment));
+        }
+    }
+
+    return ids;
 }
 
 function parseEventDetailLines(raw: string): string[] {
@@ -217,6 +255,14 @@ function isCancellingThreadStatusText(statusText: string | null | undefined): bo
     return normalized === "cancelling" || normalized === "canceling";
 }
 
+function distanceFromBottom(element: HTMLElement): number {
+    return Math.max(element.scrollHeight - element.clientHeight - element.scrollTop, 0);
+}
+
+function isNearBottom(element: HTMLElement): boolean {
+    return distanceFromBottom(element) <= stickyBottomThresholdPx;
+}
+
 function useDownloadUrl(room: RoomClient, path: string): string | null {
     const [url, setUrl] = useState<string | null>(null);
 
@@ -276,12 +322,40 @@ function ChatImage({
     room,
     path,
     alt,
+    onSettled,
 }: {
     room: RoomClient;
     path: string;
     alt: string;
+    onSettled?: () => void;
 }): ReactElement | null {
     const url = useDownloadUrl(room, path);
+    const imageRef = useRef<HTMLImageElement | null>(null);
+    const settledRef = useRef(false);
+
+    const markSettled = useCallback(() => {
+        if (settledRef.current) {
+            return;
+        }
+
+        settledRef.current = true;
+        onSettled?.();
+    }, [onSettled]);
+
+    useEffect(() => {
+        settledRef.current = false;
+    }, [path, url]);
+
+    useEffect(() => {
+        if (!url) {
+            return;
+        }
+
+        if (imageRef.current?.complete) {
+            markSettled();
+        }
+    }, [markSettled, url]);
+
     if (!url) {
         return null;
     }
@@ -293,7 +367,18 @@ function ChatImage({
             onClick={() => {
                 window.open(url, "_blank", "noopener,noreferrer");
             }}>
-            <img src={url} alt={alt} className="max-h-[312px] w-auto max-w-full object-cover" />
+            <img
+                ref={imageRef}
+                src={url}
+                alt={alt}
+                className="max-h-[312px] w-auto max-w-full object-cover"
+                onLoad={() => {
+                    markSettled();
+                }}
+                onError={() => {
+                    markSettled();
+                }}
+            />
         </button>
     );
 }
@@ -321,9 +406,10 @@ function FileAttachment({room, path}: {
     );
 }
 
-function ThreadAttachment({room, attachment}: {
+function ThreadAttachment({room, attachment, onImageSettled}: {
     room: RoomClient;
     attachment: Element;
+    onImageSettled?: (attachmentId: string) => void;
 }): ReactElement | null {
     const path = getTrimmedStringAttribute(attachment, "path");
     if (path === "") {
@@ -332,7 +418,18 @@ function ThreadAttachment({room, attachment}: {
 
     const filename = path.split("/").pop() ?? "Attachment";
     if (attachment.tagName === "image" || isImagePath(path)) {
-        return <ChatImage room={room} path={path} alt={filename} />;
+        const attachmentId = getAttachmentTrackingId(attachment);
+
+        return (
+            <ChatImage
+                room={room}
+                path={path}
+                alt={filename}
+                onSettled={() => {
+                    onImageSettled?.(attachmentId);
+                }}
+            />
+        );
     }
 
     return <FileAttachment room={room} path={path} />;
@@ -534,11 +631,13 @@ function ThreadMessage({
     message,
     previous,
     localParticipantName,
+    onImageSettled,
 }: {
     room: RoomClient;
     message: Element;
     previous: Element | null;
     localParticipantName: string;
+    onImageSettled?: (attachmentId: string) => void;
 }): ReactElement {
     const authorName = getTrimmedStringAttribute(message, "author_name");
     const mine = authorName !== "" && authorName === localParticipantName.trim();
@@ -587,6 +686,7 @@ function ThreadMessage({
                                 key={attachment.id}
                                 room={room}
                                 attachment={attachment}
+                                onImageSettled={onImageSettled}
                             />
                         ))}
                     </div>
@@ -620,7 +720,9 @@ function EmptyState({
 export function ChatThread({
     room,
     messages,
+    isLoading = false,
     localParticipantName,
+    path,
     showCompletedToolCalls = false,
     onShowCompletedToolCallsChanged,
     typing = false,
@@ -640,13 +742,98 @@ export function ChatThread({
         () => messages.filter(isCompletedToolCallEvent).length,
         [messages],
     );
-    const bottomRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }, [thinking, threadStatusText, typing, visibleMessages]);
+    const [trackedInitialImageThreadKey, setTrackedInitialImageThreadKey] = useState<string | null>(null);
+    const [pendingInitialImageIds, setPendingInitialImageIds] = useState<string[]>([]);
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const contentRef = useRef<HTMLDivElement | null>(null);
+    const stickToBottomRef = useRef(true);
+    const forceBottomRef = useRef(false);
+    const lastVisibleMessageId = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1]?.id : null;
+    const threadKey = path?.trim() || "__default__";
 
     const hasOverlay = threadStatusText?.trim() || thinking || typing;
+    const waitingForInitialImages = trackedInitialImageThreadKey === threadKey && pendingInitialImageIds.length > 0;
+
+    useEffect(() => {
+        forceBottomRef.current = waitingForInitialImages;
+    }, [waitingForInitialImages]);
+
+    useEffect(() => {
+        setTrackedInitialImageThreadKey(null);
+        setPendingInitialImageIds([]);
+    }, [threadKey]);
+
+    useEffect(() => {
+        if (trackedInitialImageThreadKey === threadKey || visibleMessages.length === 0) {
+            return;
+        }
+
+        setTrackedInitialImageThreadKey(threadKey);
+        setPendingInitialImageIds(collectImageAttachmentIds(visibleMessages));
+    }, [threadKey, trackedInitialImageThreadKey, visibleMessages]);
+
+    const handleImageSettled = useCallback((attachmentId: string) => {
+        setPendingInitialImageIds((currentIds) => {
+            if (!currentIds.includes(attachmentId)) {
+                return currentIds;
+            }
+
+            return currentIds.filter((currentId) => currentId !== attachmentId);
+        });
+    }, []);
+
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container) {
+            return;
+        }
+
+        stickToBottomRef.current = true;
+        container.scrollTop = container.scrollHeight;
+    }, [path]);
+
+    useEffect(() => {
+        if (!waitingForInitialImages) {
+            return;
+        }
+
+        const container = scrollContainerRef.current;
+        if (!container) {
+            return;
+        }
+
+        container.scrollTop = container.scrollHeight;
+    }, [pendingInitialImageIds, waitingForInitialImages]);
+
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container || !stickToBottomRef.current) {
+            return;
+        }
+
+        container.scrollTop = container.scrollHeight;
+    }, [hasOverlay, lastVisibleMessageId, threadStatusText, thinking, typing]);
+
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        const content = contentRef.current;
+        if (!container || !content || typeof ResizeObserver === "undefined") {
+            return;
+        }
+
+        const observer = new ResizeObserver(() => {
+            if (!stickToBottomRef.current && !forceBottomRef.current) {
+                return;
+            }
+
+            container.scrollTop = container.scrollHeight;
+        });
+
+        observer.observe(content);
+        return () => {
+            observer.disconnect();
+        };
+    }, []);
 
     return (
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -667,13 +854,24 @@ export function ChatThread({
                 </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            <div
+                ref={scrollContainerRef}
+                className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
+                onScroll={(event) => {
+                    stickToBottomRef.current = isNearBottom(event.currentTarget);
+                }}>
                 <div
+                    ref={contentRef}
                     className={cn(
-                        "mx-auto flex w-full max-w-[912px] flex-col gap-8 px-4 pt-6",
+                        "mx-auto flex min-h-full w-full max-w-[912px] flex-col gap-8 px-4 pt-6",
+                        visibleMessages.length > 0 ? "justify-end" : null,
                         hasOverlay ? "pb-24" : "pb-6",
                     )}>
-                    {visibleMessages.length === 0 && emptyStateTitle ? (
+                    {isLoading ? (
+                        <div className="flex flex-1 items-center justify-center py-20">
+                            <Spinner size="lg" className="text-muted-foreground" />
+                        </div>
+                    ) : visibleMessages.length === 0 && emptyStateTitle ? (
                         <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
                     ) : null}
 
@@ -688,6 +886,7 @@ export function ChatThread({
                                     message={message}
                                     previous={previous}
                                     localParticipantName={localParticipantName}
+                                    onImageSettled={handleImageSettled}
                                 />
                             );
                         }
@@ -707,7 +906,6 @@ export function ChatThread({
                         return null;
                     })}
 
-                    <div ref={bottomRef} />
                 </div>
             </div>
 

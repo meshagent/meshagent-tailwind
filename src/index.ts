@@ -5,4 +5,6 @@ export * from './ChatThread';
 export * from './ChatTypingIndicator';
 export * from './FileUploader';
 export * from './chat-message';
+export * from './conversation-descriptor';
 export * from './file-attachment';
+export * from './multi-thread-view';
