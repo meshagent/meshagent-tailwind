@@ -1,3 +1,6 @@
+## [0.38.4]
+- Stability
+
 ## [0.38.3]
 - Breaking: TypeScript container image summaries now use `references`/`preferredRef` and metadata fields (timestamps/media type), and `inspectImage` returns manifests/layers/content size; `tags`/`size` are removed.
 - `getUsage` now supports filters for users, room, provider, model, and usage type.
