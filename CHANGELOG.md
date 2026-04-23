@@ -1,3 +1,12 @@
+## [0.38.3]
+- Breaking: TypeScript container image summaries now use `references`/`preferredRef` and metadata fields (timestamps/media type), and `inspectImage` returns manifests/layers/content size; `tags`/`size` are removed.
+- `getUsage` now supports filters for users, room, provider, model, and usage type.
+- Room connection and errors improved: `RoomServerException` now carries `statusCode` and `retryable`, and `RoomClient` can route OAuth/secret requests via handler options.
+- React hooks add robust connection retry/backoff, new authorization helpers, and optional secret/OAuth handlers; document connection now supports schema/initial JSON and improved cleanup.
+- New Livekit support (client + protocol channel) and room participant hook; hosted toolkits are now shared per room to avoid duplicate starts.
+- Breaking: `meshagent-react` no longer exports the legacy chat and file-upload modules.
+- Tailwind chat UI is rebuilt with multi-thread support, new thread creation via agent tools, and file attachment utilities, with new exports for thread and conversation helpers.
+
 ## [0.38.2]
 - Stability
 
