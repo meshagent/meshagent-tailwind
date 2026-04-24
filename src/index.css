@@ -7,10 +7,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-.josef {
-  font-family: "Josefin Sans", sans-serif;
-}
-
 #root {
   max-width: 1280px;
   min-height: 100vh;

@@ -15,6 +15,8 @@ import { subscribe, useDocumentChanged, useRoomParticipants } from "@meshagent/m
 import { ChatMessage } from "./chat-message";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 
+const agentTurnSteerType = "meshagent.agent.turn.steer";
+
 export interface UseChatThreadProps {
     room: RoomClient;
     path: string;
@@ -38,17 +40,140 @@ export interface UseChatThreadResult {
     cancelRequest?: () => void;
 }
 
-export interface ThreadStatus {
-    text: string | null;
-    mode: string | null;
-    startedAt: Date | null;
-    supportsAgentMessages: boolean;
+export class PendingAgentMessage {
+  readonly messageId: string;
+  readonly messageType: string;
+  readonly threadPath: string;
+  readonly text: string;
+  readonly attachments: string[];
+  readonly senderName?: string;
+  readonly awaitingAcceptance: boolean;
+  readonly awaitingOnline: boolean;
+
+  constructor({
+    messageId,
+    messageType,
+    threadPath,
+    text,
+    attachments,
+    senderName,
+    awaitingAcceptance = false,
+    awaitingOnline = false,
+  }: {
+    messageId: string;
+    messageType: string;
+    threadPath: string;
+    text: string;
+    attachments: string[];
+    senderName?: string;
+    awaitingAcceptance?: boolean;
+    awaitingOnline?: boolean;
+  }) {
+    this.messageId = messageId;
+    this.messageType = messageType;
+    this.threadPath = threadPath;
+    this.text = text;
+    this.attachments = attachments;
+    this.senderName = senderName;
+    this.awaitingAcceptance = awaitingAcceptance;
+    this.awaitingOnline = awaitingOnline;
+  }
+
+  static fromQueueJson(json: Record<string, unknown>): PendingAgentMessage {
+    const content = json["content"];
+    const textParts: string[] = [];
+    const attachments: string[] = [];
+
+    if (Array.isArray(content)) {
+      for (const item of content) {
+        if (item == null || typeof item !== "object") {
+          continue;
+        }
+
+        const obj = item as Record<string, unknown>;
+        const type = obj["type"];
+
+        if (type === "text") {
+          const text = obj["text"];
+          if (typeof text === "string" && text.trim().length > 0) {
+            textParts.push(text);
+          }
+        } else if (type === "file") {
+          const url = obj["url"];
+          if (typeof url === "string" && url.trim().length > 0) {
+            attachments.push(url);
+          }
+        }
+      }
+    }
+
+    const senderName = json["sender_name"];
+    const messageType = json["message_type"];
+    const messageId = json["message_id"];
+    const threadPath = json["thread_id"];
+
+    return new PendingAgentMessage({
+      messageId: typeof messageId === "string" ? messageId : crypto.randomUUID(),
+      messageType: typeof messageType === "string" ? messageType : agentTurnSteerType,
+      threadPath: typeof threadPath === "string" ? threadPath : "",
+      text: textParts.join("\n\n"),
+      attachments,
+      senderName:
+        typeof senderName === "string" && senderName.trim().length > 0
+          ? senderName.trim()
+          : undefined,
+      awaitingOnline: false,
+    });
+  }
 }
+
+export class ChatThreadStatusState {
+  readonly text?: string;
+  readonly startedAt?: Date;
+  readonly mode?: string;
+  readonly turnId?: string;
+  readonly pendingMessages: PendingAgentMessage[];
+  readonly pendingItemId?: string;
+  readonly supportsAgentMessages: boolean;
+
+  constructor({
+    text,
+    startedAt,
+    mode,
+    turnId,
+    pendingMessages = [],
+    pendingItemId,
+    supportsAgentMessages = false,
+  }: {
+    text?: string;
+    startedAt?: Date;
+    mode?: string;
+    turnId?: string;
+    pendingMessages?: PendingAgentMessage[];
+    pendingItemId?: string;
+    supportsAgentMessages?: boolean;
+  }) {
+    this.text = text;
+    this.startedAt = startedAt;
+    this.mode = mode;
+    this.turnId = turnId;
+    this.pendingMessages = pendingMessages;
+    this.pendingItemId = pendingItemId;
+    this.supportsAgentMessages = supportsAgentMessages;
+  }
+
+  get hasStatus(): boolean {
+    return this.text != null && this.text.trim().length > 0;
+  }
+}
+
+export type ThreadStatus = ChatThreadStatusState;
 
 export interface UseThreadStatusProps {
     room: RoomClient;
     path: string;
     agentName?: string;
+    previous?: ChatThreadStatusState;
 }
 
 function getParticipantName(participant: { getAttribute(name: string): unknown }): string {
@@ -154,7 +279,7 @@ function getOnlineParticipants(
     });
 }
 
-function supportsAgentMessages(participant: RemoteParticipant): boolean {
+function supportsAgentMessages(participant: Participant): boolean {
     return participant.getAttribute("supports_agent_messages") === true;
 }
 
@@ -166,89 +291,215 @@ function threadStatusAttributeCandidates(path: string, prefix: string): string[]
     return [`${prefix}.${path}`, `${prefix}./${path}`];
 }
 
-function resolveThreadStatus({ room, path, agentName }: UseThreadStatusProps): ThreadStatus {
-    const normalizedAgentName = agentName?.trim();
-    const remoteParticipants = room.messaging.remoteParticipants;
-    const candidates = normalizedAgentName && normalizedAgentName !== ""
-        ? remoteParticipants.filter((participant) => getParticipantName(participant) === normalizedAgentName)
-        : remoteParticipants.filter((participant) => participant.role === "agent" || supportsAgentMessages(participant));
+function parsePendingMessagesStatus(
+  participant: Participant,
+  path: string
+): Record<string, unknown> | undefined {
+  for (const key of threadStatusAttributeCandidates(
+    path,
+    "thread.status.pending_messages"
+  )) {
+    const value = participant.getAttribute(key);
 
-    const textKeys = threadStatusAttributeCandidates(path, "thread.status.text");
-    const legacyKeys = threadStatusAttributeCandidates(path, "thread.status");
-    const modeKeys = threadStatusAttributeCandidates(path, "thread.status.mode");
-    const startedAtKeys = threadStatusAttributeCandidates(path, "thread.status.started_at");
-
-    let text: string | null = null;
-    let mode: string | null = null;
-    let startedAt: Date | null = null;
-    let hasAgentMessageSupport = false;
-
-    for (const participant of candidates) {
-        hasAgentMessageSupport = hasAgentMessageSupport || supportsAgentMessages(participant);
-
-        if (text === null) {
-            for (const key of [...textKeys, ...legacyKeys]) {
-                const value = participant.getAttribute(key);
-                if (typeof value === "string" && value.trim() !== "") {
-                    text = value.trim();
-                    break;
-                }
-            }
-        }
-
-        if (mode === null) {
-            for (const key of modeKeys) {
-                const value = participant.getAttribute(key);
-                if (typeof value !== "string") {
-                    continue;
-                }
-
-                const normalized = value.trim().toLowerCase();
-                if (normalized === "busy" || normalized === "steerable") {
-                    mode = normalized;
-                    break;
-                }
-            }
-        }
-
-        if (startedAt === null) {
-            for (const key of startedAtKeys) {
-                const value = participant.getAttribute(key);
-                if (typeof value !== "string" || value.trim() === "") {
-                    continue;
-                }
-
-                const parsed = new Date(value);
-                if (!Number.isNaN(parsed.getTime())) {
-                    startedAt = parsed;
-                    break;
-                }
-            }
-        }
+    if (typeof value !== "string" || value.trim().length === 0) {
+      continue;
     }
 
-    if (text === null) {
-        return {
-            text: null,
-            mode: null,
-            startedAt: null,
-            supportsAgentMessages: hasAgentMessageSupport,
-        };
-    }
+    try {
+      const decoded: unknown = JSON.parse(value.trim());
 
-    return {
-        text,
-        mode: mode ?? "busy",
-        startedAt,
-        supportsAgentMessages: hasAgentMessageSupport,
-    };
+      if (decoded != null && typeof decoded === "object" && !Array.isArray(decoded)) {
+        return decoded as Record<string, unknown>;
+      }
+    } catch (_) {
+      // ignore invalid JSON
+    }
+  }
+
+  return undefined;
 }
 
-function threadStatusEquals(left: ThreadStatus, right: ThreadStatus): boolean {
+function resolveThreadStatus({
+  room,
+  path,
+  agentName,
+  previous,
+}: UseThreadStatusProps): ChatThreadStatusState {
+  const keyCandidates = threadStatusAttributeCandidates(path, "thread.status");
+  const textKeyCandidates = threadStatusAttributeCandidates(path, "thread.status.text");
+  const modeKeyCandidates = threadStatusAttributeCandidates(path, "thread.status.mode");
+  const startedAtKeyCandidates = threadStatusAttributeCandidates(path, "thread.status.started_at");
+  const pendingItemIdKeyCandidates = threadStatusAttributeCandidates(path, "thread.status.pending_item_id");
+
+  const candidates: Participant[] =
+    agentName != null
+      ? room.messaging.remoteParticipants.filter(
+          (participant) => participant.getAttribute("name") === agentName
+        )
+      : room.messaging.remoteParticipants.filter(
+          (participant) => participant.role === "agent" || supportsAgentMessages(participant)
+        );
+
+  let nextStatus: string | undefined;
+  let nextMode: string | undefined;
+  let nextStartedAt: Date | undefined;
+  let nextTurnId: string | undefined;
+  let nextPendingMessages: PendingAgentMessage[] = [];
+  let nextPendingItemId: string | undefined;
+  let nextSupportsAgentMessages = false;
+
+  for (const participant of candidates) {
+    if (supportsAgentMessages(participant)) {
+      nextSupportsAgentMessages = true;
+    }
+
+    if (nextStatus == null) {
+      for (const key of textKeyCandidates) {
+        const value = participant.getAttribute(key);
+        if (typeof value === "string" && value.trim().length > 0) {
+          nextStatus = value.trim();
+          break;
+        }
+      }
+    }
+
+    if (nextStatus == null) {
+      for (const key of keyCandidates) {
+        const value = participant.getAttribute(key);
+        if (typeof value === "string" && value.trim().length > 0) {
+          nextStatus = value.trim();
+          break;
+        }
+      }
+    }
+
+    const pendingStatus = parsePendingMessagesStatus(participant, path);
+    if (pendingStatus != null && typeof pendingStatus === "object") {
+      if (nextTurnId == null) {
+        const turnId = (pendingStatus as Record<string, unknown>)["turn_id"];
+        if (typeof turnId === "string" && turnId.trim().length > 0) {
+          nextTurnId = turnId.trim();
+        }
+      }
+
+      if (nextPendingMessages.length === 0) {
+        const messages = (pendingStatus as Record<string, unknown>)["messages"];
+        if (Array.isArray(messages)) {
+          nextPendingMessages = messages.flatMap((item) => {
+            if (item != null && typeof item === "object") {
+              return [
+                PendingAgentMessage.fromQueueJson(
+                  item as Record<string, unknown>
+                ),
+              ];
+            }
+            return [];
+          });
+        }
+      }
+    }
+
+    if (nextMode == null) {
+      for (const key of modeKeyCandidates) {
+        const value = participant.getAttribute(key);
+        if (typeof value === "string") {
+          const normalized = value.trim().toLowerCase();
+          if (normalized === "busy" || normalized === "steerable") {
+            nextMode = normalized;
+            break;
+          }
+        }
+      }
+    }
+
+    if (nextStartedAt == null) {
+      for (const key of startedAtKeyCandidates) {
+        const value = participant.getAttribute(key);
+        if (typeof value !== "string") {
+          continue;
+        }
+
+        const normalized = value.trim();
+        if (normalized.length === 0) {
+          continue;
+        }
+
+        const parsed = new Date(normalized);
+        if (!Number.isNaN(parsed.getTime())) {
+          nextStartedAt = parsed;
+          break;
+        }
+      }
+    }
+
+    if (nextPendingItemId == null) {
+      for (const key of pendingItemIdKeyCandidates) {
+        const value = participant.getAttribute(key);
+        if (typeof value === "string" && value.trim().length > 0) {
+          nextPendingItemId = value.trim();
+          break;
+        }
+      }
+    }
+
+    if (
+      nextStatus != null &&
+      nextMode != null &&
+      nextStartedAt != null &&
+      nextTurnId != null &&
+      nextPendingItemId != null
+    ) {
+      break;
+    }
+  }
+
+  if (nextStatus == null) {
+    return new ChatThreadStatusState({
+      supportsAgentMessages: nextSupportsAgentMessages,
+    });
+  }
+
+  nextMode ??= "busy";
+  nextStartedAt ??= previous?.hasStatus === true ? previous.startedAt : new Date();
+
+  return new ChatThreadStatusState({
+    text: nextStatus,
+    startedAt: nextStartedAt,
+    mode: nextMode,
+    turnId: nextTurnId,
+    pendingMessages: nextPendingMessages,
+    pendingItemId: nextPendingItemId,
+    supportsAgentMessages: nextSupportsAgentMessages,
+  });
+}
+
+function pendingMessagesEqual(
+    left: readonly PendingAgentMessage[],
+    right: readonly PendingAgentMessage[],
+): boolean {
+    return (
+        left.length === right.length &&
+        left.every((message, index) => {
+            const other = right[index];
+            return (
+                message.messageId === other.messageId &&
+                message.messageType === other.messageType &&
+                message.text === other.text &&
+                stringArraysEqual(message.attachments, other.attachments) &&
+                message.senderName === other.senderName
+            );
+        })
+    );
+}
+
+function threadStatusEquals(left: ChatThreadStatusState, right: ChatThreadStatusState): boolean {
     return (
         left.text === right.text &&
         left.mode === right.mode &&
         left.startedAt?.getTime() === right.startedAt?.getTime() &&
+        left.turnId === right.turnId &&
+        left.pendingItemId === right.pendingItemId &&
+        pendingMessagesEqual(left.pendingMessages, right.pendingMessages) &&
         left.supportsAgentMessages === right.supportsAgentMessages
     );
 }
@@ -476,8 +727,15 @@ export function useThreadStatus({ room, path, agentName }: UseThreadStatusProps)
 
     useEffect(() => {
         const updateStatus = () => {
-            const nextStatus = resolveThreadStatus({ room, path, agentName });
-            setStatus((currentStatus) => threadStatusEquals(currentStatus, nextStatus) ? currentStatus : nextStatus);
+            setStatus((currentStatus) => {
+                const nextStatus = resolveThreadStatus({
+                    room,
+                    path,
+                    agentName,
+                    previous: currentStatus,
+                });
+                return threadStatusEquals(currentStatus, nextStatus) ? currentStatus : nextStatus;
+            });
         };
 
         const roomSubscription = subscribe(room.listen(), {
@@ -491,21 +749,17 @@ export function useThreadStatus({ room, path, agentName }: UseThreadStatusProps)
             },
         });
 
-        const handleParticipantsChanged = () => {
-            updateStatus();
-        };
-
-        room.messaging.on("participant_added", handleParticipantsChanged);
-        room.messaging.on("participant_removed", handleParticipantsChanged);
-        room.messaging.on("messaging_enabled", handleParticipantsChanged);
+        room.messaging.on("participant_added", updateStatus);
+        room.messaging.on("participant_removed", updateStatus);
+        room.messaging.on("messaging_enabled", updateStatus);
 
         updateStatus();
 
         return () => {
             roomSubscription.unsubscribe();
-            room.messaging.off("participant_added", handleParticipantsChanged);
-            room.messaging.off("participant_removed", handleParticipantsChanged);
-            room.messaging.off("messaging_enabled", handleParticipantsChanged);
+            room.messaging.off("participant_added", updateStatus);
+            room.messaging.off("participant_removed", updateStatus);
+            room.messaging.off("messaging_enabled", updateStatus);
         };
     }, [agentName, path, room]);
 

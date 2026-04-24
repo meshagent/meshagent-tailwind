@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, ReactElement } from "react";
 
 import { Element, MeshDocument, Participant, RoomClient } from "@meshagent/meshagent";
 import { useDocumentChanged } from "@meshagent/meshagent-react";
@@ -14,6 +14,17 @@ import {
 import { useThreadStatus } from "./chat-hooks";
 import { Chat } from "./Chat";
 import { Button } from "./components/ui/button";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "./components/ui/dialog";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
 import { Spinner } from "./components/ui/spinner";
 import {
     ChatThreadDisplayMode,
@@ -44,6 +55,11 @@ interface UseThreadListDocumentResult {
     entries: ChatThreadListEntry[];
     loading: boolean;
     error: unknown;
+}
+
+interface RenameThreadDialogState {
+    entry: ChatThreadListEntry;
+    value: string;
 }
 
 export interface ChatBotViewProps {
@@ -187,10 +203,7 @@ function useIsWideLayout(minWidth: number): boolean {
     return matches;
 }
 
-function useThreadListDocument({
-    room,
-    path,
-}: {
+function useThreadListDocument({room, path}: {
     room: RoomClient;
     path: string | null;
 }): UseThreadListDocumentResult {
@@ -201,6 +214,7 @@ function useThreadListDocument({
 
     const syncDocumentState = useCallback((nextDocument: MeshDocument) => {
         const nextEntries = parseThreadListEntries(nextDocument);
+
         setEntries((currentEntries) => (
             threadEntriesEqual(currentEntries, nextEntries) ? currentEntries : nextEntries
         ));
@@ -282,7 +296,7 @@ function ThreadListRow({
     trailing?: ReactElement;
 }): ReactElement {
     return (
-        <div className="px-2 py-1">
+        <div className="px-2 py-1 cursor-pointer">
             <div
                 className={cn(
                     "flex min-w-0 items-center rounded-lg border border-transparent transition-colors",
@@ -330,14 +344,13 @@ function ThreadListEntryRow({
 }): ReactElement {
     const status = useThreadStatus({ room, path: entry.path, agentName });
     const iconClassName = selected ? "text-accent-foreground" : "text-muted-foreground";
-    const hasStatus = status.text?.trim() !== "";
 
     return (
         <ThreadListRow
             title={entry.name}
             selected={selected}
             onClick={() => onSelect(entry)}
-            icon={hasStatus
+            icon={status.hasStatus
                 ? <Spinner size="sm" className={iconClassName} />
                 : selected
                     ? <Check className={cn("h-4 w-4", iconClassName)} />
@@ -379,7 +392,7 @@ function ThreadListPanel({
     const showPendingNewThreadSelection = selectedThreadPath === null || !hasSelectedEntry;
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border bg-background">
+        <div className="h-full flex flex-col rounded-md border">
             {loading ? (
                 <div className="flex min-h-0 flex-1 items-center justify-center p-6">
                     <Spinner size="lg" className="text-muted-foreground" />
@@ -389,7 +402,7 @@ function ThreadListPanel({
                     {`Unable to load threads: ${describeError(error)}`}
                 </div>
             ) : (
-                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-1">
+                <div className="flex h-full flex-1 flex-col overflow-y-auto py-1">
                     <ThreadListRow
                         title="New thread"
                         selected={showPendingNewThreadSelection}
@@ -419,6 +432,65 @@ function ThreadListPanel({
                 </div>
             )}
         </div>
+    );
+}
+
+function RenameThreadDialog({
+    dialogState,
+    onNameChange,
+    onOpenChange,
+    onSubmit,
+}: {
+    dialogState: RenameThreadDialogState | null;
+    onNameChange: (event: ChangeEvent<HTMLInputElement>) => void;
+    onOpenChange: (open: boolean) => void;
+    onSubmit: (event: ChangeEvent<HTMLFormElement>) => void;
+}): ReactElement {
+    const inputId = useId();
+    const inputRef = useRef<HTMLInputElement>(null);
+    const trimmedName = dialogState?.value.trim() ?? "";
+    const saveDisabled = (
+        dialogState === null ||
+        trimmedName === "" ||
+        trimmedName === dialogState.entry.name
+    );
+
+    return (
+        <Dialog open={dialogState !== null} onOpenChange={onOpenChange}>
+            <DialogContent
+                showCloseButton={false}
+                className="sm:max-w-[425px]"
+                onOpenAutoFocus={(event) => {
+                    event.preventDefault();
+                    inputRef.current?.focus();
+                    inputRef.current?.select();
+                }}>
+                <form className="space-y-4" onSubmit={onSubmit}>
+                    <DialogHeader>
+                        <DialogTitle>Rename thread</DialogTitle>
+                        <DialogDescription>Use a short and descriptive name</DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-2">
+                        <Label htmlFor={inputId}>Name</Label>
+                        <Input
+                            ref={inputRef}
+                            id={inputId}
+                            value={dialogState?.value ?? ""}
+                            autoComplete="off"
+                            onChange={onNameChange}
+                        />
+                    </div>
+
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button type="button" variant="outline">Cancel</Button>
+                        </DialogClose>
+                        <Button type="submit" disabled={saveDisabled}>Save</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -485,6 +557,7 @@ export function ChatBotView({
     ));
     const previousLegacySelectedThreadPathRef = useRef(legacySelectedThreadPath);
     const previousNewThreadResetVersionRef = useRef(newThreadResetVersion);
+    const [renameThreadDialog, setRenameThreadDialog] = useState<RenameThreadDialogState | null>(null);
     const activeSelectedThreadPath = explicitSelectedThreadPath ?? internalSelectedThreadPath;
     const resolvedThreadListDocumentPath = useMemo(
         () => resolvedThreadListPath(threadListPath, { threadDir, agentName }),
@@ -544,6 +617,10 @@ export function ChatBotView({
         emitResolvedThread(normalizedNextPath, displayName);
     }, [emitResolvedThread, handleSelectedThreadPathChanged]);
 
+    const closeRenameThreadDialog = useCallback(() => {
+        setRenameThreadDialog(null);
+    }, []);
+
     useEffect(() => {
         if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
             previousNewThreadResetVersionRef.current = newThreadResetVersion;
@@ -561,26 +638,53 @@ export function ChatBotView({
     }, [activeSelectedThreadPath, newThreadResetVersion, setSelectedThread, threadDisplayMode]);
 
     const handleRenameThread = useCallback((entry: ChatThreadListEntry) => {
-        if (typeof window === "undefined") {
+        setRenameThreadDialog({
+            entry,
+            value: entry.name,
+        });
+    }, []);
+
+    const handleRenameThreadNameChanged = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+        const nextValue = event.target.value;
+
+        setRenameThreadDialog((currentDialogState) => {
+            if (currentDialogState === null) {
+                return currentDialogState;
+            }
+
+            return {
+                ...currentDialogState,
+                value: nextValue,
+            };
+        });
+    }, []);
+
+    const handleRenameThreadDialogOpenChange = useCallback((open: boolean) => {
+        if (!open) {
+            closeRenameThreadDialog();
+        }
+    }, [closeRenameThreadDialog]);
+
+    const handleRenameThreadSubmit = useCallback((event: ChangeEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (renameThreadDialog === null) {
             return;
         }
 
-        const nextName = window.prompt("Rename thread", entry.name);
-        if (nextName === null) {
+        const trimmedName = renameThreadDialog.value.trim();
+        if (trimmedName === "" || trimmedName === renameThreadDialog.entry.name) {
             return;
         }
 
-        const trimmedName = nextName.trim();
-        if (trimmedName === "" || trimmedName === entry.name) {
-            return;
+        renameThreadDialog.entry.element.setAttribute("name", trimmedName);
+
+        if (renameThreadDialog.entry.path === activeSelectedThreadPath) {
+            emitResolvedThread(renameThreadDialog.entry.path, trimmedName);
         }
 
-        entry.element.setAttribute("name", trimmedName);
-
-        if (entry.path === activeSelectedThreadPath) {
-            emitResolvedThread(entry.path, trimmedName);
-        }
-    }, [activeSelectedThreadPath, emitResolvedThread]);
+        closeRenameThreadDialog();
+    }, [activeSelectedThreadPath, closeRenameThreadDialog, emitResolvedThread, renameThreadDialog]);
 
     if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
         return (
@@ -633,31 +737,50 @@ export function ChatBotView({
     );
 
     if (!showThreadList || resolvedThreadListDocumentPath === null) {
-        return content;
+        return (
+            <>
+                {content}
+                <RenameThreadDialog
+                    dialogState={renameThreadDialog}
+                    onNameChange={handleRenameThreadNameChanged}
+                    onOpenChange={handleRenameThreadDialogOpenChange}
+                    onSubmit={handleRenameThreadSubmit}
+                />
+            </>
+        );
     }
 
     return (
-        <div className={cn("flex flex-1 h-full", isWideLayout ? "flex-row items-stretch" : "flex-col")}>
-            <div className="flex flex-col h-full min-h-0 min-w-0 flex-1">
-                {content}
+        <>
+            <div className={cn("flex flex-1 h-full", isWideLayout ? "flex-row items-stretch" : "flex-col")}>
+                <div className="flex flex-col h-full min-h-0 min-w-0 flex-1">
+                    {content}
+                </div>
+
+                <div className={cn("shrink-0 mr-4", isWideLayout ? "ml-3" : "mt-3")}
+                    style={isWideLayout ? { width: threadListWidth } : { height: threadListCollapsedHeight }}>
+                    <ThreadListPanel
+                        room={room}
+                        threadList={threadList}
+                        selectedThreadPath={activeSelectedThreadPath}
+                        agentName={agentName}
+                        onSelectThread={(entry) => {
+                            setSelectedThread(entry.path, entry.name);
+                        }}
+                        onClearSelection={() => {
+                            setSelectedThread(null, null);
+                        }}
+                        onRenameThread={handleRenameThread}
+                    />
+                </div>
             </div>
 
-            <div className={cn("shrink-0 mr-4", isWideLayout ? "ml-3" : "mt-3")}
-                style={isWideLayout ? { width: threadListWidth } : { height: threadListCollapsedHeight }}>
-                <ThreadListPanel
-                    room={room}
-                    threadList={threadList}
-                    selectedThreadPath={activeSelectedThreadPath}
-                    agentName={agentName}
-                    onSelectThread={(entry) => {
-                        setSelectedThread(entry.path, entry.name);
-                    }}
-                    onClearSelection={() => {
-                        setSelectedThread(null, null);
-                    }}
-                    onRenameThread={handleRenameThread}
-                />
-            </div>
-        </div>
+            <RenameThreadDialog
+                dialogState={renameThreadDialog}
+                onNameChange={handleRenameThreadNameChanged}
+                onOpenChange={handleRenameThreadDialogOpenChange}
+                onSubmit={handleRenameThreadSubmit}
+            />
+        </>
     );
 }

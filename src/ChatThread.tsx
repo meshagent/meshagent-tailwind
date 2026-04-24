@@ -704,7 +704,7 @@ function EmptyState({
     description?: string;
 }): ReactElement {
     return (
-        <div className="mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
+        <div className="h-full mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
             <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
                 {title}
             </h2>

@@ -160,7 +160,7 @@ function EmptyState({
     description?: string;
 }): ReactElement {
     return (
-        <div className="mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
+        <div className="h-full max-w-2xl flex flex-col items-center justify-center px-6 py-20 text-center">
             <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
                 {title}
             </h2>
@@ -502,7 +502,7 @@ export function Chat({
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="h-full flex flex-1 flex-col">
             {activePath ? (
                 <ResolvedChatView
                     key={activePath}
@@ -535,7 +535,7 @@ export function Chat({
                     </div>
                 </div>
             ) : (
-                <div className="flex min-h-0 flex-1 flex-col">
+                <div className="h-full flex flex-1 flex-col">
                     <div className="flex-1">
                         {emptyStateTitle ? (
                             <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
