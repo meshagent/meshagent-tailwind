@@ -1,3 +1,8 @@
+## [0.39.1]
+- Added `*Page` interfaces and new `Meshagent` TypeScript methods for paged listing (e.g., `getUsersInProjectPage`, `listMailboxesPage`, `listFeedsPage`, `listRoutesPage`, `listUniqueUsersWithGrantsPage`, `listOAuthClientsPage`, etc.) returning `{ items, total }`-style page payloads.
+- Updated existing list methods to accept `count`/`offset`/`filter` options and to default to paged fetching (default page-size behavior updated).
+- Improved payload parsing/validation for mailboxes (including mapping `room_id` into the Dart/JS-facing `roomId` shape).
+
 ## [0.39.0]
 - Expanded TypeScript datasets client support for dataset index management (index configuration/remapping and index metadata).
 - Added TypeScript datasets SQL cancellation API with typed cancel status/results.
