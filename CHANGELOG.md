@@ -1,3 +1,10 @@
+## [0.39.0]
+- Expanded TypeScript datasets client support for dataset index management (index configuration/remapping and index metadata).
+- Added TypeScript datasets SQL cancellation API with typed cancel status/results.
+- Applied “database” -> “datasets” terminology and toolkit/client updates across Node SDK clients (breaking for prior database-named usage).
+- Updated Node SDK/client surfaces for improved LLM proxy “pipes”, custom LLM usage tracking, and pricing/usage reporting (including gpt-5.5 pricing).
+- Updated a Node example dependency: `uuid` bumped to `^14.0.0` (from `^11.1.0`).
+
 ## [0.38.4]
 - Stability
 
