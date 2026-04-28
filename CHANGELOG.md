@@ -1,3 +1,6 @@
+## [0.39.2]
+- Aligned NodeJS/TypeScript SDK package versions and intra-SDK dependency references to `0.39.1` (from `0.39.0`), including updates to the `meshagent-docs` TypeScript example package.
+
 ## [0.39.1]
 - Added `*Page` interfaces and new `Meshagent` TypeScript methods for paged listing (e.g., `getUsersInProjectPage`, `listMailboxesPage`, `listFeedsPage`, `listRoutesPage`, `listUniqueUsersWithGrantsPage`, `listOAuthClientsPage`, etc.) returning `{ items, total }`-style page payloads.
 - Updated existing list methods to accept `count`/`offset`/`filter` options and to default to paged fetching (default page-size behavior updated).
