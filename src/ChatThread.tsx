@@ -905,7 +905,6 @@ export function ChatThread({
 
                         return null;
                     })}
-
                 </div>
             </div>
 
