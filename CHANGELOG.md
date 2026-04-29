@@ -1,3 +1,6 @@
+## [0.39.3]
+- Stability
+
 ## [0.39.2]
 - Aligned NodeJS/TypeScript SDK package versions and intra-SDK dependency references to `0.39.1` (from `0.39.0`), including updates to the `meshagent-docs` TypeScript example package.
 
