@@ -312,6 +312,43 @@ function MarkdownBlock({ text }: { text: string }): ReactElement {
                         {children}
                     </p>
                 ),
+                table: ({ children, ...props }) => (
+                    <div className="my-4 w-full overflow-x-auto">
+                        <table
+                            {...props}
+                            className="w-full border-collapse border-spacing-0">
+                            {children}
+                        </table>
+                    </div>
+                ),
+                th: ({ children, ...props }) => (
+                    <th
+                        {...props}
+                        className="border bg-muted/50 px-3 py-2 text-left text-sm font-semibold">
+                        {children}
+                    </th>
+                ),
+                td: ({ children, ...props }) => (
+                    <td
+                        {...props}
+                        className="border px-3 py-2 align-top text-sm bg-background">
+                        {children}
+                    </td>
+                ),
+                ul: ({ children, ...props }) => (
+                    <ul
+                        {...props}
+                        className="mb-2 ml-6 list-disc last:mb-0">
+                        {children}
+                    </ul>
+                ),
+                ol: ({ children, ...props }) => (
+                    <ol
+                        {...props}
+                        className="mb-2 ml-6 list-decimal last:mb-0">
+                        {children}
+                    </ol>
+                ),
             }}>
             {text}
         </ReactMarkdown>

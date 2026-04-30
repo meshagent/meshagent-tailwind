@@ -160,8 +160,8 @@ function EmptyState({
     description?: string;
 }): ReactElement {
     return (
-        <div className="h-full max-w-2xl flex flex-col items-center justify-center px-6 py-20 text-center">
-            <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+        <div className="h-full flex flex-col items-center justify-center px-6 py-20 text-center">
+            <h2 className="text-4xl font-black tracking-tight text-foreground">
                 {title}
             </h2>
             {description?.trim() ? (
