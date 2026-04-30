@@ -15,6 +15,8 @@ import { subscribe, useDocumentChanged, useRoomParticipants } from "@meshagent/m
 import { ChatMessage } from "./chat-message";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 
+const agentRoomMessageType = "agent-message";
+const agentTurnStartType = "meshagent.agent.turn.start";
 const agentTurnSteerType = "meshagent.agent.turn.steer";
 
 export interface UseChatThreadProps {
@@ -25,12 +27,15 @@ export interface UseChatThreadProps {
     includeLocalParticipant?: boolean;
     initialMessage?: ChatMessage;
     agentName?: string;
+    useAgentMessages?: boolean;
+    messageType?: string;
+    turnId?: string;
 }
 
 export interface UseChatThreadResult {
     document: MeshDocument | null;
     messages: Element[];
-    sendMessage: (message: ChatMessage) => void;
+    sendMessage: (message: ChatMessage) => Promise<void>;
     selectAttachments: (files: File[]) => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
@@ -38,6 +43,13 @@ export interface UseChatThreadResult {
     onlineParticipants: RemoteParticipant[];
     localParticipantName: string;
     cancelRequest?: () => void;
+}
+
+class ChatSendCancelledError extends Error {
+    constructor() {
+        super("chat send cancelled");
+        this.name = "ChatSendCancelledError";
+    }
 }
 
 export class PendingAgentMessage {
@@ -281,6 +293,235 @@ function getOnlineParticipants(
 
 function supportsAgentMessages(participant: Participant): boolean {
     return participant.getAttribute("supports_agent_messages") === true;
+}
+
+function uniqueRemoteParticipantsById(participants: Iterable<RemoteParticipant>): RemoteParticipant[] {
+    const seenParticipantIds = new Set<string>();
+    const uniqueParticipants: RemoteParticipant[] = [];
+
+    for (const participant of participants) {
+        if (seenParticipantIds.has(participant.id)) {
+            continue;
+        }
+
+        seenParticipantIds.add(participant.id);
+        uniqueParticipants.push(participant);
+    }
+
+    return uniqueParticipants;
+}
+
+function getAgentParticipants({
+    room,
+    document,
+    participantName,
+}: {
+    room: RoomClient;
+    document: MeshDocument;
+    participantName?: string;
+}): RemoteParticipant[] {
+    const normalizedParticipantName = participantName?.trim();
+
+    return uniqueRemoteParticipantsById(
+        getOnlineParticipants(room.messaging.remoteParticipants, getDocumentParticipantNames(document))
+            .filter((participant) => {
+                if (normalizedParticipantName && getParticipantName(participant) !== normalizedParticipantName) {
+                    return false;
+                }
+
+                return supportsAgentMessages(participant);
+            }),
+    );
+}
+
+function matchingRecipients({
+    room,
+    document,
+    useAgentMessages,
+    participantName,
+}: {
+    room: RoomClient;
+    document: MeshDocument;
+    useAgentMessages: boolean;
+    participantName?: string;
+}): RemoteParticipant[] {
+    const normalizedParticipantName = participantName?.trim();
+    if (useAgentMessages) {
+        return getAgentParticipants({ room, document, participantName: normalizedParticipantName });
+    }
+
+    return uniqueRemoteParticipantsById(
+        getOnlineParticipants(room.messaging.remoteParticipants, getDocumentParticipantNames(document))
+            .filter((participant) => {
+                if (!normalizedParticipantName) {
+                    return true;
+                }
+
+                return getParticipantName(participant) === normalizedParticipantName;
+            }),
+    );
+}
+
+function normalizeAgentAttachmentUrl(path: string): string | null {
+    const trimmedPath = path.trim();
+    if (trimmedPath === "") {
+        return null;
+    }
+
+    try {
+        const url = new URL(trimmedPath);
+        if (url.protocol !== "") {
+            return trimmedPath;
+        }
+    } catch {
+        // Relative attachment paths are converted to room URLs below.
+    }
+
+    const roomPath = trimmedPath.startsWith("/") ? trimmedPath.slice(1) : trimmedPath;
+    return roomPath === "" ? null : `room:///${roomPath}`;
+}
+
+function agentInputContentFromMessage(message: ChatMessage): Record<string, unknown>[] {
+    const content: Record<string, unknown>[] = [];
+    if (message.text.trim() !== "") {
+        content.push({ type: "text", text: message.text });
+    }
+
+    for (const attachmentPath of message.attachments) {
+        const normalizedUrl = normalizeAgentAttachmentUrl(attachmentPath);
+        if (normalizedUrl !== null) {
+            content.push({ type: "file", url: normalizedUrl });
+        }
+    }
+
+    return content;
+}
+
+async function sendMessageToParticipant({
+    room,
+    participant,
+    path,
+    message,
+    messageType = "chat",
+    useAgentMessages = false,
+    turnId,
+    store = false,
+}: {
+    room: RoomClient;
+    participant: Participant;
+    path: string;
+    message: ChatMessage;
+    messageType?: string;
+    useAgentMessages?: boolean;
+    turnId?: string;
+    store?: boolean;
+}): Promise<void> {
+    if (message.text.trim() === "" && message.attachments.length === 0) {
+        return;
+    }
+
+    if (useAgentMessages) {
+        const isSteer = messageType === "steer";
+        const payload: Record<string, unknown> = {
+            type: isSteer ? agentTurnSteerType : agentTurnStartType,
+            thread_id: path,
+            message_id: message.id,
+            content: agentInputContentFromMessage(message),
+        };
+
+        if (isSteer && turnId?.trim()) {
+            payload.turn_id = turnId.trim();
+        }
+
+        await room.messaging.sendMessage({
+            to: participant,
+            type: agentRoomMessageType,
+            message: { payload },
+        });
+        return;
+    }
+
+    await room.messaging.sendMessage({
+        to: participant,
+        type: messageType,
+        message: {
+            path,
+            text: message.text,
+            attachments: message.attachments.map((attachmentPath) => ({ path: attachmentPath })),
+            store,
+        },
+    });
+}
+
+function waitForRecipients({
+    room,
+    document,
+    messageId,
+    useAgentMessages,
+    participantName,
+    pendingRecipientWaits,
+}: {
+    room: RoomClient;
+    document: MeshDocument;
+    messageId: string;
+    useAgentMessages: boolean;
+    participantName?: string;
+    pendingRecipientWaits: Map<string, () => void>;
+}): Promise<RemoteParticipant[]> {
+    pendingRecipientWaits.get(messageId)?.();
+
+    return new Promise((resolve, reject) => {
+        let finished = false;
+        const eventNames = [
+            "participant_added",
+            "participant_removed",
+            "participant_attributes_updated",
+            "messaging_enabled",
+        ];
+
+        const finish = () => {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
+            for (const eventName of eventNames) {
+                room.messaging.off(eventName, listener);
+            }
+
+            if (pendingRecipientWaits.get(messageId) === cancel) {
+                pendingRecipientWaits.delete(messageId);
+            }
+        };
+
+        const cancel = () => {
+            finish();
+            reject(new ChatSendCancelledError());
+        };
+
+        const listener = () => {
+            const recipients = matchingRecipients({
+                room,
+                document,
+                useAgentMessages,
+                participantName,
+            });
+
+            if (recipients.length === 0) {
+                return;
+            }
+
+            finish();
+            resolve(recipients);
+        };
+
+        pendingRecipientWaits.set(messageId, cancel);
+        for (const eventName of eventNames) {
+            room.messaging.on(eventName, listener);
+        }
+
+        listener();
+    });
 }
 
 function threadStatusAttributeCandidates(path: string, prefix: string): string[] {
@@ -533,6 +774,9 @@ export function useChatThread({
     initialMessage,
     includeLocalParticipant,
     agentName,
+    useAgentMessages = false,
+    messageType = "chat",
+    turnId,
 }: UseChatThreadProps): UseChatThreadResult {
     const [document, setDocument] = useState<MeshDocument | null>(null);
     const [messages, setMessages] = useState<Element[]>(() => (document ? mapThreadElements(document) : []));
@@ -541,6 +785,7 @@ export function useChatThread({
         document ? getDocumentParticipantNames(document) : []
     ));
     const initialMessageSentRef = useRef(false);
+    const pendingRecipientWaitsRef = useRef<Map<string, () => void>>(new Map());
 
     const syncDocumentState = useCallback((nextDocument: MeshDocument) => {
         const nextMessages = mapThreadElements(nextDocument);
@@ -605,6 +850,15 @@ export function useChatThread({
     }, [path, room, syncDocumentState]);
 
     useEffect(() => {
+        return () => {
+            for (const cancel of pendingRecipientWaitsRef.current.values()) {
+                cancel();
+            }
+            pendingRecipientWaitsRef.current.clear();
+        };
+    }, []);
+
+    useEffect(() => {
         if (!document || !room.localParticipant) {
             return;
         }
@@ -644,42 +898,76 @@ export function useChatThread({
         [roomParticipants, documentParticipantNames],
     );
 
-    const sendMessage = useCallback((message: ChatMessage) => {
-        const children = (document?.root.getChildren() as Element[]) ?? [];
-        const thread = children.find((child) => child.tagName === "messages");
-        if (!thread) {
+    const sendMessage = useCallback(async (message: ChatMessage) => {
+        if (message.text.trim() === "" && message.attachments.length === 0) {
             return;
         }
 
-        const authorName = getParticipantName(room.localParticipant!);
-        const messageElement = thread.createChildElement("message", {
-            id: message.id,
-            text: message.text,
-            created_at: new Date().toISOString(),
-            author_name: authorName,
-            author_ref: null,
+        const normalizedParticipantName = agentName?.trim();
+        const storeLocally = !normalizedParticipantName && !useAgentMessages;
+        const children = (document?.root.getChildren() as Element[]) ?? [];
+        const messagesElement = children.find((child) => child.tagName === "messages");
+        if (!document || !messagesElement) {
+            return;
+        }
+
+        if (storeLocally) {
+            const authorName = getParticipantName(room.localParticipant!);
+            const messageElement = messagesElement.createChildElement("message", {
+                id: message.id,
+                text: message.text,
+                created_at: new Date().toISOString(),
+                author_name: authorName,
+                author_ref: null,
+            });
+
+            for (const attachmentPath of message.attachments) {
+                messageElement.createChildElement("file", { path: attachmentPath });
+            }
+        }
+
+        let recipients = matchingRecipients({
+            room,
+            document,
+            useAgentMessages,
+            participantName: normalizedParticipantName,
         });
 
-        for (const attachmentPath of message.attachments) {
-            messageElement.createChildElement("file", { path: attachmentPath });
-        }
-
-        for (const participant of onlineParticipants) {
-            if (!matchesParticipantName(participant, agentName)) {
-                continue;
+        if (recipients.length === 0) {
+            const shouldWaitForRecipient = useAgentMessages || Boolean(normalizedParticipantName);
+            if (!shouldWaitForRecipient) {
+                throw new Error(`no matching recipients are available for '${path}'`);
             }
 
-            room.messaging.sendMessage({
-                to: participant,
-                type: "chat",
-                message: {
-                    path,
-                    text: message.text,
-                    attachments: message.attachments.map((attachmentPath) => ({ path: attachmentPath })),
-                },
-            });
+            try {
+                recipients = await waitForRecipients({
+                    room,
+                    document,
+                    messageId: message.id,
+                    useAgentMessages,
+                    participantName: normalizedParticipantName,
+                    pendingRecipientWaits: pendingRecipientWaitsRef.current,
+                });
+            } catch (error) {
+                if (error instanceof ChatSendCancelledError) {
+                    return;
+                }
+
+                throw error;
+            }
         }
-    }, [agentName, document, onlineParticipants, path, room]);
+
+        await Promise.all(recipients.map((participant) => sendMessageToParticipant({
+            room,
+            participant,
+            path,
+            message,
+            messageType,
+            useAgentMessages,
+            turnId,
+            store: Boolean(normalizedParticipantName) && getParticipantName(participant) === normalizedParticipantName,
+        })));
+    }, [agentName, document, messageType, path, room, turnId, useAgentMessages]);
 
     useEffect(() => {
         if (!document || !initialMessage || initialMessageSentRef.current) {

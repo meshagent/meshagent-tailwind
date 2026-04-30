@@ -202,6 +202,9 @@ function ResolvedChatView({
     showNewThreadButton = false,
     onStartNewThread,
 }: ResolvedChatViewProps): ReactElement {
+    const threadStatus = useThreadStatus({ room, path, agentName });
+    const useAgentMessages = threadStatus.supportsAgentMessages;
+    const messageType = useAgentMessages && threadStatus.mode === "steerable" && threadStatus.turnId ? "steer" : "chat";
     const {
         document,
         messages,
@@ -212,9 +215,16 @@ function ResolvedChatView({
         onlineParticipants,
         localParticipantName,
         cancelRequest,
-    } = useChatThread({ room, path, participants, agentName });
+    } = useChatThread({
+        room,
+        path,
+        participants,
+        agentName,
+        useAgentMessages,
+        messageType,
+        turnId: threadStatus.turnId,
+    });
     const { typing, thinking } = useRoomIndicators({ room, path });
-    const threadStatus = useThreadStatus({ room, path, agentName });
     const [showCompletedToolCalls, setShowCompletedToolCalls] = useState(false);
 
     const onTextChange = useCallback(() => {
