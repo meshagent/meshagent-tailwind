@@ -1,3 +1,10 @@
+## [0.39.4]
+- Updated the Node/TS React dev package dependency graph to the newer `@meshagent/meshagent` and `@meshagent/meshagent-react` versions (`^0.38.4`) and upgraded supporting UI dependencies (including `shadcn` `^4.5.0`, `radix-ui` `^1.4.3`, and `lucide-react` `^0.525.0`).
+- Updated build tooling in the React dev package (new `build:js` / `build:types` scripts using TS configs) to match the updated packaging workflow.
+- Added a new shadcn/radix-based Tabs component for the developer console UI.
+- Added/updated React hooks for terminal/developer-console functionality, including a WASM web terminal integration hook.
+- ESM/CJS compatibility improvements in the TS SDK bundle/entrypoint, and updated TypeScript client service-spec serialization to omit `id` when creating services.
+
 ## [0.39.3]
 - Stability
 
