@@ -1,3 +1,6 @@
+## [0.39.7]
+- Updated Meshagent JS/TS package manifests so inter-package dependencies are aligned to the new Meshagent version (`@meshagent/*` packages now depend on the updated `^0.39.6` versions).
+
 ## [0.39.6]
 - Chat thread message sending now supports an “agent messages” mode: it selects participants that advertise agent-message support and sends `agent-message` payloads using `meshagent.agent.turn.start` / `meshagent.agent.turn.steer` types (including turn/thread scoping), with Promise-based sending and cancellation when recipients never materialize.
 - Chat UI/logic now determines the correct outbound message type (chat vs steer) and turn context from thread status, and passes that into message sending.
