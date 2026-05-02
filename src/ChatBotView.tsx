@@ -76,6 +76,8 @@ export interface ChatBotViewProps {
     centerComposer?: boolean;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
+    startNewThreadTitle?: string;
+    startNewThreadDescription?: string;
     selectedThreadPath?: string | null;
     selectedThreadDisplayName?: string | null;
     onSelectedThreadPathChanged?: (path: string | null) => void;
@@ -528,6 +530,8 @@ export function ChatBotView({
     centerComposer = false,
     emptyStateTitle = "No threads yet",
     emptyStateDescription = "Start a new conversation to see it here.",
+    startNewThreadTitle = "Start a new thread",
+    startNewThreadDescription = "Connect with this agent and your team.",
     selectedThreadPath,
     onSelectedThreadPathChanged,
     onSelectedThreadResolved,
@@ -718,8 +722,6 @@ export function ChatBotView({
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
-            emptyStateTitle={emptyStateTitle}
-            emptyStateDescription={emptyStateDescription}
             builder={(threadPath) => (
                 <Chat
                     room={room}
@@ -729,8 +731,8 @@ export function ChatBotView({
                     toolkit={toolkit}
                     tool={tool}
                     centerComposer={centerComposer}
-                    emptyStateTitle={emptyStateTitle}
-                    emptyStateDescription={emptyStateDescription}
+                    emptyStateTitle={startNewThreadTitle}
+                    emptyStateDescription={startNewThreadDescription}
                 />
             )}
         />

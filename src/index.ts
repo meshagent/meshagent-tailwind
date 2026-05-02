@@ -8,3 +8,4 @@ export * from './chat-message';
 export * from './conversation-descriptor';
 export * from './file-attachment';
 export * from './multi-thread-view';
+export * from './chat-hooks';
