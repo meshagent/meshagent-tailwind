@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "./ui/button";
 import {
     Sheet,
     SheetContent,
@@ -10,9 +10,9 @@ import {
     SheetTitle,
     SheetDescription,
     SheetFooter,
-} from "@/components/ui/sheet";
+} from "./ui/sheet";
 
-import { registerPane, closePane } from "@/lib/pane-service";
+import { registerPane, closePane } from "../lib/pane-service";
 
 export default function PaneExample() {
     const [open, setOpen] = useState(false);
