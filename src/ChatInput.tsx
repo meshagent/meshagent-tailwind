@@ -5,11 +5,13 @@ import { v4 as uuidV4 } from "uuid";
 
 import { ChatMessage } from "./chat-message";
 import { Button } from "./components/ui/button";
-import { Textarea } from "./components/ui/textarea";
 import { FileUploader } from "./FileUploader";
 import { UploadPill } from "./UploadPill";
 import { type FileUpload, UploadStatus } from "./file-attachment";
 import { cn } from "./lib/utils";
+
+const MIN_TEXTAREA_HEIGHT = 20;
+const MAX_TEXTAREA_HEIGHT = 160;
 
 interface ChatInputProps {
     onSubmit: (message: ChatMessage) => void | Promise<void>;
@@ -61,10 +63,13 @@ function useAutoResizingTextarea(
         }
 
         if (value === "") {
-            element.style.height = "20px";
+            element.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
         } else {
             element.style.height = "0px";
-            element.style.height = `${Math.max(20, Math.min(element.scrollHeight, 160))}px`;
+            element.style.height = `${Math.max(
+                MIN_TEXTAREA_HEIGHT,
+                Math.min(element.scrollHeight, MAX_TEXTAREA_HEIGHT),
+            )}px`;
         }
     }, [textareaRef, value]);
 }
@@ -221,21 +226,22 @@ export function ChatInput({
                         ))}
                     </div>
                 ) : null}
-
                 <div className="flex items-center gap-2">
                     <FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />
-
-                    <Textarea
+                    <textarea
                         ref={textareaRef}
                         autoFocus={autoFocus}
                         placeholder={placeholder}
-                        className="min-h-5 max-h-40 flex-1 resize-none border-0 bg-transparent p-0 leading-5 shadow-none focus-visible:border-transparent focus-visible:ring-0"
+                        className={cn(
+                          "min-h-5 max-h-40",
+                          "flex-1 resize-none border-0 bg-transparent p-0 leading-5",
+                          "shadow-none outline-none ring-0 focus:ring-0 focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50",
+                          "md:text-sm",
+                        )}
                         readOnly={disabled}
                         value={value}
                         onChange={handleChange}
-                        onKeyDown={handleKeyDown}
-                    />
-
+                        onKeyDown={handleKeyDown} />
                     {trailingButton}
                 </div>
             </div>

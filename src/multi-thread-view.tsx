@@ -38,8 +38,8 @@ export function MultiThreadView({
     onSelectedThreadResolved,
     newThreadResetVersion = 0,
     centerComposer = true,
-    emptyStateTitle,
-    emptyStateDescription,
+    emptyStateTitle = "Start a new thread",
+    emptyStateDescription = "Connect with this agent and your team",
 }: MultiThreadViewProps): ReactElement {
     const controlledSelectedThreadPath = selectedThreadPath !== undefined
         ? normalizeSelectedThreadPath(selectedThreadPath)
@@ -82,8 +82,6 @@ export function MultiThreadView({
             toolkit={toolkit}
             tool={tool}
             centerComposer={centerComposer}
-            emptyStateTitle={emptyStateTitle}
-            emptyStateDescription={emptyStateDescription}
             onThreadResolved={(path, displayName) => {
                 const normalizedPath = normalizeSelectedThreadPath(path);
 
@@ -94,6 +92,8 @@ export function MultiThreadView({
                 onSelectedThreadPathChanged?.(normalizedPath);
                 onSelectedThreadResolved?.(normalizedPath, displayName);
             }}
+            emptyStateTitle={emptyStateTitle}
+            emptyStateDescription={emptyStateDescription}
         />
     );
 }
