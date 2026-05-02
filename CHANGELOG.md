@@ -1,3 +1,9 @@
+## [0.39.6]
+- Chat thread message sending now supports an “agent messages” mode: it selects participants that advertise agent-message support and sends `agent-message` payloads using `meshagent.agent.turn.start` / `meshagent.agent.turn.steer` types (including turn/thread scoping), with Promise-based sending and cancellation when recipients never materialize.
+- Chat UI/logic now determines the correct outbound message type (chat vs steer) and turn context from thread status, and passes that into message sending.
+- DatasetsClient now adds strongly typed `importFromStorage` and `exportToStorage` APIs with dataset storage format + import mode options, optional `namespace`/`branch` scoping, and `batch_size` support that is omitted when unset.
+- Unit tests were updated to verify the new import/export request payload shapes and defaults.
+
 ## [0.39.5]
 - Stability
 
