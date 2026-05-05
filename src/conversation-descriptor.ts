@@ -22,32 +22,38 @@ export class ChatAgentConversationDescriptor {
         chatThreadDisplayMode = ChatThreadDisplayMode.SingleThread,
         threadDir = null,
         threadListPath = null,
+        threadPath = null,
     }: {
         kind: ChatAgentConversationKind;
         chatThreadDisplayMode?: ChatThreadDisplayMode;
         threadDir?: string | null;
         threadListPath?: string | null;
+        threadPath?: string | null;
     }) {
         this.kind = kind;
         this.chatThreadDisplayMode = chatThreadDisplayMode;
         this.threadDir = threadDir;
         this.threadListPath = threadListPath;
+        this.threadPath = threadPath;
     }
 
     static chat({
         chatThreadDisplayMode = ChatThreadDisplayMode.SingleThread,
         threadDir = null,
         threadListPath = null,
+        threadPath = null,
     }: {
         chatThreadDisplayMode?: ChatThreadDisplayMode;
         threadDir?: string | null;
         threadListPath?: string | null;
+        threadPath?: string | null;
     } = {}): ChatAgentConversationDescriptor {
         return new ChatAgentConversationDescriptor({
             kind: ChatAgentConversationKind.Chat,
             chatThreadDisplayMode,
             threadDir,
             threadListPath,
+            threadPath,
         });
     }
 
@@ -67,6 +73,7 @@ export class ChatAgentConversationDescriptor {
     readonly chatThreadDisplayMode: ChatThreadDisplayMode;
     readonly threadDir: string | null;
     readonly threadListPath: string | null;
+    readonly threadPath: string | null;
 
     get isChat(): boolean {
         return this.kind === ChatAgentConversationKind.Chat;
@@ -162,6 +169,10 @@ export function participantThreadListPath(participant: RemoteParticipant): strin
     return threadListPath ?? threadListPathFromThreadDir(participantThreadDir(participant));
 }
 
+export function participantThreadPath(participant: RemoteParticipant): string | null {
+    return normalizedAnnotationString(participant.getAttribute("meshagent.chatbot.thread-path"));
+}
+
 export function participantConversationDescriptor(
     participant: RemoteParticipant,
 ): ChatAgentConversationDescriptor | null {
@@ -169,10 +180,12 @@ export function participantConversationDescriptor(
     const supportsChat = participantSupportsChatOverride(participant);
     const threadDir = participantThreadDir(participant);
     const threadListPath = participantThreadListPath(participant);
+    const threadPath = participantThreadPath(participant);
     const hasThreadAnnotations = (
         normalizedAnnotationString(participant.getAttribute("meshagent.chatbot.threading")) !== null ||
         threadDir !== null ||
-        threadListPath !== null
+        threadListPath !== null ||
+        threadPath !== null
     );
 
     if (supportsChat === false) {
@@ -190,6 +203,7 @@ export function participantConversationDescriptor(
             ),
             threadDir,
             threadListPath,
+            threadPath,
         });
     }
 
@@ -235,6 +249,31 @@ export function serviceThreadListPath(
     return null;
 }
 
+export function serviceThreadPath(
+    service: ServiceSpec,
+    { remoteParticipants = [] }: { remoteParticipants?: Iterable<RemoteParticipant> } = {},
+): string | null {
+    const annotationPath = normalizedAnnotationString(
+        firstAgent(service)?.annotations?.["meshagent.chatbot.thread-path"],
+    );
+    if (annotationPath !== null) {
+        return annotationPath;
+    }
+
+    const agentName = firstAgent(service)?.name;
+    if (!agentName || agentName.trim() === "") {
+        return null;
+    }
+
+    for (const participant of remoteParticipants) {
+        if (participant.getAttribute("name") === agentName) {
+            return participantThreadPath(participant);
+        }
+    }
+
+    return null;
+}
+
 export function serviceConversationDescriptor(
     service: ServiceSpec,
     { remoteParticipants = [] }: { remoteParticipants?: Iterable<RemoteParticipant> } = {},
@@ -258,6 +297,7 @@ export function serviceConversationDescriptor(
         ),
         threadDir: serviceThreadDir(service),
         threadListPath: serviceThreadListPath(service, { remoteParticipants }),
+        threadPath: serviceThreadPath(service, { remoteParticipants }),
     });
 }
 
@@ -328,6 +368,9 @@ export function chatDocumentPath(
 ): string {
     const normalizedDir = normalizedThreadDir(threadDir);
     if (normalizedDir !== null) {
+        if (normalizedDir.startsWith("dataset://") || normalizedDir.startsWith("tmp://")) {
+            return `${normalizedDir}/main`;
+        }
         return `${normalizedDir}/main.thread`;
     }
 
