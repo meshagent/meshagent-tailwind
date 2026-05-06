@@ -9,7 +9,7 @@ import remarkGfm from "remark-gfm";
 
 import { Button } from "./components/ui/button";
 import { Spinner } from "./components/ui/spinner";
-import { ChatTypingIndicator } from "./ChatTypingIndicator";
+import { ChatTypingIndicator } from "./chat-typing-indicator";
 import { cn } from "./lib/utils";
 
 const supportedEventKinds = new Set([

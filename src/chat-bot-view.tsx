@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { useThreadStatus } from "./chat-hooks";
-import { Chat } from "./Chat";
+import { Chat } from "./chat";
 import { Button } from "./components/ui/button";
 import {
     Dialog,

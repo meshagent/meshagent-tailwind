@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { RoomClient } from "@meshagent/meshagent";
 
-import { Chat } from "./Chat";
+import { Chat } from "./chat";
 
 export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
 
