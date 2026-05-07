@@ -1,3 +1,10 @@
+## [0.39.8]
+- TypeScript API: `RoomContainer` now includes a required `ports: number[]` field (and validation) in container listings
+- TypeScript API: `ContainerSpec` now supports optional fields `private`, `on_demand`, and `writable_root_fs`
+- React developer-console package: refactored view switching to use strongly-typed tab configs and reorganized the console UI into grouped primary/resource/terminal tab groups
+- React developer-console package: updated console layouts to wire the developer terminal/container/image/logs/metrics/traces panes into the new tab/view structure
+- Build tooling: developer-console package `build:types` now runs declaration-path rewrite as part of type generation
+
 ## [0.39.7]
 - Updated Meshagent JS/TS package manifests so inter-package dependencies are aligned to the new Meshagent version (`@meshagent/*` packages now depend on the updated `^0.39.6` versions).
 
