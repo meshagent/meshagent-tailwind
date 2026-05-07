@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactElement } from "react";
-import { Element, RoomClient } from "@meshagent/meshagent";
+import { Element, Participant, RoomClient } from "@meshagent/meshagent";
 import { Download, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -9,7 +9,9 @@ import remarkGfm from "remark-gfm";
 
 import { Button } from "./components/ui/button";
 import { Spinner } from "./components/ui/spinner";
-import { ChatTypingIndicator } from "./ChatTypingIndicator";
+import { ChatTypingIndicator } from "./chat-typing-indicator";
+import { ChatInput } from "./chat-input";
+import { useChatThread, useThreadStatus } from "./chat-hooks";
 import { cn } from "./lib/utils";
 
 const supportedEventKinds = new Set([
@@ -26,7 +28,7 @@ const supportedEventKinds = new Set([
     "file",
 ]);
 
-export interface ChatThreadProps {
+interface ChatThreadViewProps {
     room: RoomClient;
     messages: Element[];
     isLoading?: boolean;
@@ -40,6 +42,15 @@ export interface ChatThreadProps {
     threadStatusStartedAt?: Date | null;
     threadStatusMode?: string | null;
     onCancelRequest?: () => void;
+    emptyStateTitle?: string;
+    emptyStateDescription?: string;
+}
+
+export interface ChatThreadProps {
+    room: RoomClient;
+    path: string;
+    participants?: Participant[];
+    agentName?: string;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
 }
@@ -106,6 +117,7 @@ export function timeAgo(iso: string): string {
 function displayParticipantName(name: string): string {
     return name.split("@")[0]?.trim() ?? name.trim();
 }
+
 
 function isImagePath(path: string): boolean {
     return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(path);
@@ -756,6 +768,61 @@ function EmptyState({
 
 export function ChatThread({
     room,
+    path,
+    participants,
+    agentName,
+    emptyStateTitle,
+    emptyStateDescription,
+}: ChatThreadProps): ReactElement {
+    const status = useThreadStatus({ room, path, agentName });
+    const {
+        document,
+        messages,
+        sendMessage,
+        selectAttachments,
+        attachments,
+        setAttachments,
+        localParticipantName,
+        cancelRequest,
+    } = useChatThread({
+        room,
+        path,
+        participants,
+        agentName,
+        useAgentMessages: agentName?.trim() !== "",
+        messageType: status.mode === "steerable" && status.turnId != null ? "steer" : "chat",
+        turnId: status.turnId,
+    });
+
+    return (
+        <div className="flex min-h-0 flex-1 flex-col">
+            <ChatThreadView
+                room={room}
+                messages={messages}
+                isLoading={document === null}
+                localParticipantName={localParticipantName}
+                path={path}
+                threadStatusText={status.text}
+                threadStatusStartedAt={status.startedAt}
+                threadStatusMode={status.mode}
+                onCancelRequest={cancelRequest}
+                emptyStateTitle={emptyStateTitle}
+                emptyStateDescription={emptyStateDescription}
+            />
+            <ChatInput
+                onSubmit={sendMessage}
+                attachments={attachments}
+                onFilesSelected={selectAttachments}
+                setAttachments={setAttachments}
+                disabled={document === null}
+                placeholder={agentName?.trim() ? `Type a message or @${displayParticipantName(agentName)}` : "Type a message"}
+            />
+        </div>
+    );
+}
+
+function ChatThreadView({
+    room,
     messages,
     isLoading = false,
     localParticipantName,
@@ -770,7 +837,7 @@ export function ChatThread({
     onCancelRequest,
     emptyStateTitle,
     emptyStateDescription,
-}: ChatThreadProps): ReactElement {
+}: ChatThreadViewProps): ReactElement {
     const visibleMessages = useMemo(
         () => messages.filter((message) => shouldRenderThreadElement(message, showCompletedToolCalls)),
         [messages, showCompletedToolCalls],

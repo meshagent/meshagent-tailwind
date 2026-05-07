@@ -59,6 +59,8 @@ export class PendingAgentMessage {
   readonly text: string;
   readonly attachments: string[];
   readonly senderName?: string;
+  readonly createdAt?: Date;
+  readonly matchByContentOnly: boolean;
   readonly awaitingAcceptance: boolean;
   readonly awaitingOnline: boolean;
 
@@ -69,6 +71,8 @@ export class PendingAgentMessage {
     text,
     attachments,
     senderName,
+    createdAt,
+    matchByContentOnly = false,
     awaitingAcceptance = false,
     awaitingOnline = false,
   }: {
@@ -78,6 +82,8 @@ export class PendingAgentMessage {
     text: string;
     attachments: string[];
     senderName?: string;
+    createdAt?: Date;
+    matchByContentOnly?: boolean;
     awaitingAcceptance?: boolean;
     awaitingOnline?: boolean;
   }) {
@@ -87,6 +93,8 @@ export class PendingAgentMessage {
     this.text = text;
     this.attachments = attachments;
     this.senderName = senderName;
+    this.createdAt = createdAt;
+    this.matchByContentOnly = matchByContentOnly;
     this.awaitingAcceptance = awaitingAcceptance;
     this.awaitingOnline = awaitingOnline;
   }
@@ -123,6 +131,8 @@ export class PendingAgentMessage {
     const messageType = json["message_type"];
     const messageId = json["message_id"];
     const threadPath = json["thread_id"];
+    const createdAt = json["created_at"];
+    const parsedCreatedAt = typeof createdAt === "string" ? new Date(createdAt) : undefined;
 
     return new PendingAgentMessage({
       messageId: typeof messageId === "string" ? messageId : crypto.randomUUID(),
@@ -134,6 +144,11 @@ export class PendingAgentMessage {
         typeof senderName === "string" && senderName.trim().length > 0
           ? senderName.trim()
           : undefined,
+      createdAt:
+        parsedCreatedAt instanceof Date && !Number.isNaN(parsedCreatedAt.getTime())
+          ? parsedCreatedAt
+          : undefined,
+      matchByContentOnly: false,
       awaitingOnline: false,
     });
   }
@@ -727,7 +742,11 @@ function pendingMessagesEqual(
                 message.messageType === other.messageType &&
                 message.text === other.text &&
                 stringArraysEqual(message.attachments, other.attachments) &&
-                message.senderName === other.senderName
+                message.senderName === other.senderName &&
+                message.createdAt?.getTime() === other.createdAt?.getTime() &&
+                message.matchByContentOnly === other.matchByContentOnly &&
+                message.awaitingAcceptance === other.awaitingAcceptance &&
+                message.awaitingOnline === other.awaitingOnline
             );
         })
     );

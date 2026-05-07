@@ -1,26 +1,32 @@
-import { useState, useRef, useMemo, useEffect, useCallback } from "react";
-import type { RefObject, ReactElement } from "react";
-import { JsonContent, Participant, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
-import { useRoomIndicators } from "@meshagent/meshagent-react";
-import { Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement, RefObject } from "react";
+import { JsonContent, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 
-import { ChatInput } from "./ChatInput";
-import { ChatThread } from "./ChatThread";
-import { Button } from "./components/ui/button";
-import { Toaster } from "./components/ui/sonner";
+import { ChatInput } from "./chat-input";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
-import { useChatThread, useThreadStatus } from "./chat-hooks";
+import { Toaster } from "./components/ui/sonner";
+
+export type NewChatThreadBuilder = (threadPath: string) => ReactElement;
+
+export interface NewChatThreadProps {
+    room: RoomClient;
+    agentName: string;
+    builder: NewChatThreadBuilder;
+    toolkit?: string;
+    tool?: string;
+    selectedThreadPath?: string | null;
+    onThreadPathChanged?: (path: string | null) => void;
+    onThreadResolved?: (path: string | null, displayName: string | null) => void;
+    centerComposer?: boolean;
+    emptyStateTitle?: string;
+    emptyStateDescription?: string;
+}
 
 class NewThreadCancelledError extends Error {
     constructor() {
         super("new thread creation cancelled");
         this.name = "NewThreadCancelledError";
     }
-}
-
-interface ThreadToolResult {
-    path: string;
-    displayName: string | null;
 }
 
 function normalizeThreadPath(path?: string | null): string | null {
@@ -132,16 +138,13 @@ function getStringField(record: Record<string, unknown>, key: string): string | 
     return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
-function parseThreadToolResult(toolkit: string, tool: string, content: JsonContent): ThreadToolResult {
+function parseThreadToolResult(toolkit: string, tool: string, content: JsonContent): [path: string, displayName: string | null] {
     const path = getStringField(content.json, "path");
     if (!path) {
         throw new Error(`${toolkit}.${tool} response missing path`);
     }
 
-    return {
-        path,
-        displayName: getStringField(content.json, "name"),
-    };
+    return [path, getStringField(content.json, "name")];
 }
 
 function describeError(error: unknown): string {
@@ -160,8 +163,8 @@ function EmptyState({
     description?: string;
 }): ReactElement {
     return (
-        <div className="h-full flex flex-col items-center justify-center px-6 py-20 text-center">
-            <h2 className="text-4xl font-bold tracking-tight text-foreground">
+        <div className="h-full mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
+            <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
                 {title}
             </h2>
             {description?.trim() ? (
@@ -175,140 +178,25 @@ function EmptyState({
 
 function ErrorBanner({ message }: { message: string }): ReactElement {
     return (
-        <div className="mx-auto w-full max-w-[912px] whitespace-pre-wrap rounded-3xl border border-destructive/30 bg-destructive/5 px-6 py-5 text-sm text-destructive">
+        <div className="mx-auto w-full max-w-[912px] whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-6 py-5 text-sm text-destructive">
             {message}
         </div>
     );
 }
 
-interface ResolvedChatViewProps {
-    room: RoomClient;
-    path: string;
-    participants?: Participant[];
-    agentName?: string;
-    emptyStateTitle?: string;
-    emptyStateDescription?: string;
-    showNewThreadButton?: boolean;
-    onStartNewThread?: () => void;
-}
-
-function ResolvedChatView({
+export function NewChatThread({
     room,
-    path,
-    participants,
     agentName,
-    emptyStateTitle,
-    emptyStateDescription,
-    showNewThreadButton = false,
-    onStartNewThread,
-}: ResolvedChatViewProps): ReactElement {
-    const threadStatus = useThreadStatus({ room, path, agentName });
-    const useAgentMessages = threadStatus.supportsAgentMessages;
-    const messageType = useAgentMessages && threadStatus.mode === "steerable" && threadStatus.turnId ? "steer" : "chat";
-    const {
-        document,
-        messages,
-        sendMessage,
-        selectAttachments,
-        attachments,
-        setAttachments,
-        onlineParticipants,
-        localParticipantName,
-        cancelRequest,
-    } = useChatThread({
-        room,
-        path,
-        participants,
-        agentName,
-        useAgentMessages,
-        messageType,
-        turnId: threadStatus.turnId,
-    });
-    const { typing, thinking } = useRoomIndicators({ room, path });
-    const [showCompletedToolCalls, setShowCompletedToolCalls] = useState(false);
-
-    const onTextChange = useCallback(() => {
-        for (const participant of onlineParticipants) {
-            room.messaging.sendMessage({
-                to: participant,
-                type: "typing",
-                message: { path },
-            });
-        }
-    }, [onlineParticipants, path, room]);
-
-    return (
-        <div className="flex min-h-0 flex-1 flex-col">
-            {showNewThreadButton && onStartNewThread ? (
-                <div className="px-4 pt-3">
-                    <div className="mx-auto flex w-full max-w-[912px] justify-end">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="rounded-full shadow-xs"
-                            onClick={onStartNewThread}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            New thread
-                        </Button>
-                    </div>
-                </div>
-            ) : null}
-
-            <ChatThread
-                room={room}
-                path={path}
-                messages={messages}
-                isLoading={document === null}
-                localParticipantName={localParticipantName}
-                showCompletedToolCalls={showCompletedToolCalls}
-                onShowCompletedToolCallsChanged={setShowCompletedToolCalls}
-                typing={typing}
-                thinking={thinking}
-                threadStatusText={threadStatus.text}
-                threadStatusStartedAt={threadStatus.startedAt}
-                threadStatusMode={threadStatus.mode}
-                onCancelRequest={cancelRequest}
-                emptyStateTitle={emptyStateTitle}
-                emptyStateDescription={emptyStateDescription}
-            />
-
-            <ChatInput
-                onSubmit={sendMessage}
-                attachments={attachments}
-                onFilesSelected={selectAttachments}
-                setAttachments={setAttachments}
-                onTextChange={onTextChange}
-            />
-        </div>
-    );
-}
-
-export interface ChatProps {
-    room: RoomClient;
-    path?: string;
-    participants?: Participant[];
-    agentName?: string;
-    toolkit?: string;
-    tool?: string;
-    centerComposer?: boolean;
-    emptyStateTitle?: string;
-    emptyStateDescription?: string;
-    onThreadResolved?: (path: string | null, displayName: string | null) => void;
-}
-
-export function Chat({
-    room,
-    path,
-    participants,
-    agentName,
+    builder,
     toolkit = "chat",
     tool = "new_thread",
+    selectedThreadPath,
+    onThreadPathChanged,
+    onThreadResolved,
     centerComposer = true,
     emptyStateTitle,
     emptyStateDescription,
-    onThreadResolved,
-}: ChatProps): ReactElement {
+}: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
     const [newThreadDraft, setNewThreadDraft] = useState("");
     const [newThreadAttachments, setNewThreadAttachments] = useState<FileUpload[]>([]);
@@ -316,12 +204,8 @@ export function Chat({
     const [creatingNewThread, setCreatingNewThread] = useState(false);
     const [waitingForAgent, setWaitingForAgent] = useState(false);
     const activeOperationRef = useRef(0);
-    const controlledPath = useMemo(() => normalizeThreadPath(path), [path]);
-    const managesOwnThread = controlledPath === null;
-    const activePath = controlledPath ?? internalThreadPath;
-
-    // const toolkits = useMemo(() => [new UIToolkit()], []);
-    // useClientToolkits({ room, toolkits, public: false });
+    const controlledThreadPath = selectedThreadPath !== undefined ? normalizeThreadPath(selectedThreadPath) : undefined;
+    const activePath = controlledThreadPath ?? internalThreadPath;
 
     useEffect(() => {
         return () => {
@@ -330,12 +214,18 @@ export function Chat({
     }, []);
 
     useEffect(() => {
-        if (controlledPath !== null) {
-            setInternalThreadPath(null);
+        if (controlledThreadPath === undefined) {
+            return;
         }
-    }, [controlledPath]);
+
+        setInternalThreadPath(controlledThreadPath);
+    }, [controlledThreadPath]);
 
     useEffect(() => {
+        if (controlledThreadPath !== undefined) {
+            return;
+        }
+
         activeOperationRef.current += 1;
         setInternalThreadPath(null);
         setNewThreadDraft("");
@@ -343,7 +233,7 @@ export function Chat({
         setNewThreadError(null);
         setCreatingNewThread(false);
         setWaitingForAgent(false);
-    }, [agentName, managesOwnThread, room]);
+    }, [agentName, controlledThreadPath, room]);
 
     const selectNewThreadAttachments = useCallback((files: File[]) => {
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
@@ -361,16 +251,6 @@ export function Chat({
         setCreatingNewThread(false);
         setWaitingForAgent(false);
         setNewThreadError(null);
-    }, []);
-
-    const openNewThreadComposer = useCallback(() => {
-        activeOperationRef.current += 1;
-        setInternalThreadPath(null);
-        setNewThreadDraft("");
-        setNewThreadAttachments([]);
-        setNewThreadError(null);
-        setCreatingNewThread(false);
-        setWaitingForAgent(false);
     }, []);
 
     const handleCreateThread = useCallback(async () => {
@@ -411,7 +291,8 @@ export function Chat({
             });
 
             ensureOperationActive(operationId, activeOperationRef);
-            const response = await room.agents.invokeTool({
+            const response = await room.invoke({
+                participantId: targetAgent.id,
                 toolkit,
                 tool,
                 arguments: {
@@ -427,16 +308,18 @@ export function Chat({
                 throw new Error(`${toolkit}.${tool} returned non-JSON content`);
             }
 
-            const result = parseThreadToolResult(toolkit, tool, response);
-            if (controlledPath === null) {
-                setInternalThreadPath(result.path);
+            const [threadPath, displayName] = parseThreadToolResult(toolkit, tool, response);
+            const normalizedPath = normalizeThreadPath(threadPath);
+            if (controlledThreadPath === undefined) {
+                setInternalThreadPath(normalizedPath);
             }
             setNewThreadDraft("");
             setNewThreadAttachments([]);
             setNewThreadError(null);
             setCreatingNewThread(false);
             setWaitingForAgent(false);
-            onThreadResolved?.(result.path, result.displayName);
+            onThreadPathChanged?.(normalizedPath);
+            onThreadResolved?.(normalizedPath, displayName);
         } catch (error) {
             if (error instanceof NewThreadCancelledError) {
                 return;
@@ -448,10 +331,11 @@ export function Chat({
         }
     }, [
         agentName,
-        controlledPath,
+        controlledThreadPath,
         creatingNewThread,
         newThreadAttachments,
         newThreadDraft,
+        onThreadPathChanged,
         onThreadResolved,
         room,
         toolkit,
@@ -459,28 +343,8 @@ export function Chat({
         waitingForAgent,
     ]);
 
-    useEffect(() => {
-        if (!managesOwnThread) {
-            return;
-        }
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "n") {
-                return;
-            }
-
-            event.preventDefault();
-            openNewThreadComposer();
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => {
-            window.removeEventListener("keydown", handleKeyDown);
-        };
-    }, [managesOwnThread, openNewThreadComposer]);
-
     const targetAgentLabel = useMemo(() => {
-        const knownAgentName = agentName?.trim();
+        const knownAgentName = agentName.trim();
         if (knownAgentName) {
             return displayParticipantName(knownAgentName);
         }
@@ -495,6 +359,10 @@ export function Chat({
             ? `Starting a thread with ${targetAgentLabel}.`
             : null;
 
+    if (activePath !== null) {
+        return builder(activePath);
+    }
+
     const composer = (
         <ChatInput
             onSubmit={handleCreateThread}
@@ -507,25 +375,13 @@ export function Chat({
             showCancelButton={creatingNewThread || waitingForAgent}
             onCancelRequest={cancelPendingNewThread}
             disabled={creatingNewThread || waitingForAgent}
-            placeholder={agentName?.trim() ? `Type a message or @${displayParticipantName(agentName)}` : "Type a message"}
+            placeholder={agentName.trim() ? `Type a message or @${displayParticipantName(agentName)}` : "Type a message"}
         />
     );
 
     return (
         <div className="h-full flex flex-1 flex-col">
-            {activePath ? (
-                <ResolvedChatView
-                    key={activePath}
-                    room={room}
-                    path={activePath}
-                    participants={participants}
-                    agentName={agentName}
-                    emptyStateTitle={emptyStateTitle}
-                    emptyStateDescription={emptyStateDescription}
-                    showNewThreadButton={managesOwnThread}
-                    onStartNewThread={openNewThreadComposer}
-                />
-            ) : centerComposer ? (
+            {centerComposer ? (
                 <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
                     <div className="w-full max-w-[912px] space-y-5">
                         <div className="space-y-2 text-center">

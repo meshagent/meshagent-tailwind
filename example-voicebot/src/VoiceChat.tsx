@@ -12,8 +12,6 @@ import {
     useRoomParticipants,
 } from '@meshagent/meshagent-react';
 
-import { Chat } from '@meshagent/meshagent-tailwind';
-
 import { Loader2 } from 'lucide-react';
 
 import { LoadingOverlay } from './components/ui/spinner';

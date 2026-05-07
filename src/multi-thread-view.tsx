@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { RoomClient } from "@meshagent/meshagent";
 
-import { Chat } from "./Chat";
+import { NewChatThread } from "./new-chat-thread";
 
 export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
 
@@ -75,14 +75,16 @@ export function MultiThreadView({
     }
 
     return (
-        <Chat
+        <NewChatThread
             key={composerKey}
             room={room}
             agentName={agentName}
+            builder={builder}
             toolkit={toolkit}
             tool={tool}
+            selectedThreadPath={activeSelectedThreadPath}
             centerComposer={centerComposer}
-            onThreadResolved={(path, displayName) => {
+            onThreadPathChanged={(path) => {
                 const normalizedPath = normalizeSelectedThreadPath(path);
 
                 if (controlledSelectedThreadPath === undefined) {
@@ -90,6 +92,9 @@ export function MultiThreadView({
                 }
 
                 onSelectedThreadPathChanged?.(normalizedPath);
+            }}
+            onThreadResolved={(path, displayName) => {
+                const normalizedPath = normalizeSelectedThreadPath(path);
                 onSelectedThreadResolved?.(normalizedPath, displayName);
             }}
             emptyStateTitle={emptyStateTitle}

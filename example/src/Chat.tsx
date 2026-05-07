@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 
 import { Participant, RemoteParticipant, participantToken, websocketRoomUrl } from '@meshagent/meshagent';
 import { useRoomConnection, useRoomParticipants } from '@meshagent/meshagent-react';
-import { Chat } from '@meshagent/meshagent-tailwind';
+import { ChatThread } from '@meshagent/meshagent-tailwind';
 import { Loader2 } from 'lucide-react';
 
 import { LoadingOverlay } from './components/ui/spinner';
@@ -88,7 +88,7 @@ export function ChatApp({config} : {config: ProjectConfigFormValues }): React.Re
         <main className="flex flex-col min-h-0 flex-1">
             <LoadingOverlay isLoading={!connection.ready} className="flex-1">
                 {connection.ready ? (
-                    <Chat room={connection.client!} path={path} participants={participants} />
+                    <ChatThread room={connection.client!} path={path} participants={participants} />
                 ) : (
                     <div>Waiting</div>
                 )}
