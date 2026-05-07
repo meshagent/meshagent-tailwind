@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 
 import { useThreadStatus } from "./chat-hooks";
-import { Chat } from "./chat";
+import { ChatThread } from "./chat-thread";
+import { DatasetChatThread } from "./dataset-chat-thread";
 import { Button } from "./components/ui/button";
 import {
     Dialog,
@@ -92,6 +93,10 @@ export interface ChatBotViewProps {
 function normalizePath(path?: string | null): string | null {
     const normalized = path?.trim();
     return normalized ? normalized : null;
+}
+
+function isDatasetBackedThreadPath(path: string): boolean {
+    return path.startsWith("dataset://") || path.startsWith("tmp://");
 }
 
 function parseDate(value: string): Date {
@@ -691,18 +696,22 @@ export function ChatBotView({
     }, [activeSelectedThreadPath, closeRenameThreadDialog, emitResolvedThread, renameThreadDialog]);
 
     if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
-        return (
-            <Chat
+        return isDatasetBackedThreadPath(resolvedSingleThreadPath) ? (
+            <DatasetChatThread
+                room={room}
+                path={resolvedSingleThreadPath}
+                agentName={agentName}
+                emptyStateTitle={emptyStateTitle}
+                emptyStateDescription={emptyStateDescription}
+            />
+        ) : (
+            <ChatThread
                 room={room}
                 path={resolvedSingleThreadPath}
                 participants={participants}
                 agentName={agentName}
-                toolkit={toolkit}
-                tool={tool}
-                centerComposer={centerComposer}
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
-                onThreadResolved={onThreadResolved}
             />
         );
     }
@@ -722,15 +731,20 @@ export function ChatBotView({
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
-            builder={(threadPath) => (
-                <Chat
+            builder={(threadPath) => isDatasetBackedThreadPath(threadPath) ? (
+                <DatasetChatThread
+                    room={room}
+                    path={threadPath}
+                    agentName={agentName}
+                    emptyStateTitle={startNewThreadTitle}
+                    emptyStateDescription={startNewThreadDescription}
+                />
+            ) : (
+                <ChatThread
                     room={room}
                     path={threadPath}
                     participants={participants}
                     agentName={agentName}
-                    toolkit={toolkit}
-                    tool={tool}
-                    centerComposer={centerComposer}
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
                 />

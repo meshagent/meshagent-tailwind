@@ -1,4 +1,3 @@
-export * from './chat';
 export * from './chat-bot-view';
 export * from './chat-hooks';
 export * from './chat-input';
@@ -10,3 +9,4 @@ export * from './dataset-chat-thread';
 export * from './file-attachment';
 export * from './file-uploader';
 export * from './multi-thread-view';
+export * from './new-chat-thread';
