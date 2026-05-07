@@ -1,3 +1,6 @@
+## [0.39.9]
+- Added streaming `watchTable` support to the TypeScript DatasetsClient to receive dataset table change events with versioning metadata.
+
 ## [0.39.8]
 - TypeScript API: `RoomContainer` now includes a required `ports: number[]` field (and validation) in container listings
 - TypeScript API: `ContainerSpec` now supports optional fields `private`, `on_demand`, and `writable_root_fs`
