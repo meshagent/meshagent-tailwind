@@ -4,7 +4,7 @@ import { JsonContent, RemoteParticipant, RoomClient } from "@meshagent/meshagent
 
 import { ChatInput } from "./chat-input";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
-import { Toaster } from "./components/ui/sonner";
+import { Toaster } from "../components/ui/sonner";
 
 export type NewChatThreadBuilder = (threadPath: string) => ReactElement;
 

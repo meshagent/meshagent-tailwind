@@ -1,9 +1,9 @@
 import * as React from "react";
 import { FileUp, LoaderCircle, TriangleAlert, X } from "lucide-react";
 
-import { Progress } from "./components/ui/progress";
+import { Progress } from "../components/ui/progress";
 import { type FileUpload, UploadStatus } from "./file-attachment";
-import { cn } from "./lib/utils";
+import { cn } from "../lib/utils";
 
 export interface UploadPillProps {
     attachment: FileUpload;

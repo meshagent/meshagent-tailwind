@@ -1,18 +1,19 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactElement } from "react";
 import { Element, Participant, RoomClient } from "@meshagent/meshagent";
-import { Download, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { Button } from "./components/ui/button";
-import { Spinner } from "./components/ui/spinner";
+import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
 import { ChatTypingIndicator } from "./chat-typing-indicator";
 import { ChatInput } from "./chat-input";
 import { useChatThread, useThreadStatus } from "./chat-hooks";
-import { cn } from "./lib/utils";
+import { FilePreviewDialog, isImagePath } from "../file-preview/file-preview";
+import { cn } from "../lib/utils";
 
 const supportedEventKinds = new Set([
     "exec",
@@ -116,11 +117,6 @@ export function timeAgo(iso: string): string {
 
 function displayParticipantName(name: string): string {
     return name.split("@")[0]?.trim() ?? name.trim();
-}
-
-
-function isImagePath(path: string): boolean {
-    return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(path);
 }
 
 function isThreadAttachmentElement(element: Element): boolean {
@@ -410,25 +406,24 @@ function ChatImage({
     }
 
     return (
-        <button
-            type="button"
-            className="block overflow-hidden rounded-md bg-muted/20 shadow-xs transition-opacity hover:opacity-95"
-            onClick={() => {
-                window.open(url, "_blank", "noopener,noreferrer");
-            }}>
-            <img
-                ref={imageRef}
-                src={url}
-                alt={alt}
-                className="max-h-[312px] w-auto max-w-full object-cover"
-                onLoad={() => {
-                    markSettled();
-                }}
-                onError={() => {
-                    markSettled();
-                }}
-            />
-        </button>
+        <FilePreviewDialog room={room} path={path}>
+            <button
+                type="button"
+                className="block overflow-hidden rounded-md bg-muted/20 shadow-xs transition-opacity hover:opacity-95">
+                <img
+                    ref={imageRef}
+                    src={url}
+                    alt={alt}
+                    className="max-h-[312px] w-auto max-w-full object-cover"
+                    onLoad={() => {
+                        markSettled();
+                    }}
+                    onError={() => {
+                        markSettled();
+                    }}
+                />
+            </button>
+        </FilePreviewDialog>
     );
 }
 
@@ -436,22 +431,17 @@ function FileAttachment({room, path}: {
     room: RoomClient;
     path: string;
 }): ReactElement {
-    const url = useDownloadUrl(room, path);
     const filename = path.split("/").pop() ?? path;
 
     return (
-        <button
-            type="button"
-            className="inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80"
-            onClick={() => {
-                if (url) {
-                    window.open(url, "_blank", "noopener,noreferrer");
-                }
-            }}>
-            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm font-medium">{filename}</span>
-            <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
+        <FilePreviewDialog room={room} path={path}>
+            <button
+                type="button"
+                className="inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate text-sm font-medium">{filename}</span>
+            </button>
+        </FilePreviewDialog>
     );
 }
 

@@ -21,11 +21,11 @@ import remarkGfm from "remark-gfm";
 import { ChatInput } from "./chat-input";
 import { ChatMessage } from "./chat-message";
 import { ChatTypingIndicator } from "./chat-typing-indicator";
-import { Button } from "./components/ui/button";
-import { Spinner } from "./components/ui/spinner";
+import { Button } from "../components/ui/button";
+import { Spinner } from "../components/ui/spinner";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 import { PendingAgentMessage, useThreadStatus } from "./chat-hooks";
-import { cn } from "./lib/utils";
+import { cn } from "../lib/utils";
 import { timeAgo } from "./chat-thread";
 
 const agentRoomMessageType = "agent-message";

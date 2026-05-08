@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Paperclip } from "lucide-react";
 
-import { Button } from "./components/ui/button";
+import { Button } from "../components/ui/button";
 
 export interface FileUploaderProps {
     onFilesSelected?: (files: File[]) => void;

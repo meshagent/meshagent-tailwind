@@ -14,7 +14,7 @@ import {
 import { useThreadStatus } from "./chat-hooks";
 import { ChatThread } from "./chat-thread";
 import { DatasetChatThread } from "./dataset-chat-thread";
-import { Button } from "./components/ui/button";
+import { Button } from "../components/ui/button";
 import {
     Dialog,
     DialogClose,
@@ -23,17 +23,17 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "./components/ui/dialog";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
-import { Spinner } from "./components/ui/spinner";
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Spinner } from "../components/ui/spinner";
 import {
     ChatThreadDisplayMode,
     chatDocumentPath,
     defaultThreadDisplayNameFromPath,
     resolvedThreadListPath,
 } from "./conversation-descriptor";
-import { cn } from "./lib/utils";
+import { cn } from "../lib/utils";
 import { MultiThreadView } from "./multi-thread-view";
 
 const multiThreadLayoutBreakpointPx = 920;
