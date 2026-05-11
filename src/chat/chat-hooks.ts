@@ -451,7 +451,7 @@ async function sendMessageToParticipant({
         await room.messaging.sendMessage({
             to: participant,
             type: agentRoomMessageType,
-            message: { payload },
+            message: payload,
         });
         return;
     }
