@@ -1,3 +1,6 @@
+## [0.40.1]
+- Stability
+
 ## [0.40.0]
 - Enabled websocket compression for Node protocol connections while preserving the browser path.
 - Aligned the JS and TS protocol surface with realtime model selection and output-modality negotiation.
