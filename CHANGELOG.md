@@ -1,3 +1,14 @@
+## [0.40.2]
+- Stability
+
+## [0.40.1]
+- Stability
+
+## [0.40.0]
+- Enabled websocket compression for Node protocol connections while preserving the browser path.
+- Aligned the JS and TS protocol surface with realtime model selection and output-modality negotiation.
+- Refreshed the generated Node entrypoint to match the updated realtime protocol flow.
+
 ## [0.39.9]
 - Added streaming `watchTable` support to the TypeScript DatasetsClient to receive dataset table change events with versioning metadata.
 
