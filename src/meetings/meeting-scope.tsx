@@ -8,6 +8,8 @@ import {
 import type { ReactElement, ReactNode } from "react";
 
 import type { RoomClient } from "@meshagent/meshagent";
+import "@meshagent/meshagent-react";
+import type { LivekitConnectionInfo } from "@meshagent/meshagent-react";
 
 import {
 	ConnectionState,
@@ -29,11 +31,6 @@ import type {
 import { WakeLocker } from "./wake-lock";
 
 type Listener = () => void;
-
-export interface LivekitConnectionInfo {
-	url: string;
-	token: string;
-}
 
 export type MeetingFastConnectOptions = RoomConnectOptions & {
 	camera?: { enabled?: boolean; options?: VideoCaptureOptions };
@@ -276,7 +273,7 @@ export class MeetingController {
 		return () => this.listeners.delete(listener);
 	}
 
-	async configure({breakoutRoom}: {
+	async configure({breakoutRoom = ""}: {
 		breakoutRoom?: string;
 	} = {}): Promise<void> {
 		if (this.livekitRoom.state !== ConnectionState.Disconnected) {
@@ -366,18 +363,29 @@ export class MeetingController {
 	async disconnect(): Promise<void> {
 		this.pendingLocalMedia.clear();
 
-    const lp = this.livekitRoom.localParticipant;
+		const localParticipant = this.livekitRoom.localParticipant;
 
-    await lp.setCameraEnabled(false);
-    await lp.setMicrophoneEnabled(false);
-    await lp.setScreenShareEnabled(false);
+		const disableResults = await Promise.allSettled([
+			localParticipant.setCameraEnabled(false),
+			localParticipant.setMicrophoneEnabled(false),
+			localParticipant.setScreenShareEnabled(false),
+		]);
 
-    for (const pub of lp.trackPublications.values()) {
-      pub.track?.stop();
-    }
+		for (const result of disableResults) {
+			if (result.status === "rejected") {
+				console.warn("unable to disable local meeting media", result.reason);
+			}
+		}
 
-    await this.livekitRoom.disconnect();
-  }
+		for (const publication of Array.from(
+			localParticipant.trackPublications.values(),
+		)) {
+			publication.track?.detach();
+			publication.track?.stop();
+		}
+
+		await this.livekitRoom.disconnect(true);
+	}
 
   dispose(): void {
     this.livekitRoom.removeAllListeners();

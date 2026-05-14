@@ -38,6 +38,39 @@ MeshAgent removes the infrastructure headaches of building and shipping AI Agent
 
 Follow our [Getting Started Documentation](https://docs.meshagent.com/introduction/get_started) to setup your MeshAgent account, create your first project, and start building agents!
 
+## Meetings
+
+The meeting components use a connected `RoomClient` to request LiveKit credentials before joining a meeting. Wrap `MeetingView` in `MeetingScope` and pass the same room client used by the rest of your app:
+
+```tsx
+import { MeetingScope, MeetingView } from "@meshagent/meshagent-tailwind";
+import type { RoomClient } from "@meshagent/meshagent";
+
+export function MeetingPanel({ roomClient }: { roomClient: RoomClient }) {
+	return (
+		<MeetingScope client={roomClient}>
+			<MeetingView />
+		</MeetingScope>
+	);
+}
+```
+
+`MeetingScope` configures its controller with `roomClient.livekit.getConnectionInfo({ breakoutRoom: "" })` and `MeetingView` uses that connection info when the user starts the main meeting. If you are building a custom meeting UI, request the connection info before calling LiveKit's `connect`:
+
+```ts
+import { Room } from "livekit-client";
+import type { RoomClient } from "@meshagent/meshagent";
+
+const livekitRoom = new Room();
+const connectionInfo = await roomClient.livekit.getConnectionInfo({
+	breakoutRoom: "",
+});
+
+await livekitRoom.connect(connectionInfo.url, connectionInfo.token);
+```
+
+Pass a non-empty `breakoutRoom` to `MeetingScope` or `roomClient.livekit.getConnectionInfo({ breakoutRoom })` when the meeting should join a specific breakout room.
+
 ## Next Steps and Examples
 
 To see examples of agents in action and to start building your own agents check out the MeshAgent docs at [docs.meshagent.com](https://docs.meshagent.com/)

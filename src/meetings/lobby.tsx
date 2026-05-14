@@ -230,57 +230,126 @@ function useMeetingLobbyState(): MeetingLobbyState {
 	);
 	const [audioTrack, setAudioTrack] = useState<LocalAudioTrack | null>(null);
 	const [videoTrack, setVideoTrack] = useState<LocalVideoTrack | null>(null);
+	const disposedRef = useRef(false);
+	const audioTrackRef = useRef<LocalAudioTrack | null>(null);
+	const videoTrackRef = useRef<LocalVideoTrack | null>(null);
+	const audioTrackRequestRef = useRef(0);
+	const videoTrackRequestRef = useRef(0);
 	const audioDeviceIdRef = useRef(audioDeviceId);
 	const videoDeviceIdRef = useRef(videoDeviceId);
 
-	const replaceAudioTrack = useCallback(
-		async (deviceId: string): Promise<void> => {
-			setAudioProcessing(true);
-			await runWithMinimumPendingDuration(async () => {
-				try {
-					const nextTrack = await createPreviewAudioTrack(deviceId);
-					setAudioTrack((currentTrack) => {
-						stopLocalAudioTrack(currentTrack);
-						return nextTrack;
-					});
-					setAudioUnavailable(false);
-				} catch (error) {
-					setAudioTrack((currentTrack) => {
-						stopLocalAudioTrack(currentTrack);
-						return null;
-					});
-					setAudioUnavailable(true);
-					console.warn("Unable to start microphone preview", error);
-				}
-			});
-			setAudioProcessing(false);
+	const replaceAudioTrackState = useCallback(
+		(nextTrack: LocalAudioTrack | null) => {
+			const currentTrack = audioTrackRef.current;
+			if (currentTrack !== nextTrack) {
+				stopLocalAudioTrack(currentTrack);
+			}
+
+			if (disposedRef.current) {
+				stopLocalAudioTrack(nextTrack);
+				audioTrackRef.current = null;
+				return;
+			}
+
+			audioTrackRef.current = nextTrack;
+			setAudioTrack(nextTrack);
 		},
 		[],
 	);
 
+	const replaceVideoTrackState = useCallback(
+		(nextTrack: LocalVideoTrack | null) => {
+			const currentTrack = videoTrackRef.current;
+			if (currentTrack !== nextTrack) {
+				stopLocalVideoTrack(currentTrack);
+			}
+
+			if (disposedRef.current) {
+				stopLocalVideoTrack(nextTrack);
+				videoTrackRef.current = null;
+				return;
+			}
+
+			videoTrackRef.current = nextTrack;
+			setVideoTrack(nextTrack);
+		},
+		[],
+	);
+
+	const replaceAudioTrack = useCallback(
+		async (deviceId: string): Promise<void> => {
+			const requestId = audioTrackRequestRef.current + 1;
+			audioTrackRequestRef.current = requestId;
+			setAudioProcessing(true);
+			await runWithMinimumPendingDuration(async () => {
+				try {
+					const nextTrack = await createPreviewAudioTrack(deviceId);
+					if (
+						disposedRef.current ||
+						requestId !== audioTrackRequestRef.current
+					) {
+						stopLocalAudioTrack(nextTrack);
+						return;
+					}
+					replaceAudioTrackState(nextTrack);
+					setAudioUnavailable(false);
+				} catch (error) {
+					if (
+						!disposedRef.current &&
+						requestId === audioTrackRequestRef.current
+					) {
+						replaceAudioTrackState(null);
+						setAudioUnavailable(true);
+						console.warn("Unable to start microphone preview", error);
+					}
+				}
+			});
+			if (
+				!disposedRef.current &&
+				requestId === audioTrackRequestRef.current
+			) {
+				setAudioProcessing(false);
+			}
+		},
+		[replaceAudioTrackState],
+	);
+
 	const replaceVideoTrack = useCallback(
 		async (deviceId: string): Promise<void> => {
+			const requestId = videoTrackRequestRef.current + 1;
+			videoTrackRequestRef.current = requestId;
 			setVideoProcessing(true);
 			await runWithMinimumPendingDuration(async () => {
 				try {
 					const nextTrack = await createPreviewVideoTrack(deviceId);
-					setVideoTrack((currentTrack) => {
-						stopLocalVideoTrack(currentTrack);
-						return nextTrack;
-					});
+					if (
+						disposedRef.current ||
+						requestId !== videoTrackRequestRef.current
+					) {
+						stopLocalVideoTrack(nextTrack);
+						return;
+					}
+					replaceVideoTrackState(nextTrack);
 					setVideoUnavailable(false);
 				} catch (error) {
-					setVideoTrack((currentTrack) => {
-						stopLocalVideoTrack(currentTrack);
-						return null;
-					});
-					setVideoUnavailable(true);
-					console.warn("Unable to start camera preview", error);
+					if (
+						!disposedRef.current &&
+						requestId === videoTrackRequestRef.current
+					) {
+						replaceVideoTrackState(null);
+						setVideoUnavailable(true);
+						console.warn("Unable to start camera preview", error);
+					}
 				}
 			});
-			setVideoProcessing(false);
+			if (
+				!disposedRef.current &&
+				requestId === videoTrackRequestRef.current
+			) {
+				setVideoProcessing(false);
+			}
 		},
-		[],
+		[replaceVideoTrackState],
 	);
 
 	useEffect(() => {
@@ -293,6 +362,7 @@ function useMeetingLobbyState(): MeetingLobbyState {
 
 	useEffect(() => {
 		let cancelled = false;
+		disposedRef.current = false;
 
 		void Promise.all([
 			replaceAudioTrack(audioDeviceIdRef.current),
@@ -306,16 +376,19 @@ function useMeetingLobbyState(): MeetingLobbyState {
 
 		return () => {
 			cancelled = true;
-			setAudioTrack((currentTrack) => {
-				stopLocalAudioTrack(currentTrack);
-				return null;
-			});
-			setVideoTrack((currentTrack) => {
-				stopLocalVideoTrack(currentTrack);
-				return null;
-			});
+			disposedRef.current = true;
+			audioTrackRequestRef.current += 1;
+			videoTrackRequestRef.current += 1;
+			replaceAudioTrackState(null);
+			replaceVideoTrackState(null);
 		};
-	}, [refreshDevices, replaceAudioTrack, replaceVideoTrack]);
+	}, [
+		refreshDevices,
+		replaceAudioTrack,
+		replaceAudioTrackState,
+		replaceVideoTrack,
+		replaceVideoTrackState,
+	]);
 
 	const setAudioDeviceId = useCallback(
 		(deviceId: string) => {
@@ -345,32 +418,38 @@ function useMeetingLobbyState(): MeetingLobbyState {
 			return;
 		}
 		if (audioTrack != null) {
-			setAudioTrack((currentTrack) => {
-				stopLocalAudioTrack(currentTrack);
-				return null;
-			});
+			replaceAudioTrackState(null);
 			setAudioOn(false);
 			return;
 		}
 		setAudioOn(true);
 		void replaceAudioTrack(audioDeviceId);
-	}, [audioDeviceId, audioProcessing, audioTrack, replaceAudioTrack]);
+	}, [
+		audioDeviceId,
+		audioProcessing,
+		audioTrack,
+		replaceAudioTrack,
+		replaceAudioTrackState,
+	]);
 
 	const toggleVideo = useCallback(() => {
 		if (videoProcessing) {
 			return;
 		}
 		if (videoTrack != null) {
-			setVideoTrack((currentTrack) => {
-				stopLocalVideoTrack(currentTrack);
-				return null;
-			});
+			replaceVideoTrackState(null);
 			setVideoOn(false);
 			return;
 		}
 		setVideoOn(true);
 		void replaceVideoTrack(videoDeviceId);
-	}, [replaceVideoTrack, videoDeviceId, videoProcessing, videoTrack]);
+	}, [
+		replaceVideoTrack,
+		replaceVideoTrackState,
+		videoDeviceId,
+		videoProcessing,
+		videoTrack,
+	]);
 
 	return {
 		loaded,

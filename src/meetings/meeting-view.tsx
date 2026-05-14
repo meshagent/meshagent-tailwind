@@ -368,12 +368,17 @@ function ShareScreenToggle({controller: providedController}: {
 	);
 }
 
-function ActiveMeetingToolbar({controller}: {
+function ActiveMeetingToolbar({controller, onDisconnect}: {
 	controller: MeetingController;
+	onDisconnect?: () => void;
 }): ReactElement {
 	return (
 		<div className="flex flex-wrap items-center justify-center gap-2">
-			<MeetingControls controller={controller} spacing={8} />
+			<MeetingControls
+				controller={controller}
+				onDisconnect={onDisconnect}
+				spacing={8}
+			/>
 			<ShareScreenToggle controller={controller} />
 		</div>
 	);
@@ -398,7 +403,10 @@ export function MeetingView({controller: providedController, onCancel}: {
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<div className="flex-0 border-b px-5 py-3">
-				<ActiveMeetingToolbar controller={controller} />
+				<ActiveMeetingToolbar
+					controller={controller}
+					onDisconnect={onCancel}
+				/>
 			</div>
 			<div className="min-h-0 flex-1 p-5">
 				<MeetingStage controller={controller} />

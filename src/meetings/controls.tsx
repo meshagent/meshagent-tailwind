@@ -39,9 +39,11 @@ function useControllerVersion(controller: MeetingController): void {
 
 export function MeetingControls({
     controller: providedController,
+    onDisconnect,
     spacing = 5,
 }: {
     controller?: MeetingController;
+    onDisconnect?: () => void;
     spacing?: number;
 }): ReactElement {
     const controller = useMeetingController(providedController);
@@ -52,7 +54,7 @@ export function MeetingControls({
         <div
             className="flex flex-wrap items-center justify-center"
             style={{ gap: spacing }}>
-            <ConnectionButton controller={controller} />
+            <ConnectionButton controller={controller} onDisconnect={onDisconnect} />
             {hasLocalParticipant ? (
                 <>
                     <MicToggle controller={controller} />
@@ -191,7 +193,13 @@ export function MicToggle({ controller }: { controller?: MeetingController }): R
     );
 }
 
-export function ConnectionButton({ controller }: { controller?: MeetingController }): ReactElement {
+export function ConnectionButton({
+    controller,
+    onDisconnect,
+}: {
+    controller?: MeetingController;
+    onDisconnect?: () => void;
+}): ReactElement {
     const resolvedController = useMeetingController(controller);
     useControllerVersion(resolvedController);
     const state = resolvedController.livekitRoom.state;
@@ -203,7 +211,12 @@ export function ConnectionButton({ controller }: { controller?: MeetingControlle
                 destructive
                 icon={<Phone />}
                 onClick={() => {
-                    void resolvedController.disconnect();
+                    void resolvedController
+                        .disconnect()
+                        .catch((error: unknown) => {
+                            console.warn("unable to disconnect meeting", error);
+                        })
+                        .finally(() => onDisconnect?.());
                 }}
             />
         );
