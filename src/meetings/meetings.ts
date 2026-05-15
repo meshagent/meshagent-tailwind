@@ -1,4 +1,5 @@
 export * from "./audio-visualization";
+export * from "./camera-grid";
 export * from "./controls";
 export * from "./lobby";
 export * from "./meeting-scope";
