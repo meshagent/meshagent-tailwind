@@ -5,7 +5,7 @@ import {
 	Room,
 	type VideoCaptureOptions,
 } from "livekit-client";
-import { Camera, CameraOff, Mic, MicOff, Settings } from "lucide-react";
+import { Video, VideoOff, CameraOff, Mic, MicOff, Settings } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -219,15 +219,9 @@ function useMeetingLobbyState(): MeetingLobbyState {
 	const [videoProcessing, setVideoProcessing] = useState(false);
 	const [audioUnavailable, setAudioUnavailable] = useState(false);
 	const [videoUnavailable, setVideoUnavailable] = useState(false);
-	const [audioDeviceId, setAudioDeviceIdState] = useState(() =>
-		storedDeviceId(audioInputStorageKey),
-	);
-	const [audioOutputDeviceId, setAudioOutputDeviceIdState] = useState(() =>
-		storedDeviceId(audioOutputStorageKey),
-	);
-	const [videoDeviceId, setVideoDeviceIdState] = useState(() =>
-		storedDeviceId(videoInputStorageKey),
-	);
+	const [audioDeviceId, setAudioDeviceIdState] = useState(() => storedDeviceId(audioInputStorageKey));
+	const [audioOutputDeviceId, setAudioOutputDeviceIdState] = useState(() => storedDeviceId(audioOutputStorageKey));
+	const [videoDeviceId, setVideoDeviceIdState] = useState(() => storedDeviceId(videoInputStorageKey));
 	const [audioTrack, setAudioTrack] = useState<LocalAudioTrack | null>(null);
 	const [videoTrack, setVideoTrack] = useState<LocalVideoTrack | null>(null);
 	const disposedRef = useRef(false);
@@ -474,9 +468,7 @@ function useMeetingLobbyState(): MeetingLobbyState {
 	};
 }
 
-function useAttachedPreviewVideo(
-	track: LocalVideoTrack | null,
-): (element: HTMLVideoElement | null) => void {
+function useAttachedPreviewVideo(track: LocalVideoTrack | null): (element: HTMLVideoElement | null) => void {
 	const attachedElementRef = useRef<HTMLVideoElement | null>(null);
 
 	useEffect(() => {
@@ -484,6 +476,7 @@ function useAttachedPreviewVideo(
 		if (element == null || track == null) {
 			return undefined;
 		}
+
 		track.attach(element);
 		return () => {
 			track.detach(element);
@@ -536,9 +529,7 @@ function LobbyDeviceSelect({
 	);
 }
 
-function LobbyDeviceSettings({
-	state,
-}: {
+function LobbyDeviceSettings({state}: {
 	state: MeetingLobbyState;
 }): ReactElement {
 	const hasAudioOutput = useMemo(
@@ -554,10 +545,9 @@ function LobbyDeviceSettings({
 					title="Device settings"
 					aria-label="Device settings"
 					variant="outline"
-					size="icon"
-					className="h-12 w-12"
-				>
+          className="h-10">
 					<Settings />
+          Device settings
 				</Button>
 			</DialogTrigger>
 			<DialogContent className="max-w-[min(92vw,560px)]">
@@ -582,7 +572,7 @@ function LobbyDeviceSettings({
 						value={state.audioDeviceId}
 						onValueChange={state.setAudioDeviceId}
 					/>
-					{hasAudioOutput ? (
+					{hasAudioOutput && (
 						<LobbyDeviceSelect
 							label="Speaker"
 							devices={state.devices}
@@ -590,15 +580,11 @@ function LobbyDeviceSettings({
 							value={state.audioOutputDeviceId}
 							onValueChange={state.setAudioOutputDeviceId}
 						/>
-					) : null}
+					)}
 				</div>
 				<DialogFooter>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={state.refreshDevices}
-					>
-						Refresh
+					<Button type="button" variant="outline" onClick={state.refreshDevices}>
+            Refresh
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -633,7 +619,7 @@ function LobbyToggleButton({
 			disabled={loading}
 			onClick={onClick}
 			className={cn(
-				"h-12 w-12",
+				"h-10 w-10",
 				on && !unavailable
 					? "bg-emerald-600 text-white hover:bg-emerald-700"
 					: null,
@@ -721,70 +707,69 @@ export function MeetingLobby({
 							</div>
 						)}
 					</div>
-					<div className="flex flex-wrap items-center justify-center gap-2">
-						<LobbyToggleButton
-							text={
-								audioPending
-									? "Starting microphone"
-									: state.audioTrack != null
-										? "Turn off microphone"
-										: "Turn on microphone"
-							}
-							on={state.audioTrack != null || audioPending}
-							unavailable={state.audioUnavailable}
-							loading={state.audioProcessing || audioPending}
-							icon={<Mic />}
-							offIcon={<MicOff />}
-							onClick={state.toggleAudio}
-						/>
-						<LobbyToggleButton
-							text={
-								videoPending
-									? "Starting camera"
-									: state.videoTrack != null
-										? "Turn off camera"
-										: "Turn on camera"
-							}
-							on={state.videoTrack != null || videoPending}
-							unavailable={state.videoUnavailable}
-							loading={state.videoProcessing || videoPending}
-							icon={<Camera />}
-							offIcon={<CameraOff />}
-							onClick={state.toggleVideo}
-						/>
-						<LobbyDeviceSettings state={state} />
-					</div>
-				</div>
-			</div>
-			<div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
-				{onCancel != null ? (
-					<Button
-						type="button"
-						variant="outline"
-						className="h-10 sm:w-[120px]"
-						onClick={onCancel}
-					>
-						Cancel
-					</Button>
-				) : null}
-				<Button
-					type="button"
-					className="h-10 bg-emerald-600 text-white hover:bg-emerald-700 sm:w-[120px]"
-					disabled={!canJoin}
-					onClick={() => {
-						void onJoin?.(joinOptions(state));
-					}}
-				>
-					{starting ? (
-						<>
-							<Spinner className="h-4 w-4" />
-							Starting
-						</>
-					) : (
-						"Meet now"
-					)}
-				</Button>
-			</div>
-		</div>
-	);
+          <div className="flex justify-between gap-2">
+            <div className="flex gap-2">
+              <LobbyToggleButton
+                text={
+                  audioPending
+                    ? "Starting microphone"
+                    : state.audioTrack != null
+                      ? "Turn off microphone"
+                      : "Turn on microphone"
+                }
+                on={state.audioTrack != null || audioPending}
+                unavailable={state.audioUnavailable}
+                loading={state.audioProcessing || audioPending}
+                icon={<Mic />}
+                offIcon={<MicOff />}
+                onClick={state.toggleAudio} />
+
+              <LobbyToggleButton
+                text={
+                  videoPending
+                    ? "Starting camera"
+                    : state.videoTrack != null
+                      ? "Turn off camera"
+                      : "Turn on camera"
+                }
+                on={state.videoTrack != null || videoPending}
+                unavailable={state.videoUnavailable}
+                loading={state.videoProcessing || videoPending}
+                icon={<Video />}
+                offIcon={<VideoOff />}
+                onClick={state.toggleVideo} />
+
+              <LobbyDeviceSettings state={state} />
+            </div>
+
+            <div className="flex gap-3">
+              {onCancel != null && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 sm:w-[120px]"
+                  onClick={onCancel}>Cancel</Button>
+              )}
+
+              <Button
+                type="button"
+                className="h-10 bg-emerald-600 text-white hover:bg-emerald-700 sm:w-[120px]"
+                disabled={!canJoin}
+                onClick={() => {
+                  onJoin?.(joinOptions(state));
+                }}>
+                {starting ? (
+                  <>
+                    <Spinner className="h-4 w-4" />
+
+                    Starting
+                  </>
+                ) : ("Meet now")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

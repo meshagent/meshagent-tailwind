@@ -3,6 +3,8 @@ import type { ReactElement, ReactNode } from "react";
 import { RoomClient } from "@meshagent/meshagent";
 import { Download, FileText } from "lucide-react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 import {
     Dialog,
@@ -22,6 +24,7 @@ export enum FileKind {
     Image = "image",
     Video = "video",
     Pdf = "pdf",
+    Source = "source",
     Unknown = "unknown",
 }
 
@@ -43,6 +46,122 @@ const imageExtensions = new Set([
 ]);
 const videoExtensions = new Set(["m4v", "mkv", "mov", "mp4", "webm"]);
 const pdfExtensions = new Set(["pdf"]);
+const sourceExtensions = new Set([
+    "bash",
+    "c",
+    "cc",
+    "cfg",
+    "cmake",
+    "cpp",
+    "cs",
+    "css",
+    "csv",
+    "dart",
+    "diff",
+    "dockerfile",
+    "env",
+    "fish",
+    "go",
+    "gradle",
+    "graphql",
+    "h",
+    "hpp",
+    "htm",
+    "html",
+    "ini",
+    "java",
+    "js",
+    "json",
+    "jsx",
+    "kt",
+    "kts",
+    "lua",
+    "md",
+    "mjs",
+    "patch",
+    "php",
+    "proto",
+    "py",
+    "rb",
+    "rs",
+    "scss",
+    "sh",
+    "sql",
+    "swift",
+    "toml",
+    "ts",
+    "tsx",
+    "txt",
+    "xml",
+    "yaml",
+    "yml",
+    "zsh",
+]);
+const sourceFilenames = new Set([
+    ".dockerignore",
+    ".env",
+    ".gitignore",
+    "dockerfile",
+    "makefile",
+]);
+const sourceLanguagesByExtension = new Map<string, string>([
+    ["bash", "bash"],
+    ["c", "c"],
+    ["cc", "cpp"],
+    ["cfg", "ini"],
+    ["cmake", "cmake"],
+    ["cpp", "cpp"],
+    ["cs", "csharp"],
+    ["css", "css"],
+    ["csv", "csv"],
+    ["dart", "dart"],
+    ["diff", "diff"],
+    ["dockerfile", "docker"],
+    ["env", "ini"],
+    ["fish", "fish"],
+    ["go", "go"],
+    ["gradle", "gradle"],
+    ["graphql", "graphql"],
+    ["h", "c"],
+    ["hpp", "cpp"],
+    ["htm", "html"],
+    ["html", "html"],
+    ["ini", "ini"],
+    ["java", "java"],
+    ["js", "javascript"],
+    ["json", "json"],
+    ["jsx", "jsx"],
+    ["kt", "kotlin"],
+    ["kts", "kotlin"],
+    ["lua", "lua"],
+    ["md", "markdown"],
+    ["mjs", "javascript"],
+    ["patch", "diff"],
+    ["php", "php"],
+    ["proto", "protobuf"],
+    ["py", "python"],
+    ["rb", "ruby"],
+    ["rs", "rust"],
+    ["scss", "scss"],
+    ["sh", "bash"],
+    ["sql", "sql"],
+    ["swift", "swift"],
+    ["toml", "toml"],
+    ["ts", "typescript"],
+    ["tsx", "tsx"],
+    ["txt", "text"],
+    ["xml", "xml"],
+    ["yaml", "yaml"],
+    ["yml", "yaml"],
+    ["zsh", "bash"],
+]);
+const sourceLanguagesByFilename = new Map<string, string>([
+    [".dockerignore", "docker"],
+    [".env", "ini"],
+    [".gitignore", "git"],
+    ["dockerfile", "docker"],
+    ["makefile", "makefile"],
+]);
 
 function basename(path: string): string {
     const withoutQuery = path.split("?")[0] ?? path;
@@ -78,6 +197,9 @@ export function classifyFile(path: string): FileKind {
     }
     if (pdfExtensions.has(ext)) {
         return FileKind.Pdf;
+    }
+    if (sourceExtensions.has(ext) || sourceFilenames.has(filePreviewName(path).toLowerCase())) {
+        return FileKind.Source;
     }
     return FileKind.Unknown;
 }
@@ -170,6 +292,67 @@ function usePdfUrl(room: RoomClient, path: string): { url: string | null; error:
     }, [path, room]);
 
     return { url, error };
+}
+
+function sourceLanguage(path: string): string {
+    const name = filePreviewName(path).toLowerCase();
+    const byFilename = sourceLanguagesByFilename.get(name);
+    if (byFilename != null) {
+        return byFilename;
+    }
+    return sourceLanguagesByExtension.get(extension(path)) ?? "text";
+}
+
+function useSourceText(room: RoomClient, path: string): { text: string | null; error: unknown } {
+    const [text, setText] = useState<string | null>(null);
+    const [error, setError] = useState<unknown>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const controller = new AbortController();
+        const normalizedPath = path.trim();
+
+        setText(null);
+        setError(null);
+
+        if (normalizedPath === "") {
+            return () => {
+                controller.abort();
+            };
+        }
+
+        const loadText = async (): Promise<string> => {
+            if (isHttpUrl(normalizedPath)) {
+                const response = await fetch(normalizedPath, { signal: controller.signal });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.text();
+            }
+
+            const content = await room.storage.download(normalizedPath);
+            return new TextDecoder().decode(content.data);
+        };
+
+        void loadText()
+            .then((nextText) => {
+                if (!cancelled) {
+                    setText(nextText);
+                }
+            })
+            .catch((nextError: unknown) => {
+                if (!cancelled) {
+                    setError(nextError);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+            controller.abort();
+        };
+    }, [path, room]);
+
+    return { text, error };
 }
 
 function ErrorPreview({ message }: { message: string }): ReactElement {
@@ -312,6 +495,48 @@ export function PdfPreview({ room, path }: { room: RoomClient; path: string }): 
     );
 }
 
+export function SourcePreview({ room, path }: { room: RoomClient; path: string }): ReactElement {
+    const { text, error } = useSourceText(room, path);
+    const language = useMemo(() => sourceLanguage(path), [path]);
+
+    if (error != null) {
+        return <ErrorPreview message={`Unable to load source preview: ${String(error)}`} />;
+    }
+    if (text == null) {
+        return <LoadingPreview />;
+    }
+
+    return (
+        <div className="h-full overflow-auto bg-[#fafafa] text-sm">
+            <SyntaxHighlighter
+                language={language}
+                style={oneLight}
+                showLineNumbers
+                wrapLongLines
+                customStyle={{
+                    margin: 0,
+                    minHeight: "100%",
+                    background: "transparent",
+                    padding: "1rem",
+                }}
+                codeTagProps={{
+                    style: {
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    },
+                }}
+                lineNumberStyle={{
+                    minWidth: "2.75em",
+                    paddingRight: "1em",
+                    color: "var(--muted-foreground)",
+                    textAlign: "right",
+                    userSelect: "none",
+                }}>
+                {text}
+            </SyntaxHighlighter>
+        </div>
+    );
+}
+
 function UnsupportedPreview({ room, path }: { room: RoomClient; path: string }): ReactElement {
     const filename = filePreviewName(path);
 
@@ -339,6 +564,8 @@ export function FilePreview({ room, path }: { room: RoomClient; path: string }):
             return <VideoPreview room={room} path={path} />;
         case FileKind.Pdf:
             return <PdfPreview room={room} path={path} />;
+        case FileKind.Source:
+            return <SourcePreview room={room} path={path} />;
         case FileKind.Unknown:
             return <UnsupportedPreview room={room} path={path} />;
     }

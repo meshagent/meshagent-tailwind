@@ -474,10 +474,7 @@ function ThreadAttachment({room, attachment, onImageSettled}: {
     return <FileAttachment room={room} path={path} />;
 }
 
-function ChatBubble({
-    text,
-    mine,
-}: {
+function ChatBubble({text, mine}: {
     text: string;
     mine: boolean;
 }): ReactElement | null {
@@ -488,7 +485,7 @@ function ChatBubble({
     return (
         <div
             className={cn(
-                "w-fit max-w-[85%] rounded-md px-4 py-3 text-sm leading-6 shadow-xs sm:max-w-2xl",
+                "w-fit max-w-[85%] rounded-md px-4 py-3 text-sm leading-6 shadow-xs sm:w-2xl",
                 mine
                     ? "bg-secondary/85 text-foreground"
                     : "bg-muted/70 text-foreground",

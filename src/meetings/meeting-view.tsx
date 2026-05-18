@@ -3,7 +3,6 @@ import type { ReactElement } from "react";
 import {
 	ConnectionState,
 	RoomEvent,
-	Track,
 } from "livekit-client";
 
 import type {
@@ -153,9 +152,7 @@ function participantDisplayName(participant: Participant): string {
 	return participant.name?.trim() || participant.identity || "Participant";
 }
 
-function participantVideoPublications(
-	participant: Participant,
-): TrackPublication[] {
+function participantVideoPublications(participant: Participant): TrackPublication[] {
 	return Array.from(
 		participant.videoTrackPublications.values() as Iterable<TrackPublication>,
 	);
@@ -645,8 +642,7 @@ function MeetingStage({controller}: {
 }): ReactElement {
 	const room = controller.livekitRoom;
 	useRoomSnapshot(room);
-	const [expandedTarget, setExpandedTarget] =
-		useState<ExpandedParticipantTarget | null>(null);
+	const [expandedTarget, setExpandedTarget] = useState<ExpandedParticipantTarget | null>(null);
 
 	const participants = [
 		room.localParticipant,
@@ -791,10 +787,7 @@ function ActiveMeetingToolbar({controller, onDisconnect}: {
 }): ReactElement {
 	return (
 		<div className="flex flex-wrap items-center justify-center gap-2">
-			<MeetingControls
-				controller={controller}
-				onDisconnect={onDisconnect}
-				spacing={8} />
+			<MeetingControls controller={controller} onDisconnect={onDisconnect} spacing={8} />
 
 			<ShareScreenToggle controller={controller} />
 		</div>
