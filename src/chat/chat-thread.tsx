@@ -316,7 +316,7 @@ function MarkdownBlock({ text }: { text: string }): ReactElement {
                     </pre>
                 ),
                 p: ({ children, ...props }) => (
-                    <p {...props} className="mb-2 last:mb-0">
+                  <p {...props} className="mb-2 last:mb-0 overflow-hidden max-w-full">
                         {children}
                     </p>
                 ),
@@ -356,6 +356,16 @@ function MarkdownBlock({ text }: { text: string }): ReactElement {
                         className="mb-2 ml-6 list-decimal last:mb-0">
                         {children}
                     </ol>
+                ),
+                a: ({ children, href, ...props }) => (
+                    <a
+                        {...props}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      className="text-primary underline overflow-ellipsis inline-block max-w-full overflow-x-hidden">
+                        {children}
+                    </a>
                 ),
             }}>
             {text}
@@ -585,10 +595,7 @@ function defaultEventHeadline(kind: string, state: string, eventName: string): s
     return eventName.replace(/[._]/gu, " ");
 }
 
-function EventRow({
-    room,
-    message,
-}: {
+function EventRow({room, message}: {
     room: RoomClient;
     message: Element;
 }): ReactElement | null {

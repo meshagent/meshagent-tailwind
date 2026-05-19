@@ -14,9 +14,11 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "../components/ui/dialog";
+
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../lib/utils";
+import { ChatThread } from "../chat/chat-thread";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -25,6 +27,7 @@ export enum FileKind {
     Video = "video",
     Pdf = "pdf",
     Source = "source",
+    Thread = "thread",
     Unknown = "unknown",
 }
 
@@ -162,6 +165,7 @@ const sourceLanguagesByFilename = new Map<string, string>([
     ["dockerfile", "docker"],
     ["makefile", "makefile"],
 ]);
+const threadExtensions = new Set(["thread"]);
 
 function basename(path: string): string {
     const withoutQuery = path.split("?")[0] ?? path;
@@ -200,6 +204,9 @@ export function classifyFile(path: string): FileKind {
     }
     if (sourceExtensions.has(ext) || sourceFilenames.has(filePreviewName(path).toLowerCase())) {
         return FileKind.Source;
+    }
+    if (threadExtensions.has(ext)) {
+        return FileKind.Thread;
     }
     return FileKind.Unknown;
 }
@@ -566,6 +573,8 @@ export function FilePreview({ room, path }: { room: RoomClient; path: string }):
             return <PdfPreview room={room} path={path} />;
         case FileKind.Source:
             return <SourcePreview room={room} path={path} />;
+        case FileKind.Thread:
+          return <ChatThread room={room} path={path} />;
         case FileKind.Unknown:
             return <UnsupportedPreview room={room} path={path} />;
     }
