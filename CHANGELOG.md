@@ -1,3 +1,12 @@
+## [0.41.0]
+- Added spec-based route models and route CRUD/listing APIs, including room and agent routes, with legacy-payload compatibility.
+- Managed-agent toolkit descriptions were simplified to omit `thumbnailUrl` and `pricing`.
+- Breaking change: consumers that read the old toolkit metadata fields need to update to the new shape.
+
+## [0.40.3]
+- TypeScript client now supports route-spec CRUD/listing for room-backed and agent-backed routes.
+- Toolkit serialization was slimmed down by removing `thumbnailUrl` and `pricing` from toolkit and tool payloads, so consumers must no longer rely on those fields.
+
 ## [0.40.2]
 - Stability
 
