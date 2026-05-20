@@ -1,3 +1,7 @@
+## [0.41.1]
+- TypeScript feed subscription requests and responses now carry an optional `filename_datetime_format`.
+- The chatbot UI template now builds and runs as a standalone Next.js app, deploys as a private websocket-enabled service with the `/messages` port, keeps messages pinned to the bottom, and updates Next.js to `16.2.6`.
+
 ## [0.41.0]
 - Added spec-based route models and route CRUD/listing APIs, including room and agent routes, with legacy-payload compatibility.
 - Managed-agent toolkit descriptions were simplified to omit `thumbnailUrl` and `pricing`.
