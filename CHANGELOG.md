@@ -1,3 +1,8 @@
+## [0.41.2]
+- The default TypeScript chatbot template now runs as a standalone HTTP app with `/health` and `/api/chat`, supports public deployment metadata, and no longer depends on the runtime `@meshagent/meshagent` package.
+- Added a new Anthropic chatbot template that talks to the room Anthropic proxy.
+- Generated template dependencies now target `@types/node` 22.10.0, `tsx` 4.20.0, `@vercel/ncc` 0.38.3, and `typescript` 5.8.0.
+
 ## [0.41.1]
 - TypeScript feed subscription requests and responses now carry an optional `filename_datetime_format`.
 - The chatbot UI template now builds and runs as a standalone Next.js app, deploys as a private websocket-enabled service with the `/messages` port, keeps messages pinned to the bottom, and updates Next.js to `16.2.6`.
