@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { JsonContent, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
+import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
+import { MessagingChatClient } from "@meshagent/meshagent-agents";
+import type { BaseChatClient } from "@meshagent/meshagent-agents";
 
 import { ChatInput } from "./chat-input";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
@@ -10,6 +12,8 @@ export type NewChatThreadBuilder = (threadPath: string) => ReactElement;
 
 export interface NewChatThreadProps {
     room: RoomClient;
+    chatClient?: BaseChatClient;
+    disposeChatClient?: boolean;
     agentName: string;
     builder: NewChatThreadBuilder;
     toolkit?: string;
@@ -34,8 +38,8 @@ function normalizeThreadPath(path?: string | null): string | null {
     return normalizedPath ? normalizedPath : null;
 }
 
-function getParticipantName(participant: { getAttribute(name: string): unknown }): string {
-    const name = participant.getAttribute("name");
+function getParticipantName(participant: { getAttribute(name: string): unknown } | null | undefined): string {
+    const name = participant?.getAttribute("name");
     return typeof name === "string" ? name.trim() : "";
 }
 
@@ -76,76 +80,6 @@ function ensureOperationActive(operationId: number, activeOperationRef: RefObjec
     }
 }
 
-function delay(milliseconds: number): Promise<void> {
-    return new Promise((resolve) => {
-        window.setTimeout(resolve, milliseconds);
-    });
-}
-
-async function waitForTargetAgent(params: {
-    room: RoomClient;
-    agentName?: string;
-    operationId: number;
-    activeOperationRef: RefObject<number>;
-}): Promise<RemoteParticipant> {
-    const { room, agentName, operationId, activeOperationRef } = params;
-
-    while (true) {
-        ensureOperationActive(operationId, activeOperationRef);
-
-        const targetAgent = findTargetAgent(room, agentName);
-        if (targetAgent) {
-            return targetAgent;
-        }
-
-        await delay(250);
-    }
-}
-
-async function waitForToolkitAvailable(params: {
-    room: RoomClient;
-    participantId: string;
-    toolkit: string;
-    operationId: number;
-    activeOperationRef: RefObject<number>;
-}): Promise<void> {
-    const {
-        room,
-        participantId,
-        toolkit,
-        operationId,
-        activeOperationRef,
-    } = params;
-
-    while (true) {
-        ensureOperationActive(operationId, activeOperationRef);
-
-        try {
-            const toolkits = await room.agents.listToolkits({ participantId, timeout: 1000 });
-            if (toolkits.some((toolkitDescription) => toolkitDescription.name === toolkit)) {
-                return;
-            }
-        } catch {
-            // Keep polling until the agent reports the toolkit or the request is cancelled.
-        }
-
-        await delay(250);
-    }
-}
-
-function getStringField(record: Record<string, unknown>, key: string): string | null {
-    const value = record[key];
-    return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
-function parseThreadToolResult(toolkit: string, tool: string, content: JsonContent): [path: string, displayName: string | null] {
-    const path = getStringField(content.json, "path");
-    if (!path) {
-        throw new Error(`${toolkit}.${tool} response missing path`);
-    }
-
-    return [path, getStringField(content.json, "name")];
-}
 
 function describeError(error: unknown): string {
     if (error instanceof Error && error.message.trim() !== "") {
@@ -186,10 +120,10 @@ function ErrorBanner({ message }: { message: string }): ReactElement {
 
 export function NewChatThread({
     room,
+    chatClient,
+    disposeChatClient = false,
     agentName,
     builder,
-    toolkit = "chat",
-    tool = "new_thread",
     selectedThreadPath,
     onThreadPathChanged,
     onThreadResolved,
@@ -206,12 +140,32 @@ export function NewChatThread({
     const activeOperationRef = useRef(0);
     const controlledThreadPath = selectedThreadPath !== undefined ? normalizeThreadPath(selectedThreadPath) : undefined;
     const activePath = controlledThreadPath ?? internalThreadPath;
+    const ownsChatClient = chatClient == null;
+    const activeChatClient = useMemo<BaseChatClient>(
+        () => chatClient ?? new MessagingChatClient({ room, agentName }),
+        [agentName, chatClient, room],
+    );
+    const [clientVersion, setClientVersion] = useState(0);
 
     useEffect(() => {
         return () => {
             activeOperationRef.current += 1;
         };
     }, []);
+
+    useEffect(() => {
+        void activeChatClient.start();
+        const handleChange = () => {
+            setClientVersion((current) => current + 1);
+        };
+        activeChatClient.addListener(handleChange);
+        return () => {
+            activeChatClient.removeListener(handleChange);
+            if (ownsChatClient || disposeChatClient) {
+                void activeChatClient.stop();
+            }
+        };
+    }, [activeChatClient, disposeChatClient, ownsChatClient]);
 
     useEffect(() => {
         if (controlledThreadPath === undefined) {
@@ -263,52 +217,34 @@ export function NewChatThread({
         const operationId = activeOperationRef.current + 1;
         activeOperationRef.current = operationId;
 
-        const initialTargetAgent = findTargetAgent(room, agentName);
-        setWaitingForAgent(initialTargetAgent === null);
-        setCreatingNewThread(initialTargetAgent !== null);
+        const initialTargetAgent = activeChatClient.agentParticipant() ?? findTargetAgent(room, agentName);
+        setWaitingForAgent(initialTargetAgent === null && chatClient == null);
+        setCreatingNewThread(initialTargetAgent !== null || chatClient != null);
         setNewThreadError(null);
 
         try {
-            const targetAgent = initialTargetAgent ?? await waitForTargetAgent({
-                room,
-                agentName,
-                operationId,
-                activeOperationRef,
-            });
+            if (initialTargetAgent === null && chatClient == null) {
+                if (!(activeChatClient instanceof MessagingChatClient)) {
+                    throw new Error("No online agent supports agent messages.");
+                }
+                await activeChatClient.waitForAgentParticipant({ waitKey: String(operationId) });
+            }
 
             ensureOperationActive(operationId, activeOperationRef);
-            if (initialTargetAgent === null) {
+            if (initialTargetAgent === null && chatClient == null) {
                 setWaitingForAgent(false);
                 setCreatingNewThread(true);
             }
 
-            await waitForToolkitAvailable({
-                room,
-                participantId: targetAgent.id,
-                toolkit,
-                operationId,
-                activeOperationRef,
+            const result = await activeChatClient.startThread({
+                message: text,
+                attachments: newThreadAttachments.map((attachment) => attachment.path),
+                senderName: getParticipantName(room.localParticipant) || undefined,
             });
 
             ensureOperationActive(operationId, activeOperationRef);
-            const response = await room.invoke({
-                participantId: targetAgent.id,
-                toolkit,
-                tool,
-                arguments: {
-                    message: {
-                        text,
-                        attachments: newThreadAttachments.map((attachment) => ({ path: attachment.path })),
-                    },
-                },
-            });
-
-            ensureOperationActive(operationId, activeOperationRef);
-            if (!(response instanceof JsonContent)) {
-                throw new Error(`${toolkit}.${tool} returned non-JSON content`);
-            }
-
-            const [threadPath, displayName] = parseThreadToolResult(toolkit, tool, response);
+            const threadPath = result.threadPath;
+            const displayName = null;
             const normalizedPath = normalizeThreadPath(threadPath);
             if (controlledThreadPath === undefined) {
                 setInternalThreadPath(normalizedPath);
@@ -330,7 +266,9 @@ export function NewChatThread({
             setNewThreadError(describeError(error));
         }
     }, [
+        activeChatClient,
         agentName,
+        chatClient,
         controlledThreadPath,
         creatingNewThread,
         newThreadAttachments,
@@ -338,8 +276,6 @@ export function NewChatThread({
         onThreadPathChanged,
         onThreadResolved,
         room,
-        toolkit,
-        tool,
         waitingForAgent,
     ]);
 
@@ -349,9 +285,9 @@ export function NewChatThread({
             return displayParticipantName(knownAgentName);
         }
 
-        const targetAgent = findTargetAgent(room);
+        const targetAgent = activeChatClient.agentParticipant() ?? findTargetAgent(room);
         return displayParticipantName(targetAgent ? getParticipantName(targetAgent) : null);
-    }, [agentName, room]);
+    }, [activeChatClient, agentName, clientVersion, room]);
 
     const pendingStatusText = waitingForAgent
         ? `Waiting for ${targetAgentLabel} to be ready.`

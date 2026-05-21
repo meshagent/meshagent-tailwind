@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { RoomClient } from "@meshagent/meshagent";
+import type { BaseChatClient } from "@meshagent/meshagent-agents";
 
 import { NewChatThread } from "./new-chat-thread";
 
@@ -8,6 +9,8 @@ export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
 
 export interface MultiThreadViewProps {
     room: RoomClient;
+    chatClient?: BaseChatClient;
+    disposeChatClient?: boolean;
     agentName: string;
     builder: MultiThreadContentBuilder;
     toolkit?: string;
@@ -29,6 +32,8 @@ function normalizeSelectedThreadPath(path?: string | null): string | null {
 
 export function MultiThreadView({
     room,
+    chatClient,
+    disposeChatClient = false,
     agentName,
     builder,
     toolkit = "chat",
@@ -78,6 +83,8 @@ export function MultiThreadView({
         <NewChatThread
             key={composerKey}
             room={room}
+            chatClient={chatClient}
+            disposeChatClient={disposeChatClient}
             agentName={agentName}
             builder={builder}
             toolkit={toolkit}

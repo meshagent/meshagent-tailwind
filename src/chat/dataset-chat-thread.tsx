@@ -3,7 +3,6 @@ import type { ReactElement } from "react";
 import {
     DatasetJson,
     DatasetStruct,
-    RoomMessageEvent,
     RoomServerException,
 } from "@meshagent/meshagent";
 import type {
@@ -11,7 +10,36 @@ import type {
     RemoteParticipant,
     RoomClient,
 } from "@meshagent/meshagent";
-import { subscribe } from "@meshagent/meshagent-react";
+import {
+    MessagingChatClient,
+    agentFileContentDeltaType,
+    agentFileContentEndedType,
+    agentFileContentStartedType,
+    agentImageGenerationCompletedType,
+    agentImageGenerationFailedType,
+    agentImageGenerationPartialType,
+    agentImageGenerationStartedType,
+    agentReasoningContentDeltaType,
+    agentReasoningContentEndedType,
+    agentReasoningContentStartedType,
+    agentTextContentDeltaType,
+    agentTextContentEndedType,
+    agentToolCallEndedType,
+    agentToolCallInProgressType,
+    agentToolCallPendingType,
+    agentToolCallStartedType,
+    agentTurnStartAcceptedType,
+    agentTurnStartRejectedType,
+    agentTurnStartedType,
+    agentTurnSteerAcceptedType,
+    agentTurnSteerRejectedType,
+    agentTurnSteeredType,
+} from "@meshagent/meshagent-agents";
+import type {
+    BaseChatClient,
+    ChatThreadSession,
+    PendingAgentInput,
+} from "@meshagent/meshagent-agents";
 import { Download, FileText, ImageOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -28,35 +56,6 @@ import { PendingAgentMessage, useThreadStatus } from "./chat-hooks";
 import { cn } from "../lib/utils";
 import { timeAgo } from "./chat-thread";
 
-const agentRoomMessageType = "agent-message";
-const agentTurnStartType = "meshagent.agent.turn.start";
-const agentTurnSteerType = "meshagent.agent.turn.steer";
-const agentTurnInterruptType = "meshagent.agent.turn.interrupt";
-const agentThreadOpenType = "meshagent.agent.thread.open";
-const agentThreadCloseType = "meshagent.agent.thread.close";
-const agentTurnStartAcceptedType = "meshagent.agent.turn.start.accepted";
-const agentTurnStartRejectedType = "meshagent.agent.turn.start.rejected";
-const agentTurnSteerAcceptedType = "meshagent.agent.turn.steer.accepted";
-const agentTurnSteerRejectedType = "meshagent.agent.turn.steer.rejected";
-const agentTurnStartedType = "meshagent.agent.turn.started";
-const agentTurnSteeredType = "meshagent.agent.turn.steered";
-const agentTextContentDeltaType = "meshagent.agent.text_content.delta";
-const agentTextContentEndedType = "meshagent.agent.text_content.ended";
-const agentReasoningContentStartedType = "meshagent.agent.reasoning_content.started";
-const agentReasoningContentDeltaType = "meshagent.agent.reasoning_content.delta";
-const agentReasoningContentEndedType = "meshagent.agent.reasoning_content.ended";
-const agentFileContentStartedType = "meshagent.agent.file_content.started";
-const agentFileContentDeltaType = "meshagent.agent.file_content.delta";
-const agentFileContentEndedType = "meshagent.agent.file_content.ended";
-const agentToolCallPendingType = "meshagent.agent.tool_call.pending";
-const agentToolCallInProgressType = "meshagent.agent.tool_call.in_progress";
-const agentToolCallStartedType = "meshagent.agent.tool_call.started";
-const agentToolCallEndedType = "meshagent.agent.tool_call.ended";
-const agentImageGenerationStartedType = "meshagent.agent.image_generation.started";
-const agentImageGenerationPartialType = "meshagent.agent.image_generation.partial";
-const agentImageGenerationCompletedType = "meshagent.agent.image_generation.completed";
-const agentImageGenerationFailedType = "meshagent.agent.image_generation.failed";
-
 const stickyBottomThresholdPx = 24;
 const maxPreviewEdgePx = 312.5;
 
@@ -66,6 +65,8 @@ type DatasetArrowTable = NonNullable<DatasetWatchEvent["table"]>;
 export interface DatasetChatThreadProps {
     room: RoomClient;
     path: string;
+    chatClient?: BaseChatClient;
+    disposeChatClient?: boolean;
     agentName?: string;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
@@ -1209,6 +1210,27 @@ function describeError(error: unknown): string {
     return String(error);
 }
 
+function pendingAgentMessageFromInput(pending: PendingAgentInput): PendingAgentMessage {
+    const payload = pending.payload.toJson();
+    const parsed = PendingAgentMessage.fromQueueJson({
+        ...payload,
+        message_type: pending.messageType,
+        created_at: pending.createdAt.toISOString(),
+    });
+    return new PendingAgentMessage({
+        messageId: parsed.messageId,
+        messageType: parsed.messageType,
+        threadPath: parsed.threadPath,
+        text: parsed.text,
+        attachments: parsed.attachments,
+        senderName: parsed.senderName,
+        createdAt: parsed.createdAt,
+        matchByContentOnly: parsed.matchByContentOnly,
+        awaitingAcceptance: pending.awaitingAcceptance,
+        awaitingOnline: pending.awaitingOnline,
+    });
+}
+
 function MarkdownBlock({ text }: { text: string }): ReactElement {
     return (
         <ReactMarkdown
@@ -1758,30 +1780,12 @@ function ErrorBanner({ message }: { message: string }): ReactElement {
     );
 }
 
-function sendThreadSubscriptionMessage({
-    room,
-    agent,
-    messageType,
-    path,
-}: {
-    room: RoomClient;
-    agent: RemoteParticipant;
-    messageType: string;
-    path: string;
-}): void {
-    void room.messaging.sendMessage({
-        to: agent,
-        type: agentRoomMessageType,
-        ignoreOffline: true,
-        message: {
-            payload: { type: messageType, thread_id: path },
-        },
-    }).catch(() => undefined);
-}
 
 export function DatasetChatThread({
     room,
     path,
+    chatClient,
+    disposeChatClient = false,
     agentName,
     emptyStateTitle,
     emptyStateDescription,
@@ -1795,15 +1799,37 @@ export function DatasetChatThread({
     const [sendError, setSendError] = useState<string | null>(null);
     const [showCompletedToolCalls, setShowCompletedToolCalls] = useState(initialShowCompletedToolCalls);
     const status = useThreadStatus({ room, path, agentName });
-    const agentParticipant = findAgentParticipant(room, agentName);
     const localParticipantName = getParticipantName(room.localParticipant);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
     const stickToBottomRef = useRef(true);
+    const threadSessionRef = useRef<ChatThreadSession | null>(null);
+    const threadSessionCursorRef = useRef(0);
+    const [threadSessionVersion, setThreadSessionVersion] = useState(0);
+    const ownsChatClient = chatClient == null;
+    const activeChatClient = useMemo<BaseChatClient>(
+        () => chatClient ?? new MessagingChatClient({ room, agentName }),
+        [agentName, chatClient, room],
+    );
+    const agentParticipant = activeChatClient.agentParticipant() ?? findAgentParticipant(room, agentName);
 
     const bumpModelVersion = useCallback(() => {
         setModelVersion((current) => current + 1);
     }, []);
+
+    useEffect(() => {
+        void activeChatClient.start();
+        const handleChange = () => {
+            setThreadSessionVersion((current) => current + 1);
+        };
+        activeChatClient.addListener(handleChange);
+        return () => {
+            activeChatClient.removeListener(handleChange);
+            if (ownsChatClient || disposeChatClient) {
+                void activeChatClient.stop();
+            }
+        };
+    }, [activeChatClient, disposeChatClient, ownsChatClient]);
 
     useEffect(() => {
         const model = createDatasetThreadModel();
@@ -1893,52 +1919,45 @@ export function DatasetChatThread({
     }, [bumpModelVersion, path, room]);
 
     useEffect(() => {
-        const subscription = subscribe(room.listen(), {
-            next: (event) => {
-                if (!(event instanceof RoomMessageEvent)) {
-                    return;
-                }
-                if (event.message.type !== agentRoomMessageType) {
-                    return;
-                }
-
-                const payload = event.message.message.payload;
-                if (!isRecord(payload)) {
-                    return;
-                }
-
-                if (applyAgentMessagePayload(modelRef.current, payload, path)) {
-                    bumpModelVersion();
-                }
-            },
-        });
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [bumpModelVersion, path, room]);
-
-    useEffect(() => {
-        if (!agentParticipant) {
+        if (isTmpThreadPath(path)) {
+            threadSessionRef.current = null;
+            threadSessionCursorRef.current = 0;
+            setThreadSessionVersion((current) => current + 1);
             return;
         }
 
-        sendThreadSubscriptionMessage({
-            room,
-            agent: agentParticipant,
-            messageType: agentThreadOpenType,
-            path,
-        });
+        const session = activeChatClient.openThread(path);
+        threadSessionRef.current = session;
+        threadSessionCursorRef.current = 0;
+
+        const drainSessionMessages = () => {
+            let changed = false;
+            const messages = session.messages;
+            while (threadSessionCursorRef.current < messages.length) {
+                const event = messages[threadSessionCursorRef.current];
+                threadSessionCursorRef.current += 1;
+                if (applyAgentMessagePayload(modelRef.current, event.payload, path)) {
+                    changed = true;
+                }
+            }
+            if (changed) {
+                bumpModelVersion();
+            }
+            setThreadSessionVersion((current) => current + 1);
+        };
+
+        session.addListener(drainSessionMessages);
+        drainSessionMessages();
 
         return () => {
-            sendThreadSubscriptionMessage({
-                room,
-                agent: agentParticipant,
-                messageType: agentThreadCloseType,
-                path,
-            });
+            session.removeListener(drainSessionMessages);
+            if (threadSessionRef.current === session) {
+                threadSessionRef.current = null;
+                threadSessionCursorRef.current = 0;
+            }
+            void session.close().catch(() => undefined);
         };
-    }, [agentParticipant, path, room]);
+    }, [activeChatClient, bumpModelVersion, path]);
 
     const allMessages = useMemo(() => {
         const model = modelRef.current;
@@ -1971,32 +1990,27 @@ export function DatasetChatThread({
         for (const pending of status.pendingMessages) {
             combined.set(pending.messageId, pending);
         }
+        for (const pending of threadSessionRef.current?.pendingInputs ?? []) {
+            combined.set(pending.messageId, pendingAgentMessageFromInput(pending));
+        }
         const values = Array.from(combined.values())
             .filter((pending) => !allMessages.some((message) => datasetThreadMessageMatchesPendingAgentMessage(message, pending)));
         return [
             ...values.filter((message) => !message.awaitingAcceptance),
             ...values.filter((message) => message.awaitingAcceptance),
         ];
-    }, [allMessages, status.pendingMessages]);
+    }, [allMessages, status.pendingMessages, threadSessionVersion]);
 
-    const canInterruptActiveTurn = status.supportsAgentMessages && status.turnId != null;
+    const canInterruptActiveTurn = status.turnId != null && (status.supportsAgentMessages || agentParticipant != null || chatClient != null);
 
     const cancelTurn = useCallback(async () => {
-        if (!status.turnId?.trim() || !agentParticipant) {
+        const turnId = status.turnId?.trim();
+        const session = threadSessionRef.current;
+        if (!turnId || session == null) {
             return;
         }
-        await room.messaging.sendMessage({
-            to: agentParticipant,
-            type: agentRoomMessageType,
-            message: {
-                payload: {
-                    type: agentTurnInterruptType,
-                    thread_id: path,
-                    turn_id: status.turnId,
-                },
-            },
-        });
-    }, [agentParticipant, path, room, status.turnId]);
+        await session.interruptTurn(turnId);
+    }, [status.turnId, threadSessionVersion]);
 
     const selectAttachments = useCallback((files: File[]) => {
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
@@ -2012,8 +2026,14 @@ export function DatasetChatThread({
         if (message.text.trim() === "" && message.attachments.length === 0) {
             return;
         }
-        if (!agentParticipant) {
+        if (!agentParticipant && chatClient == null) {
             setSendError("This thread requires an online agent that supports agent messages.");
+            return;
+        }
+
+        const session = threadSessionRef.current;
+        if (session == null) {
+            setSendError("No thread session is open.");
             return;
         }
 
@@ -2023,50 +2043,27 @@ export function DatasetChatThread({
             .filter((attachment): attachment is string => attachment !== null);
         const senderName = localParticipantName.trim() || undefined;
 
-        upsertAgentRow({
-            model: modelRef.current,
-            itemId: message.id,
-            turnId: null,
-            timestamp: new Date(),
-            data: {
-                kind: "message",
-                role: "user",
-                text: message.text,
-                sender_name: senderName,
-                attachments: normalizedAttachments,
-            },
-        });
-        bumpModelVersion();
-
         try {
-            const payload: Record<string, unknown> = {
-                type: isSteer ? agentTurnSteerType : agentTurnStartType,
-                thread_id: path,
-                message_id: message.id,
-                content: agentInputContent(message.text, message.attachments),
-            };
-            if (isSteer && status.turnId) {
-                payload.turn_id = status.turnId;
-            }
-            await room.messaging.sendMessage({
-                to: agentParticipant,
-                type: agentRoomMessageType,
-                message: { payload },
+            await session.sendText({
+                messageId: message.id,
+                text: message.text,
+                attachments: normalizedAttachments,
+                steer: isSteer,
+                turnId: status.turnId,
+                senderName,
             });
             setSendError(null);
+            setThreadSessionVersion((current) => current + 1);
         } catch (error) {
-            modelRef.current.agentRowsByItemId.delete(message.id);
-            bumpModelVersion();
             setSendError(describeError(error));
         }
     }, [
         agentParticipant,
-        bumpModelVersion,
+        chatClient,
         localParticipantName,
-        path,
-        room,
         status.mode,
         status.turnId,
+        threadSessionVersion,
     ]);
 
     const hasWireBackedContent = modelRef.current.agentRowsByItemId.size > 0
@@ -2223,10 +2220,10 @@ export function DatasetChatThread({
                 attachments={attachments}
                 onFilesSelected={selectAttachments}
                 setAttachments={setAttachments}
-                disabled={agentParticipant == null}
+                disabled={agentParticipant == null && chatClient == null}
                 placeholder={
                     inputPlaceholder
-                    ?? (agentParticipant
+                    ?? (agentParticipant || chatClient
                         ? "Type a message"
                         : `Waiting for ${displayParticipantName(agentName ?? "agent")}`)
                 }
