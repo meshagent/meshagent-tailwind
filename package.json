@@ -4,9 +4,10 @@
     "description": "Meshagent Tailwind Components",
     "homepage": "https://github.com/meshagent/meshagent-tailwind",
     "scripts": {
+        "build:deps": "npm --prefix ../meshagent-agents-ts run build",
         "build:js": "node build.js",
         "build:css": "tailwindcss -c tailwind.config.js -i styles.css -o dist/index.css --minify",
-        "build:types": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
+        "build:types": "npm run build:deps && tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
         "build": "npm run build:js && npm run build:types && npm run build:css"
     },
     "author": "Meshagent Software",

@@ -15,6 +15,9 @@
         "esModuleInterop": true,
         "jsx": "react-jsx",
         "baseUrl": "./src",
+        "paths": {
+            "@meshagent/meshagent-agents": ["../../meshagent-agents-ts/dist/node/index.d.ts"]
+        },
         "rootDir": "./src",
         "typeRoots": [
             "./types",
