@@ -1,3 +1,9 @@
+## [0.41.4]
+- Stability
+
+## [0.41.3]
+- Stability
+
 ## [0.41.2]
 - The default TypeScript chatbot template now runs as a standalone HTTP app with `/health` and `/api/chat`, supports public deployment metadata, and no longer depends on the runtime `@meshagent/meshagent` package.
 - Added a new Anthropic chatbot template that talks to the room Anthropic proxy.
