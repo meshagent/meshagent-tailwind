@@ -1,3 +1,10 @@
+## [0.41.6]
+- Added convenience dataset helpers and toolkit-config support to the TypeScript SDK, expanding room- and dataset-aware workflows.
+- Extended the TypeScript storage client download URL API with an optional `download` flag so callers can request attachment-style links.
+- Updated the TypeScript agent/chat packages to support room shell and room storage toolkits with richer threaded chat behavior.
+- Improved Powerboards meetings with meeting previews, camera-grid handling, and video-chat collapse fixes.
+- Added syntax-highlighted file previews to the React UI, including `react-syntax-highlighter@^16.1.1` and `@types/react-syntax-highlighter@^15.5.13`.
+
 ## [0.41.5]
 - Stability
 
