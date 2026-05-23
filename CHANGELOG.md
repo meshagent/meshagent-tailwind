@@ -1,3 +1,6 @@
+## [0.41.7]
+- Stability
+
 ## [0.41.6]
 - Added convenience dataset helpers and toolkit-config support to the TypeScript SDK, expanding room- and dataset-aware workflows.
 - Extended the TypeScript storage client download URL API with an optional `download` flag so callers can request attachment-style links.
