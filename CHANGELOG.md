@@ -1,3 +1,9 @@
+## [0.42.0]
+- Added project lookup by key.
+- Container and room APIs now return structured `containerPort`/`hostPort` entries instead of integer port lists, which is a breaking response-shape change.
+- `ContainerSpec`, `PortSpec`, and `RoutePathSpec` now support `template`, `host_port`, and `stripPrefix`, and room service URL resolution uses `host_port` when available.
+- `createRoom` now serializes typed permissions, and container creation now accepts a `template` option.
+
 ## [0.41.10]
 - Stability
 
