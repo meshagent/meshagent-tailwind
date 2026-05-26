@@ -111,6 +111,10 @@ function threadListPathFromThreadDir(threadDir?: string | null): string | null {
         return null;
     }
 
+    if (normalized.startsWith("dataset://")) {
+        return `${normalized}/index`;
+    }
+
     return `${normalized}/index.threadl`;
 }
 
@@ -349,6 +353,9 @@ export function resolvedThreadListPath(
 
     const normalizedDir = normalizedThreadDir(threadDir);
     if (normalizedDir !== null) {
+        if (normalizedDir.startsWith("dataset://")) {
+            return `${normalizedDir}/index`;
+        }
         return `${normalizedDir}/index.threadl`;
     }
 
