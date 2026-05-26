@@ -6,7 +6,9 @@ import {
 } from "livekit-client";
 
 import type {
+	RemoteAudioTrack,
 	Participant,
+	RemoteParticipant,
 	Room,
 	TrackPublication,
 	VideoTrack,
@@ -97,7 +99,13 @@ function useRoomSnapshot(room: Room): void {
 						participantVideoPublications(participant)
 							.map(
 								(publication) =>
-									`${publication.trackSid}:${publication.source}:${publication.isMuted}:${publication.videoTrack != null}`,
+									`video:${publication.trackSid}:${publication.source}:${publication.isMuted}:${publication.videoTrack != null}`,
+							)
+							.join(","),
+						participantAudioPublications(participant)
+							.map(
+								(publication) =>
+									`audio:${publication.trackSid}:${publication.source}:${publication.isMuted}:${publication.audioTrack != null}`,
 							)
 							.join(","),
 					].join(":"),
@@ -140,6 +148,9 @@ function useMeetingViewState(controller: MeetingController): {
 						console.warn("Unable to switch audio output device", error);
 					});
 			}
+			await controller.livekitRoom.startAudio().catch((error: unknown) => {
+				console.warn("Unable to start meeting audio", error);
+			});
 			setViewState("joined");
 		},
 		[controller],
@@ -155,6 +166,12 @@ function participantDisplayName(participant: Participant): string {
 function participantVideoPublications(participant: Participant): TrackPublication[] {
 	return Array.from(
 		participant.videoTrackPublications.values() as Iterable<TrackPublication>,
+	);
+}
+
+function participantAudioPublications(participant: Participant): TrackPublication[] {
+	return Array.from(
+		participant.audioTrackPublications.values() as Iterable<TrackPublication>,
 	);
 }
 
@@ -185,6 +202,16 @@ function activeVideoPublications(
 	);
 }
 
+function activeAudioPublications(
+	participant: RemoteParticipant,
+): TrackPublication[] {
+	return Array.from(
+		participant.audioTrackPublications.values() as Iterable<TrackPublication>,
+	).filter(
+		(publication) => !publication.isMuted && publication.audioTrack != null,
+	);
+}
+
 function screenSharePublications(participants: readonly Participant[]): Array<{
 	participant: Participant;
 	publication: TrackPublication;
@@ -196,6 +223,59 @@ function screenSharePublications(participants: readonly Participant[]): Array<{
 		);
 		return publication == null ? [] : [{ participant, publication }];
 	});
+}
+
+function useAttachedRemoteAudioTrack(
+	track: RemoteAudioTrack | undefined,
+): (element: HTMLAudioElement | null) => void {
+	const attachedElementRef = useRef<HTMLAudioElement | null>(null);
+
+	useEffect(() => {
+		const element = attachedElementRef.current;
+		if (element == null || track == null) {
+			return undefined;
+		}
+		track.attach(element);
+		return () => {
+			track.detach(element);
+		};
+	}, [track]);
+
+	return useCallback((element: HTMLAudioElement | null) => {
+		attachedElementRef.current = element;
+	}, []);
+}
+
+function RemoteAudioTrackView({
+	track,
+}: {
+	track: RemoteAudioTrack;
+}): ReactElement {
+	const audioRef = useAttachedRemoteAudioTrack(track);
+
+	return <audio ref={audioRef} autoPlay />;
+}
+
+function MeetingAudioRenderer({ room }: { room: Room }): ReactElement | null {
+	useRoomSnapshot(room);
+	const publications = Array.from(room.remoteParticipants.values()).flatMap(
+		activeAudioPublications,
+	);
+
+	if (publications.length === 0) {
+		return null;
+	}
+
+	return (
+		<div aria-hidden="true" className="hidden">
+			{publications.map((publication) => (
+				<RemoteAudioTrackView
+					key={publication.trackSid}
+					track={publication.audioTrack as RemoteAudioTrack}
+				/>
+			))}
+		</div>
+	);
 }
 
 function useAttachedVideoTrack(
@@ -812,6 +892,7 @@ export function MeetingView({controller: providedController, onCancel}: {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
+			<MeetingAudioRenderer room={controller.livekitRoom} />
 			<div className="flex-0 border-b px-5 py-3">
 				<ActiveMeetingToolbar controller={controller} onDisconnect={onCancel} />
 			</div>

@@ -1,3 +1,6 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement } from "react";
+
 import {
 	type AudioCaptureOptions,
 	LocalAudioTrack,
@@ -5,9 +8,8 @@ import {
 	Room,
 	type VideoCaptureOptions,
 } from "livekit-client";
-import { Video, VideoOff, CameraOff, Mic, MicOff, Settings } from "lucide-react";
-import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { Video, VideoOff, Mic, MicOff, Settings } from "lucide-react";
 
 import { Button } from "../components/ui/button.js";
 import {

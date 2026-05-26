@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import { Camera, CameraOff, Mic, MicOff, Phone, Settings } from "lucide-react";
+import { Video, VideoOff, Mic, MicOff, Phone, Settings } from "lucide-react";
 import { ConnectionState, Room } from "livekit-client";
 
 import { Button } from "../components/ui/button.js";
@@ -132,7 +132,7 @@ export function CameraToggle({ controller }: { controller?: MeetingController })
             text={pending ? "Starting camera" : enabled ? "Turn off camera" : "Turn on camera"}
             on={showEnabled}
             destructive={unavailable}
-            icon={showEnabled ? <Camera /> : <CameraOff />}
+            icon={showEnabled ? <Video /> : <VideoOff />}
             loading={pending || processing}
             disabled={processing || pending}
             onClick={() => {

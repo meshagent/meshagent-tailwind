@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, ReactElement } from "react";
+import type { ChangeEvent, FormEvent, ReactElement } from "react";
 
 import { Element, MeshDocument, Participant, RoomClient } from "@meshagent/meshagent";
 import { useDocumentChanged } from "@meshagent/meshagent-react";
+import {
+    AgentThreadStorageRepository,
+    DatasetThreadStorage,
+    MessagingChatClient,
+} from "@meshagent/meshagent-agents";
+import type {
+    BaseChatClient,
+    ThreadListEntry as AgentThreadListEntry,
+} from "@meshagent/meshagent-agents";
 import {
     AlertTriangle,
     Check,
@@ -44,7 +53,7 @@ export {
 } from "./conversation-descriptor.js";
 
 interface ChatThreadListEntry {
-    element: Element;
+    element?: Element;
     path: string;
     name: string;
     createdAt: string;
@@ -56,6 +65,8 @@ interface UseThreadListDocumentResult {
     entries: ChatThreadListEntry[];
     loading: boolean;
     error: unknown;
+    renameThread: (entry: ChatThreadListEntry, name: string) => Promise<void>;
+    deleteThread: (entry: ChatThreadListEntry) => Promise<void>;
 }
 
 interface RenameThreadDialogState {
@@ -65,6 +76,8 @@ interface RenameThreadDialogState {
 
 export interface ChatBotViewProps {
     room: RoomClient;
+    chatClient?: BaseChatClient;
+    disposeChatClient?: boolean;
     path?: string;
     documentPath?: string;
     participants?: Participant[];
@@ -186,6 +199,102 @@ async function closeDocument(room: RoomClient, path: string): Promise<void> {
     }
 }
 
+function threadListEntryFromAgentEntry(entry: AgentThreadListEntry): ChatThreadListEntry {
+    return {
+        path: entry.path,
+        name: entry.name,
+        createdAt: entry.createdAt,
+        modifiedAt: entry.modifiedAt,
+    };
+}
+
+interface ChatThreadListStore {
+    readonly document: MeshDocument | null;
+    open(): Promise<void>;
+    close(): Promise<void>;
+    entries(): ChatThreadListEntry[];
+    renameThread(entry: ChatThreadListEntry, name: string): Promise<void>;
+    deleteThread(entry: ChatThreadListEntry): Promise<void>;
+}
+
+class MeshDocumentChatThreadListStore implements ChatThreadListStore {
+    public document: MeshDocument | null = null;
+
+    constructor(
+        private readonly room: RoomClient,
+        private readonly path: string,
+    ) {}
+
+    public async open(): Promise<void> {
+        this.document = await this.room.sync.open(this.path);
+    }
+
+    public async close(): Promise<void> {
+        this.document = null;
+        await closeDocument(this.room, this.path);
+    }
+
+    public entries(): ChatThreadListEntry[] {
+        return this.document === null ? [] : parseThreadListEntries(this.document);
+    }
+
+    public async renameThread(entry: ChatThreadListEntry, name: string): Promise<void> {
+        if (entry.element == null) {
+            throw new Error("Thread list entry is not backed by a mesh document element.");
+        }
+        entry.element.setAttribute("name", name);
+    }
+
+    public async deleteThread(entry: ChatThreadListEntry): Promise<void> {
+        if (entry.element == null) {
+            throw new Error("Thread list entry is not backed by a mesh document element.");
+        }
+        await this.room.storage.delete(entry.path);
+        entry.element.delete();
+    }
+}
+
+interface RepositoryThreadList {
+    open(): Promise<void>;
+    close(): Promise<void>;
+    entries(): AgentThreadListEntry[];
+    renameThread(threadPath: string, name: string): Promise<void>;
+    deleteThread(threadPath: string): Promise<void>;
+    addListener(listener: () => void): void;
+    removeListener(listener: () => void): void;
+}
+
+class RepositoryChatThreadListStore implements ChatThreadListStore {
+    public readonly document = null;
+
+    constructor(
+        private readonly repository: RepositoryThreadList,
+        private readonly onChanged: () => void,
+    ) {}
+
+    public async open(): Promise<void> {
+        this.repository.addListener(this.onChanged);
+        await this.repository.open();
+    }
+
+    public async close(): Promise<void> {
+        this.repository.removeListener(this.onChanged);
+        await this.repository.close();
+    }
+
+    public entries(): ChatThreadListEntry[] {
+        return this.repository.entries().map(threadListEntryFromAgentEntry);
+    }
+
+    public async renameThread(entry: ChatThreadListEntry, name: string): Promise<void> {
+        await this.repository.renameThread(entry.path, name);
+    }
+
+    public async deleteThread(entry: ChatThreadListEntry): Promise<void> {
+        await this.repository.deleteThread(entry.path);
+    }
+}
+
 function useIsWideLayout(minWidth: number): boolean {
     const [matches, setMatches] = useState(false);
 
@@ -210,28 +319,57 @@ function useIsWideLayout(minWidth: number): boolean {
     return matches;
 }
 
-function useThreadListDocument({room, path}: {
+function useThreadListDocument({room, chatClient, path}: {
     room: RoomClient;
+    chatClient: BaseChatClient | null;
     path: string | null;
 }): UseThreadListDocumentResult {
     const [document, setDocument] = useState<MeshDocument | null>(null);
     const [entries, setEntries] = useState<ChatThreadListEntry[]>([]);
     const [loading, setLoading] = useState(path !== null);
     const [error, setError] = useState<unknown>(null);
+    const storeRef = useRef<ChatThreadListStore | null>(null);
 
-    const syncDocumentState = useCallback((nextDocument: MeshDocument) => {
-        const nextEntries = parseThreadListEntries(nextDocument);
+    const syncEntries = useCallback((store: ChatThreadListStore | null = storeRef.current) => {
+        if (store === null) {
+            setEntries([]);
+            return;
+        }
 
+        const nextEntries = [...store.entries()].sort(compareThreadEntries);
         setEntries((currentEntries) => (
             threadEntriesEqual(currentEntries, nextEntries) ? currentEntries : nextEntries
         ));
     }, []);
 
+    const createStore = useCallback((nextPath: string): ChatThreadListStore => {
+        if (nextPath.startsWith("agent://")) {
+            if (chatClient === null) {
+                throw new Error("Agent thread lists require a chat client.");
+            }
+            return new RepositoryChatThreadListStore(
+                new AgentThreadStorageRepository({ chatClient }),
+                () => syncEntries(),
+            );
+        }
+
+        if (nextPath.startsWith("dataset://")) {
+            return new RepositoryChatThreadListStore(
+                new DatasetThreadStorage({ room, path: nextPath }),
+                () => syncEntries(),
+            );
+        }
+
+        return new MeshDocumentChatThreadListStore(room, nextPath);
+    }, [chatClient, room, syncEntries]);
+
     useEffect(() => {
         let cancelled = false;
-        let opened = false;
 
         if (path === null) {
+            const previousStore = storeRef.current;
+            storeRef.current = null;
+            void previousStore?.close();
             setDocument(null);
             setEntries([]);
             setLoading(false);
@@ -244,16 +382,18 @@ function useThreadListDocument({room, path}: {
         setLoading(true);
         setError(null);
 
-        void room.sync.open(path)
-            .then((nextDocument) => {
+        const store = createStore(path);
+        storeRef.current = store;
+
+        void store.open()
+            .then(() => {
                 if (cancelled) {
-                    void closeDocument(room, path);
+                    void store.close();
                     return;
                 }
 
-                opened = true;
-                setDocument(nextDocument);
-                syncDocumentState(nextDocument);
+                setDocument(store.document);
+                syncEntries(store);
                 setLoading(false);
                 setError(null);
             })
@@ -270,15 +410,16 @@ function useThreadListDocument({room, path}: {
 
         return () => {
             cancelled = true;
-            if (opened) {
-                void closeDocument(room, path);
+            if (storeRef.current === store) {
+                storeRef.current = null;
             }
+            void store.close();
         };
-    }, [path, room, syncDocumentState]);
+    }, [createStore, path, syncEntries]);
 
     useDocumentChanged({
         document,
-        onChanged: syncDocumentState,
+        onChanged: () => syncEntries(),
     });
 
     return {
@@ -286,6 +427,14 @@ function useThreadListDocument({room, path}: {
         entries,
         loading,
         error,
+        renameThread: async (entry, name) => {
+            await storeRef.current?.renameThread(entry, name);
+            syncEntries();
+        },
+        deleteThread: async (entry) => {
+            await storeRef.current?.deleteThread(entry);
+            syncEntries();
+        },
     };
 }
 
@@ -451,7 +600,7 @@ function RenameThreadDialog({
     dialogState: RenameThreadDialogState | null;
     onNameChange: (event: ChangeEvent<HTMLInputElement>) => void;
     onOpenChange: (open: boolean) => void;
-    onSubmit: (event: ChangeEvent<HTMLFormElement>) => void;
+    onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }): ReactElement {
     const inputId = useId();
     const inputRef = useRef<HTMLInputElement>(null);
@@ -523,6 +672,8 @@ function MultiThreadUnavailable(): ReactElement {
 
 export function ChatBotView({
     room,
+    chatClient,
+    disposeChatClient = false,
     path,
     documentPath,
     participants,
@@ -555,6 +706,16 @@ export function ChatBotView({
         () => resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir }),
         [agentName, resolvedDocumentPath, threadDir],
     );
+    const needsChatClient = (
+        chatClient != null ||
+        threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer ||
+        isDatasetBackedThreadPath(resolvedSingleThreadPath)
+    );
+    const ownsChatClient = chatClient == null && needsChatClient;
+    const activeChatClient = useMemo<BaseChatClient | null>(
+        () => needsChatClient ? (chatClient ?? new MessagingChatClient({ room, agentName })) : null,
+        [agentName, chatClient, needsChatClient, room],
+    );
     const explicitSelectedThreadPath = selectedThreadPath !== undefined
         ? normalizePath(selectedThreadPath)
         : undefined;
@@ -574,6 +735,7 @@ export function ChatBotView({
     );
     const threadList = useThreadListDocument({
         room,
+        chatClient: activeChatClient,
         path: (
             threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer &&
             showThreadList &&
@@ -582,6 +744,14 @@ export function ChatBotView({
             ? resolvedThreadListDocumentPath
             : null,
     });
+
+    useEffect(() => {
+        return () => {
+            if (activeChatClient !== null && (ownsChatClient || disposeChatClient)) {
+                void activeChatClient.stop();
+            }
+        };
+    }, [activeChatClient, disposeChatClient, ownsChatClient]);
 
     useEffect(() => {
         if (explicitSelectedThreadPath === undefined) {
@@ -674,7 +844,7 @@ export function ChatBotView({
         }
     }, [closeRenameThreadDialog]);
 
-    const handleRenameThreadSubmit = useCallback((event: ChangeEvent<HTMLFormElement>) => {
+    const handleRenameThreadSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
         if (renameThreadDialog === null) {
@@ -686,20 +856,27 @@ export function ChatBotView({
             return;
         }
 
-        renameThreadDialog.entry.element.setAttribute("name", trimmedName);
+        void threadList.renameThread(renameThreadDialog.entry, trimmedName)
+            .then(() => {
+                if (renameThreadDialog.entry.path === activeSelectedThreadPath) {
+                    emitResolvedThread(renameThreadDialog.entry.path, trimmedName);
+                }
 
-        if (renameThreadDialog.entry.path === activeSelectedThreadPath) {
-            emitResolvedThread(renameThreadDialog.entry.path, trimmedName);
-        }
-
-        closeRenameThreadDialog();
-    }, [activeSelectedThreadPath, closeRenameThreadDialog, emitResolvedThread, renameThreadDialog]);
+                closeRenameThreadDialog();
+            })
+            .catch((renameError) => {
+                setTimeout(() => {
+                    throw renameError;
+                }, 0);
+            });
+    }, [activeSelectedThreadPath, closeRenameThreadDialog, emitResolvedThread, renameThreadDialog, threadList]);
 
     if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
         return isDatasetBackedThreadPath(resolvedSingleThreadPath) ? (
             <DatasetChatThread
                 room={room}
                 path={resolvedSingleThreadPath}
+                chatClient={activeChatClient ?? undefined}
                 agentName={agentName}
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
@@ -723,6 +900,8 @@ export function ChatBotView({
     const content = (
         <MultiThreadView
             room={room}
+            chatClient={activeChatClient ?? undefined}
+            disposeChatClient={false}
             agentName={agentName}
             toolkit={toolkit}
             tool={tool}
@@ -735,6 +914,7 @@ export function ChatBotView({
                 <DatasetChatThread
                     room={room}
                     path={threadPath}
+                    chatClient={activeChatClient ?? undefined}
                     agentName={agentName}
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
