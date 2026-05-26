@@ -1,3 +1,8 @@
+## [0.42.2]
+- Added `ContainerExitStatus`, `RoomContainerStats`, and published build image metadata to the TypeScript container client models.
+- Added `waitForExitStatus` while keeping `waitForExit` as the exit-code convenience wrapper.
+- Container list parsing now preserves image IDs, runtime stats, and exit-status metadata from API responses.
+
 ## [0.42.1]
 - Stability
 
