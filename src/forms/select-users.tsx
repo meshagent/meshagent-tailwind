@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { ReactElement } from "react";
 
-import { parseEmailList } from "./email-address";
-import { MultiSelectAutocomplete, MultiSelectController } from "./multi-select-autocomplete";
+import { parseEmailList } from "./email-address.js";
+import { MultiSelectAutocomplete, MultiSelectController } from "./multi-select-autocomplete.js";
 
 export class SelectUsersController extends MultiSelectController {
     static readonly emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;

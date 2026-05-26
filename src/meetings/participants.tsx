@@ -10,9 +10,9 @@ import {
 } from "livekit-client";
 import { Mic, MicOff } from "lucide-react";
 
-import { cn } from "../lib/utils";
-import { AudioWave } from "./audio-visualization";
-import { MeetingController, firstEnabledVideoPublication, useMeetingController } from "./meeting-scope";
+import { cn } from "../lib/utils.js";
+import { AudioWave } from "./audio-visualization.js";
+import { MeetingController, firstEnabledVideoPublication, useMeetingController } from "./meeting-scope.js";
 
 function useParticipantSnapshot(participant: Participant): void {
     useSyncExternalStore(

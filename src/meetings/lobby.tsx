@@ -9,7 +9,7 @@ import { Video, VideoOff, CameraOff, Mic, MicOff, Settings } from "lucide-react"
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "../components/ui/button";
+import { Button } from "../components/ui/button.js";
 import {
 	Dialog,
 	DialogContent,
@@ -18,21 +18,21 @@ import {
 	DialogHeader,
 	DialogTitle,
 	DialogTrigger,
-} from "../components/ui/dialog";
+} from "../components/ui/dialog.js";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "../components/ui/select";
-import { Spinner } from "../components/ui/spinner";
-import { cn } from "../lib/utils";
+} from "../components/ui/select.js";
+import { Spinner } from "../components/ui/spinner.js";
+import { cn } from "../lib/utils.js";
 import {
 	type MeetingController,
 	type MeetingFastConnectOptions,
 	useMeetingController,
-} from "./meeting-scope";
+} from "./meeting-scope.js";
 
 const audioInputStorageKey = "audioInput";
 const audioOutputStorageKey = "audioOutput";

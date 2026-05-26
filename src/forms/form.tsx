@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { Element as MeshElement, MeshDocument, RoomClient } from "@meshagent/meshagent";
 import { useForm } from "@tanstack/react-form";
 
-import { Button } from "../components/ui/button";
+import { Button } from "../components/ui/button.js";
 import {
     Card,
     CardContent,
@@ -11,17 +11,17 @@ import {
     CardFooter,
     CardHeader,
     CardTitle,
-} from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+} from "../components/ui/card.js";
+import { Input } from "../components/ui/input.js";
+import { Label } from "../components/ui/label.js";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "../components/ui/select";
-import { Textarea } from "../components/ui/textarea";
+} from "../components/ui/select.js";
+import { Textarea } from "../components/ui/textarea.js";
 
 export type FormDocumentValue = string;
 export type FormDocumentValues = Record<string, FormDocumentValue>;

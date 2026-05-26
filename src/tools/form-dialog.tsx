@@ -3,7 +3,7 @@ import React, { useState, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useForm } from "react-hook-form";
 
-import type { FormSchema } from "./form-schema";
+import type { FormSchema } from "./form-schema.js";
 
 import {
     Dialog,
@@ -12,10 +12,10 @@ import {
     DialogTitle,
     DialogFooter,
     DialogClose,
-} from "../components/ui/dialog";
+} from "../components/ui/dialog.js";
 
-import { Button } from "../components/ui/button";
-import { FormField } from "./form";
+import { Button } from "../components/ui/button.js";
+import { FormField } from "./form.js";
 
 export function showUserFormDialog({formSchema, title}: {
     formSchema: FormSchema;

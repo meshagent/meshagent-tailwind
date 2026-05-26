@@ -46,15 +46,15 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { ChatInput } from "./chat-input";
-import { ChatMessage } from "./chat-message";
-import { ChatTypingIndicator } from "./chat-typing-indicator";
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
-import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
-import { PendingAgentMessage, useThreadStatus } from "./chat-hooks";
-import { cn } from "../lib/utils";
-import { timeAgo } from "./chat-thread";
+import { ChatInput } from "./chat-input.js";
+import { ChatMessage } from "./chat-message.js";
+import { ChatTypingIndicator } from "./chat-typing-indicator.js";
+import { Button } from "../components/ui/button.js";
+import { Spinner } from "../components/ui/spinner.js";
+import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
+import { PendingAgentMessage, useThreadStatus } from "./chat-hooks.js";
+import { cn } from "../lib/utils.js";
+import { timeAgo } from "./chat-thread.js";
 
 const stickyBottomThresholdPx = 24;
 const maxPreviewEdgePx = 312.5;

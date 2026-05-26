@@ -7,13 +7,13 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
-import { ChatTypingIndicator } from "./chat-typing-indicator";
-import { ChatInput } from "./chat-input";
-import { useChatThread, useThreadStatus } from "./chat-hooks";
-import { FilePreviewDialog, isImagePath } from "../file-preview/file-preview";
-import { cn } from "../lib/utils";
+import { Button } from "../components/ui/button.js";
+import { Spinner } from "../components/ui/spinner.js";
+import { ChatTypingIndicator } from "./chat-typing-indicator.js";
+import { ChatInput } from "./chat-input.js";
+import { useChatThread, useThreadStatus } from "./chat-hooks.js";
+import { FilePreviewDialog, isImagePath } from "../file-preview/file-preview.js";
+import { cn } from "../lib/utils.js";
 
 const supportedEventKinds = new Set([
     "exec",

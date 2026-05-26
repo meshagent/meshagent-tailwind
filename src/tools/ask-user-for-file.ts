@@ -1,7 +1,7 @@
 import { Tool, FileContent } from '@meshagent/meshagent';
 import type { Content } from '@meshagent/meshagent';
 
-import { showFileDialog } from './file-dialog';
+import { showFileDialog } from './file-dialog.js';
 
 const askUserForFileSchema = {
     type: 'object',

@@ -12,8 +12,8 @@ import {
 
 import { subscribe, useDocumentChanged, useRoomParticipants } from "@meshagent/meshagent-react";
 
-import { ChatMessage } from "./chat-message";
-import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
+import { ChatMessage } from "./chat-message.js";
+import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
 
 const agentRoomMessageType = "agent-message";
 const agentTurnStartType = "meshagent.agent.turn.start";

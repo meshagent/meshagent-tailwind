@@ -22,24 +22,24 @@ import {
 	useSyncExternalStore,
 } from "react";
 
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
-import { cn } from "../lib/utils";
-import { AudioWave } from "./audio-visualization";
+import { Button } from "../components/ui/button.js";
+import { Spinner } from "../components/ui/spinner.js";
+import { cn } from "../lib/utils.js";
+import { AudioWave } from "./audio-visualization.js";
 import {
 	CameraGrid,
 	type CameraGridFrameArgs,
 	TrackSource,
-} from "./camera-grid";
-import { MeetingControls } from "./controls";
+} from "./camera-grid.js";
+import { MeetingControls } from "./controls.js";
 
 import {
 	MeetingLobby,
 	meetingFastConnectOptions,
 	type MeetingLobbyJoinOptions,
-} from "./lobby";
+} from "./lobby.js";
 
-import { type MeetingController, useMeetingController } from "./meeting-scope";
+import { type MeetingController, useMeetingController } from "./meeting-scope.js";
 
 type MeetingViewState = "preview" | "joined";
 type ExpandedParticipantTarget = {

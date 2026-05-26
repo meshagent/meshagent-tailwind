@@ -3,8 +3,8 @@ import { RoomClient } from "@meshagent/meshagent";
 import { useRoomIndicators } from "@meshagent/meshagent-react";
 import { LoaderCircle, X } from "lucide-react";
 
-import { formatThreadStatusText } from "./chat-hooks";
-import { cn } from "../lib/utils";
+import { formatThreadStatusText } from "./chat-hooks.js";
+import { cn } from "../lib/utils.js";
 
 export interface ChatTypingIndicatorProps {
     room?: RoomClient | null;

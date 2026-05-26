@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { Camera, CameraOff, Mic, MicOff, Phone, Settings } from "lucide-react";
 import { ConnectionState, Room } from "livekit-client";
 
-import { Button } from "../components/ui/button";
+import { Button } from "../components/ui/button.js";
 import {
     Dialog,
     DialogContent,
@@ -12,17 +12,17 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from "../components/ui/dialog";
+} from "../components/ui/dialog.js";
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
-} from "../components/ui/select";
-import { Spinner } from "../components/ui/spinner";
-import { cn } from "../lib/utils";
-import { MeetingController, useMeetingController } from "./meeting-scope";
+} from "../components/ui/select.js";
+import { Spinner } from "../components/ui/spinner.js";
+import { cn } from "../lib/utils.js";
+import { MeetingController, useMeetingController } from "./meeting-scope.js";
 
 function useControllerVersion(controller: MeetingController): void {
     useSyncExternalStore(

@@ -1,8 +1,8 @@
 import { Tool, JsonContent } from '@meshagent/meshagent';
 import type { Content } from '@meshagent/meshagent';
 
-import type { FormSchema } from './form-schema';
-import { showUserFormDialog } from './form-dialog';
+import type { FormSchema } from './form-schema.js';
+import { showUserFormDialog } from './form-dialog.js';
 
 const askUserSchema = {
     "type": "object",

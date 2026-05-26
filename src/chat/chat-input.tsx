@@ -3,12 +3,12 @@ import type { ReactElement, RefObject, KeyboardEvent, ChangeEvent } from "react"
 import { ArrowUp, LoaderCircle, X } from "lucide-react";
 import { v4 as uuidV4 } from "uuid";
 
-import { ChatMessage } from "./chat-message";
-import { Button } from "../components/ui/button";
-import { FileUploader } from "./file-uploader";
-import { UploadPill } from "./upload-pill";
-import { type FileUpload, UploadStatus } from "./file-attachment";
-import { cn } from "../lib/utils";
+import { ChatMessage } from "./chat-message.js";
+import { Button } from "../components/ui/button.js";
+import { FileUploader } from "./file-uploader.js";
+import { UploadPill } from "./upload-pill.js";
+import { type FileUpload, UploadStatus } from "./file-attachment.js";
+import { cn } from "../lib/utils.js";
 
 const MIN_TEXTAREA_HEIGHT = 20;
 const MAX_TEXTAREA_HEIGHT = 160;

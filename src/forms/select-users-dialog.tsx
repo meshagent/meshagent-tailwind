@@ -10,9 +10,9 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "../components/ui/dialog";
-import { Button } from "../components/ui/button";
-import { SelectUsers } from "./select-users";
+} from "../components/ui/dialog.js";
+import { Button } from "../components/ui/button.js";
+import { SelectUsers } from "./select-users.js";
 
 export function showSelectUsersDialog({
     projectEmails,

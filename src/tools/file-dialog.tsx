@@ -9,9 +9,9 @@ import {
     DialogDescription,
     DialogFooter,
     DialogClose,
-} from "../components/ui/dialog";
+} from "../components/ui/dialog.js";
 
-import { Button } from "../components/ui/button";
+import { Button } from "../components/ui/button.js";
 
 export function showFileDialog({title, description}: {
     title?: string;

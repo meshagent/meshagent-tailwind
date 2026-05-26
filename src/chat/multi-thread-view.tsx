@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { RoomClient } from "@meshagent/meshagent";
 import type { BaseChatClient } from "@meshagent/meshagent-agents";
 
-import { NewChatThread } from "./new-chat-thread";
+import { NewChatThread } from "./new-chat-thread.js";
 
 export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
 

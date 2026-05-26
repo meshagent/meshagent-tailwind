@@ -7,7 +7,7 @@ import type { Control } from "react-hook-form";
 import {
     getFormField,
     getFormFieldType,
-} from "./form-schema";
+} from "./form-schema.js";
 
 import type {
     FormField,
@@ -15,7 +15,7 @@ import type {
     RadioGroupField,
     SelectField,
     FormFieldItem,
-} from "./form-schema";
+} from "./form-schema.js";
 
 export type FieldErrorProperty = {
     errors: string[];

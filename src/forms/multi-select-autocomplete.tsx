@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { KeyboardEvent, ReactElement } from "react";
 import { X } from "lucide-react";
 
-import { cn } from "../lib/utils";
+import { cn } from "../lib/utils.js";
 
 export type AsyncSearch = (query: string) => Promise<string[]> | string[];
 

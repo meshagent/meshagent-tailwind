@@ -1,9 +1,9 @@
 import { Toolkit } from "@meshagent/meshagent";
 
-import { AskUser } from './ask-user';
-import { AskUserForFile } from './ask-user-for-file';
-import { DisplayDocument } from './display-document';
-import { Toast } from './toast';
+import { AskUser } from './ask-user.js';
+import { AskUserForFile } from './ask-user-for-file.js';
+import { DisplayDocument } from './display-document.js';
+import { Toast } from './toast.js';
 
 export class UIToolkit extends Toolkit {
     constructor() {

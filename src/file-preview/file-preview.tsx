@@ -13,12 +13,12 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from "../components/ui/dialog";
+} from "../components/ui/dialog.js";
 
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
-import { cn } from "../lib/utils";
-import { ChatThread } from "../chat/chat-thread";
+import { Button } from "../components/ui/button.js";
+import { Spinner } from "../components/ui/spinner.js";
+import { cn } from "../lib/utils.js";
+import { ChatThread } from "../chat/chat-thread.js";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 

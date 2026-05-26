@@ -28,7 +28,7 @@ import type {
 	VideoCaptureOptions,
 } from "livekit-client";
 
-import { WakeLocker } from "./wake-lock";
+import { WakeLocker } from "./wake-lock.js";
 
 type Listener = () => void;
 
