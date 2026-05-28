@@ -1,5 +1,11 @@
+## [0.43.1]
+- Moved LiveKit helpers into a new `@meshagent/meshagent-livekit` package, which now owns `livekit-client ^2.15.5` and changes the import surface for consumers.
+- Expanded the TypeScript SDK for multi-backend agent chat and process support, including richer agent messages and IAP room websocket handling.
+- Added the new `@meshagent/meshagent-node-ts` package and updated the entrypoint/runtime helpers used by Node consumers.
+- Updated the React and Tailwind meeting/chat helpers to render audio tracks and support the new room and workspace flows.
+
 ## [0.43.0]
-- Split LiveKit helpers into `@meshagent/meshagent-livekit-ts` and added `@meshagent/meshagent-node-ts` for room websocket proxying and room-connect helpers.
+- Split LiveKit helpers into `@meshagent/meshagent-livekit-ts` and added `@meshagent/meshagent-node` for room websocket proxying and room-connect helpers.
 - Updated `meshagent-ts` exports for ESM-aware resolution, moved LiveKit out of the core package, and added `RoomClient.withIAP()` and `WebSocketClientProtocol.withIAP()` for the new room-connect flow.
 - Room websocket auth now uses bearer headers on Node and `meshagent-room.` subprotocol tokens in the browser, and the agents/thread APIs now carry backend metadata and attachment-aware prompts.
 - React/auth/dev/tailwind packages now publish CJS main entries alongside ESM builds, and the new LiveKit package depends on `livekit-client@^2.15.5`.
