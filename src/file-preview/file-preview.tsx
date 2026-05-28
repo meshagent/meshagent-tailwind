@@ -215,6 +215,11 @@ export function isImagePath(path: string): boolean {
     return classifyFile(path) === FileKind.Image;
 }
 
+export function filePreviewLoadsFromRoomStorage(path: string): boolean {
+    const kind = classifyFile(path);
+    return kind === FileKind.Source || kind === FileKind.Pdf;
+}
+
 function useDownloadUrl(room: RoomClient, path: string): { url: string | null; error: unknown } {
     const [url, setUrl] = useState<string | null>(null);
     const [error, setError] = useState<unknown>(null);

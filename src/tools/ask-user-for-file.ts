@@ -40,12 +40,12 @@ export class AskUserForFile extends Tool {
         });
 
         if (file) {
-            const data = await file.arrayBuffer();
+            const data = new Uint8Array(await file.arrayBuffer());
             const name = file ? file.name : 'unknown';
             const mimeType = file ? file.type : 'application/octet-stream';
 
             return new FileContent({
-                data: data ?? new Uint8Array(),
+                data,
                 name,
                 mimeType,
             });

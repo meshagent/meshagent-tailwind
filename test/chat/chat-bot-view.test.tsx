@@ -19,8 +19,8 @@ import {
     type AgentThreadMessage,
 } from "@meshagent/meshagent-agents";
 
-import { AgentThread } from "./agent-thread.js";
-import { ChatBotView, ChatThreadDisplayMode } from "./chat-bot-view.js";
+import { AgentThread } from "../../src/chat/agent-thread.js";
+import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view.js";
 
 class FakeParticipant {
     public readonly id: string;
