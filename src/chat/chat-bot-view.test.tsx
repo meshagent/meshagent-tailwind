@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -7,14 +8,18 @@ import {
     AgentMessage,
     AgentThreadListEntry,
     BaseChatClient,
+    ClientToolkitDescription,
+    CloseThread,
     ListThreads,
     StartThread,
     ThreadCreated,
     ThreadStarted,
     ThreadsListed,
+    TurnStart,
     type AgentThreadMessage,
 } from "@meshagent/meshagent-agents";
 
+import { AgentThread } from "./agent-thread.js";
 import { ChatBotView, ChatThreadDisplayMode } from "./chat-bot-view.js";
 
 class FakeParticipant {
@@ -174,6 +179,17 @@ describe("ChatBotView multi-thread composer", () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
         const selectedPaths: Array<string | null> = [];
+        const clientToolkits = [new ClientToolkitDescription({
+            name: "ask_user",
+            title: "Ask User",
+            description: "Ask the user a short question.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    prompt: { type: "string" },
+                },
+            },
+        })];
 
         render(
             <ChatBotView
@@ -185,6 +201,7 @@ describe("ChatBotView multi-thread composer", () => {
                 onSelectedThreadPathChanged={(path) => {
                     selectedPaths.push(path);
                 }}
+                clientToolkits={clientToolkits}
             />,
         );
 
@@ -195,6 +212,7 @@ describe("ChatBotView multi-thread composer", () => {
         });
         fireEvent.click(screen.getByTitle("Send"));
         await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(1));
+        expect(chatClient.startThreadMessages()[0].clientToolkits?.[0].name).to.equal("ask_user");
 
         await act(async () => {
             chatClient.publishThread("thread-first", "First thread");
@@ -226,6 +244,7 @@ describe("ChatBotView multi-thread composer", () => {
         });
         fireEvent.click(screen.getByTitle("Send"));
         await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(2));
+        expect(chatClient.startThreadMessages()[1].clientToolkits?.[0].name).to.equal("ask_user");
 
         await act(async () => {
             chatClient.handleAgentMessage(new ThreadStarted({
@@ -238,5 +257,125 @@ describe("ChatBotView multi-thread composer", () => {
         expect(await screen.findByText("second pending message")).toBeTruthy();
         expect(screen.queryByText("first pending message")).to.equal(null);
         expect(screen.queryByText("first agent response")).to.equal(null);
+    });
+
+    it("keeps started sessions alive across StrictMode remounts and renders responses for each redirected thread", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const selectedPaths: Array<string | null> = [];
+
+        render(
+            <StrictMode>
+                <ChatBotView
+                    room={room}
+                    chatClient={chatClient}
+                    agentName="codex"
+                    threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                    threadListPath="agent://codex/threads"
+                    onSelectedThreadPathChanged={(path) => {
+                        selectedPaths.push(path);
+                    }}
+                />
+            </StrictMode>,
+        );
+
+        await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
+            target: { value: "first strict pending" },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+        await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(1));
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadStarted({
+                sourceMessageId: chatClient.startThreadMessages()[0].messageId,
+                threadId: "thread-strict-first",
+            }));
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-strict-first",
+                turnId: "turn-strict-first",
+                itemId: "agent-response-strict-first",
+                text: "first strict response",
+            }));
+        });
+
+        await waitFor(() => expect(selectedPaths.at(-1)).to.equal("thread-strict-first"));
+        expect(await screen.findByText("first strict pending")).toBeTruthy();
+        expect(await screen.findByText("first strict response")).toBeTruthy();
+        expect(screen.queryByText(/Starting a thread/i)).to.equal(null);
+        expect(chatClient.sent.some((message) => message instanceof CloseThread && message.threadId === "thread-strict-first")).to.equal(false);
+
+        fireEvent.click(screen.getByText("New thread"));
+        await waitFor(() => expect(selectedPaths.at(-1)).to.equal(null));
+        await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
+            target: { value: "second strict pending" },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+        await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(2));
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadStarted({
+                sourceMessageId: chatClient.startThreadMessages()[1].messageId,
+                threadId: "thread-strict-second",
+            }));
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-strict-second",
+                turnId: "turn-strict-second",
+                itemId: "agent-response-strict-second",
+                text: "second strict response",
+            }));
+        });
+
+        await waitFor(() => expect(selectedPaths.at(-1)).to.equal("thread-strict-second"));
+        expect(await screen.findByText("second strict pending")).toBeTruthy();
+        expect(await screen.findByText("second strict response")).toBeTruthy();
+        expect(screen.queryByText("first strict pending")).to.equal(null);
+        expect(screen.queryByText("first strict response")).to.equal(null);
+        expect(screen.queryByText(/Starting a thread/i)).to.equal(null);
+        expect(chatClient.sent.some((message) => message instanceof CloseThread && message.threadId === "thread-strict-second")).to.equal(false);
+    });
+});
+
+describe("AgentThread", () => {
+    it("passes client toolkits on turn starts from the composer", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const clientToolkits = [new ClientToolkitDescription({
+            name: "ask_user",
+            title: "Ask User",
+            description: "Ask the user a short question.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    prompt: { type: "string" },
+                },
+            },
+        })];
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-existing"
+                chatClient={chatClient}
+                agentName="codex"
+                clientToolkits={clientToolkits}
+            />,
+        );
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message"), {
+            target: { value: "turn start with a client toolkit" },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(1);
+            expect(turnStarts[0].clientToolkits?.[0].name).to.equal("ask_user");
+        });
     });
 });

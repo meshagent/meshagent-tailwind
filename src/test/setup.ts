@@ -6,6 +6,18 @@ class ResizeObserverStub {
 
 class DOMMatrixStub {}
 
+Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+    configurable: true,
+    writable: true,
+    value: true,
+});
+
+Object.defineProperty(window, "IS_REACT_ACT_ENVIRONMENT", {
+    configurable: true,
+    writable: true,
+    value: true,
+});
+
 Object.defineProperty(window, "ResizeObserver", {
     configurable: true,
     writable: true,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { RoomClient } from "@meshagent/meshagent";
-import type { BaseChatClient } from "@meshagent/meshagent-agents";
+import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
 import { NewChatThread } from "./new-chat-thread.js";
 
@@ -22,6 +22,7 @@ export interface MultiThreadViewProps {
     centerComposer?: boolean;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
+    clientToolkits?: ClientToolkitDescription[];
 }
 
 function normalizeSelectedThreadPath(path?: string | null): string | null {
@@ -45,6 +46,7 @@ export function MultiThreadView({
     centerComposer = true,
     emptyStateTitle = "Start a new thread",
     emptyStateDescription = "Connect with this agent and your team",
+    clientToolkits,
 }: MultiThreadViewProps): ReactElement {
     const controlledSelectedThreadPath = selectedThreadPath !== undefined
         ? normalizeSelectedThreadPath(selectedThreadPath)
@@ -106,6 +108,7 @@ export function MultiThreadView({
             }}
             emptyStateTitle={emptyStateTitle}
             emptyStateDescription={emptyStateDescription}
+            clientToolkits={clientToolkits}
         />
     );
 }

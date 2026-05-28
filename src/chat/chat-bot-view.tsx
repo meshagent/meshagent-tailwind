@@ -10,6 +10,7 @@ import {
 } from "@meshagent/meshagent-agents";
 import type {
     BaseChatClient,
+    ClientToolkitDescription,
     ThreadListEntry as AgentThreadListEntry,
 } from "@meshagent/meshagent-agents";
 import {
@@ -100,6 +101,7 @@ export interface ChatBotViewProps {
     showThreadList?: boolean;
     threadListWidth?: number;
     threadListCollapsedHeight?: number;
+    clientToolkits?: ClientToolkitDescription[];
 }
 
 function normalizePath(path?: string | null): string | null {
@@ -711,6 +713,7 @@ export function ChatBotView({
     showThreadList = true,
     threadListWidth = 280,
     threadListCollapsedHeight = 220,
+    clientToolkits,
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
     const resolvedDocumentPath = useMemo(
@@ -892,6 +895,7 @@ export function ChatBotView({
                 agentName={agentName}
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
+                clientToolkits={clientToolkits}
             />
         );
     }
@@ -913,6 +917,7 @@ export function ChatBotView({
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
+            clientToolkits={clientToolkits}
             builder={(threadPath) => (
                 <AgentThread
                     room={room}
@@ -922,6 +927,7 @@ export function ChatBotView({
                     agentName={agentName}
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
+                    clientToolkits={clientToolkits}
                 />
             )}
         />

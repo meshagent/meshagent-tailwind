@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 import { MessagingChatClient } from "@meshagent/meshagent-agents";
-import type { BaseChatClient } from "@meshagent/meshagent-agents";
+import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
 import { ChatInput } from "./chat-input.js";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
@@ -24,6 +24,7 @@ export interface NewChatThreadProps {
     centerComposer?: boolean;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
+    clientToolkits?: ClientToolkitDescription[];
 }
 
 class NewThreadCancelledError extends Error {
@@ -130,6 +131,7 @@ export function NewChatThread({
     centerComposer = true,
     emptyStateTitle,
     emptyStateDescription,
+    clientToolkits,
 }: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
     const [newThreadDraft, setNewThreadDraft] = useState("");
@@ -240,6 +242,7 @@ export function NewChatThread({
                 message: text,
                 attachments: newThreadAttachments.map((attachment) => attachment.path),
                 senderName: getParticipantName(room.localParticipant) || undefined,
+                clientToolkits,
             });
 
             ensureOperationActive(operationId, activeOperationRef);
@@ -273,6 +276,7 @@ export function NewChatThread({
         creatingNewThread,
         newThreadAttachments,
         newThreadDraft,
+        clientToolkits,
         onThreadPathChanged,
         onThreadResolved,
         room,

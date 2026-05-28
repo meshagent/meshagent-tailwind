@@ -29,6 +29,7 @@ import type {
     AgentMessage,
     BaseChatClient,
     ChatThreadSession,
+    ClientToolkitDescription,
     PendingAgentInput,
 } from "@meshagent/meshagent-agents";
 import { Download, FileText, ImageOff } from "lucide-react";
@@ -73,6 +74,7 @@ interface AgentThreadProps {
     agentName?: string;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
+    clientToolkits?: ClientToolkitDescription[];
 }
 
 type AgentMessageConstructor = new(params?: Record<string, unknown>) => AgentMessage;
@@ -419,11 +421,9 @@ function latestThreadStatus(session: ChatThreadSession | null): ThreadStatusMess
     if (session === null) {
         return null;
     }
-    for (let index = session.messages.length - 1; index >= 0; index -= 1) {
-        const message = session.messages[index]?.message;
-        if (isTypedMessage<ThreadStatusMessage>(message, AgentThreadStatus)) {
-            return message;
-        }
+    const status = session.threadStatus;
+    if (status !== undefined && isTypedMessage<ThreadStatusMessage>(status, AgentThreadStatus)) {
+        return status;
     }
     return null;
 }
@@ -622,6 +622,7 @@ export function AgentThread({
     agentName,
     emptyStateTitle = "Chat to get started",
     emptyStateDescription,
+    clientToolkits,
 }: AgentThreadProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
     const [sendError, setSendError] = useState<string | null>(null);
@@ -665,7 +666,6 @@ export function AgentThread({
             if (sessionRef.current === session) {
                 sessionRef.current = null;
             }
-            void session.close().catch(() => undefined);
         };
     }, [activeChatClient, path]);
 
@@ -747,13 +747,14 @@ export function AgentThread({
                 turnId,
                 steer: status?.mode === "steerable" && turnId != null,
                 senderName: localParticipantName.trim() || undefined,
+                clientToolkits,
             });
             setSendError(null);
             setVersion((current) => current + 1);
         } catch (error) {
             setSendError(describeError(error));
         }
-    }, [agentParticipant, chatClient, localParticipantName, status?.mode, turnId]);
+    }, [agentParticipant, chatClient, clientToolkits, localParticipantName, status?.mode, turnId]);
 
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;
