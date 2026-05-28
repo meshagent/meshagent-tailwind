@@ -1,3 +1,8 @@
+## [0.43.2]
+- Introduced `@meshagent/meshagent-livekit` as a standalone TypeScript helper package, with `livekit-client ^2.15.5`.
+- Reworked `@meshagent/meshagent-agents` packaging for dual ESM/CommonJS/browser resolution, including `.js` specifiers, module-scoped `src/`, and an ESM-default export.
+- Added `meshagent-node-ts`, a room websocket proxy helper for local Node.js development servers, with build output for both ESM and CommonJS consumers.
+
 ## [0.43.1]
 - Moved LiveKit helpers into a new `@meshagent/meshagent-livekit` package, which now owns `livekit-client ^2.15.5` and changes the import surface for consumers.
 - Expanded the TypeScript SDK for multi-backend agent chat and process support, including richer agent messages and IAP room websocket handling.
