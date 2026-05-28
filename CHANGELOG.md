@@ -1,3 +1,6 @@
+## [0.43.3]
+- Stability
+
 ## [0.43.2]
 - Introduced `@meshagent/meshagent-livekit` as a standalone TypeScript helper package, with `livekit-client ^2.15.5`.
 - Reworked `@meshagent/meshagent-agents` packaging for dual ESM/CommonJS/browser resolution, including `.js` specifiers, module-scoped `src/`, and an ESM-default export.
