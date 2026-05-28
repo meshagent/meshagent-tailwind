@@ -26,7 +26,10 @@
         ]
     },
     "exclude": [
-        "dist"
+        "dist",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "src/test"
     ],
     "include": [
         "src"

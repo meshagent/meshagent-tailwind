@@ -18,7 +18,7 @@ import {
 import { Button } from "../components/ui/button.js";
 import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
-import { ChatThread } from "../chat/chat-thread.js";
+import { AgentThread } from "../chat/agent-thread.js";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -574,7 +574,7 @@ export function FilePreview({ room, path }: { room: RoomClient; path: string }):
         case FileKind.Source:
             return <SourcePreview room={room} path={path} />;
         case FileKind.Thread:
-          return <ChatThread room={room} path={path} />;
+            return <AgentThread room={room} path={path} />;
         case FileKind.Unknown:
             return <UnsupportedPreview room={room} path={path} />;
     }

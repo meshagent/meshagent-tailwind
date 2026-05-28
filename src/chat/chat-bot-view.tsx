@@ -21,8 +21,7 @@ import {
 } from "lucide-react";
 
 import { useThreadStatus } from "./chat-hooks.js";
-import { ChatThread } from "./chat-thread.js";
-import { DatasetChatThread } from "./dataset-chat-thread.js";
+import { AgentThread } from "./agent-thread.js";
 import { Button } from "../components/ui/button.js";
 import {
     Dialog,
@@ -106,10 +105,6 @@ export interface ChatBotViewProps {
 function normalizePath(path?: string | null): string | null {
     const normalized = path?.trim();
     return normalized ? normalized : null;
-}
-
-function isDatasetBackedThreadPath(path: string): boolean {
-    return path.startsWith("dataset://") || path.startsWith("tmp://");
 }
 
 function parseDate(value: string): Date {
@@ -545,7 +540,15 @@ function ThreadListPanel({
 }): ReactElement {
     const { entries, error, loading } = threadList;
     const hasSelectedEntry = selectedThreadPath !== null && entries.some((entry) => entry.path === selectedThreadPath);
-    const showPendingNewThreadSelection = selectedThreadPath === null || !hasSelectedEntry;
+    const showPendingNewThreadSelection = selectedThreadPath === null;
+    const pendingSelectedThreadEntry = selectedThreadPath !== null && !hasSelectedEntry
+        ? {
+            path: selectedThreadPath,
+            name: defaultThreadDisplayNameFromPath(selectedThreadPath),
+            createdAt: "",
+            modifiedAt: "",
+        }
+        : null;
 
     return (
         <div className="h-full flex flex-col rounded-md border">
@@ -572,6 +575,18 @@ function ThreadListPanel({
                         <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-sm text-muted-foreground">
                             No threads yet
                         </div>
+                    ) : null}
+
+                    {pendingSelectedThreadEntry !== null ? (
+                        <ThreadListEntryRow
+                            key={pendingSelectedThreadEntry.path}
+                            room={room}
+                            entry={pendingSelectedThreadEntry}
+                            agentName={agentName}
+                            selected
+                            onSelect={onSelectThread}
+                            onRename={onRenameThread}
+                        />
                     ) : null}
 
                     {entries.map((entry) => (
@@ -706,11 +721,7 @@ export function ChatBotView({
         () => resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir }),
         [agentName, resolvedDocumentPath, threadDir],
     );
-    const needsChatClient = (
-        chatClient != null ||
-        threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer ||
-        isDatasetBackedThreadPath(resolvedSingleThreadPath)
-    );
+    const needsChatClient = chatClient != null || threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer;
     const ownsChatClient = chatClient == null && needsChatClient;
     const activeChatClient = useMemo<BaseChatClient | null>(
         () => needsChatClient ? (chatClient ?? new MessagingChatClient({ room, agentName })) : null,
@@ -872,20 +883,12 @@ export function ChatBotView({
     }, [activeSelectedThreadPath, closeRenameThreadDialog, emitResolvedThread, renameThreadDialog, threadList]);
 
     if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
-        return isDatasetBackedThreadPath(resolvedSingleThreadPath) ? (
-            <DatasetChatThread
+        return (
+            <AgentThread
                 room={room}
                 path={resolvedSingleThreadPath}
                 chatClient={activeChatClient ?? undefined}
-                agentName={agentName}
-                emptyStateTitle={emptyStateTitle}
-                emptyStateDescription={emptyStateDescription}
-            />
-        ) : (
-            <ChatThread
-                room={room}
-                path={resolvedSingleThreadPath}
-                participants={participants}
+                disposeChatClient={false}
                 agentName={agentName}
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
@@ -910,20 +913,12 @@ export function ChatBotView({
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
-            builder={(threadPath) => isDatasetBackedThreadPath(threadPath) ? (
-                <DatasetChatThread
+            builder={(threadPath) => (
+                <AgentThread
                     room={room}
                     path={threadPath}
                     chatClient={activeChatClient ?? undefined}
-                    agentName={agentName}
-                    emptyStateTitle={startNewThreadTitle}
-                    emptyStateDescription={startNewThreadDescription}
-                />
-            ) : (
-                <ChatThread
-                    room={room}
-                    path={threadPath}
-                    participants={participants}
+                    disposeChatClient={false}
                     agentName={agentName}
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
