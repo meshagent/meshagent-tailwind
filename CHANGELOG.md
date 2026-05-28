@@ -1,3 +1,9 @@
+## [0.43.0]
+- Split LiveKit helpers into `@meshagent/meshagent-livekit-ts` and added `@meshagent/meshagent-node-ts` for room websocket proxying and room-connect helpers.
+- Updated `meshagent-ts` exports for ESM-aware resolution, moved LiveKit out of the core package, and added `RoomClient.withIAP()` and `WebSocketClientProtocol.withIAP()` for the new room-connect flow.
+- Room websocket auth now uses bearer headers on Node and `meshagent-room.` subprotocol tokens in the browser, and the agents/thread APIs now carry backend metadata and attachment-aware prompts.
+- React/auth/dev/tailwind packages now publish CJS main entries alongside ESM builds, and the new LiveKit package depends on `livekit-client@^2.15.5`.
+
 ## [0.42.2]
 - Added `ContainerExitStatus`, `RoomContainerStats`, and published build image metadata to the TypeScript container client models.
 - Added `waitForExitStatus` while keeping `waitForExit` as the exit-code convenience wrapper.
