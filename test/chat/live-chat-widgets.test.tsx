@@ -1,3 +1,4 @@
+import React from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { StrictMode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, ReactElement, SubmitEvent } from "react";
 
-import { Element as MeshElement, MeshDocument, RoomClient } from "@meshagent/meshagent";
+import { RoomClient } from "@meshagent/meshagent";
 import {
     AgentThreadStorageRepository,
-    DatasetThreadStorage,
     ThreadListEntry as StorageThreadListEntry,
     ThreadStorageRepository,
 } from "@meshagent/meshagent-agents";
+
 import type { BaseChatClient } from "@meshagent/meshagent-agents";
+
 import {
     Check,
     MessageSquare,
@@ -18,9 +19,8 @@ import {
 } from "lucide-react";
 
 import { useThreadStatus } from "./chat-hooks.js";
-import {
-    defaultThreadDisplayNameFromPath,
-} from "./conversation-descriptor.js";
+
+import { defaultThreadDisplayNameFromPath } from "./conversation-descriptor.js";
 import { Button } from "../components/ui/button.js";
 import {
     Dialog,
@@ -55,7 +55,6 @@ interface DeleteThreadDialogState {
 export interface ThreadListViewProps {
     room: RoomClient;
     chatClient?: BaseChatClient | null;
-    threadListPath: string;
     selectedThreadPath?: string | null;
     selectedThreadDisplayName?: string | null;
     agentName?: string | null;
@@ -67,73 +66,13 @@ export interface ThreadListViewProps {
 
 export function defaultAgentThreadListPath(agentName?: string | null): string | null {
     const normalizedAgentName = normalizePath(agentName);
+
     return normalizedAgentName === null ? null : `agent://${normalizedAgentName}/threads`;
-}
-
-function datasetThreadListPathFromLegacyPath(path: string): string {
-    let datasetPath = path.trim();
-    while (datasetPath.startsWith("/")) {
-        datasetPath = datasetPath.slice(1);
-    }
-    if (datasetPath.endsWith(".threadl")) {
-        datasetPath = datasetPath.slice(0, -".threadl".length);
-    }
-    return "dataset://" + datasetPath;
-}
-
-function normalizeDatasetThreadListStoragePath(path: string): string | null {
-    const datasetPath = path.slice("dataset://".length);
-    const parts = datasetPath.split("/").map((part) => part.trim()).filter((part) => part !== "");
-    return parts.length === 0 ? null : "dataset://" + parts.join("/");
-}
-
-function isRootDatasetThreadListPath(path: string): boolean {
-    const normalized = normalizeDatasetThreadListStoragePath(path);
-    return normalized === null || normalized === "dataset://index";
-}
-
-function normalizeThreadListStoragePath(path: string): string | null {
-    if (path.startsWith("agent://")) {
-        return path;
-    }
-
-    if (path.startsWith("dataset://")) {
-        return normalizeDatasetThreadListStoragePath(path);
-    }
-
-    return normalizeDatasetThreadListStoragePath(datasetThreadListPathFromLegacyPath(path));
-}
-
-export function resolvedChatThreadListPath(threadListPath?: string | null, {
-    threadDir,
-    agentName,
-}: {
-    threadDir?: string | null;
-    agentName?: string | null;
-} = {}): string | null {
-    const normalizedAgentName = normalizePath(agentName);
-
-    const normalizedThreadListPath = normalizePath(threadListPath);
-    if (normalizedThreadListPath !== null) {
-        if (isRootDatasetThreadListPath(normalizedThreadListPath)) {
-            return null;
-        }
-        return normalizeThreadListStoragePath(normalizedThreadListPath);
-    }
-
-    const normalizedThreadDir = normalizePath(threadDir);
-    if (normalizedThreadDir?.startsWith("dataset://")) {
-        if (isRootDatasetThreadListPath(normalizedThreadDir)) {
-            return null;
-        }
-        return normalizeDatasetThreadListStoragePath(normalizedThreadDir + "/index");
-    }
-
-    return defaultAgentThreadListPath(normalizedAgentName);
 }
 
 function normalizePath(path?: string | null): string | null {
     const normalized = path?.trim();
+
     return normalized ? normalized : null;
 }
 
@@ -169,36 +108,6 @@ function parseThreadListEntries(entries: readonly StorageThreadListEntry[]): Cha
         .sort(compareThreadEntries);
 }
 
-function parseMeshDocumentThreadListEntries(document: MeshDocument): StorageThreadListEntry[] {
-    const entries: StorageThreadListEntry[] = [];
-
-    for (const child of document.root.getChildren()) {
-        if (!(child instanceof MeshElement) || child.tagName !== "thread") {
-            continue;
-        }
-
-        const rawPath = child.getAttribute("path");
-        if (typeof rawPath !== "string" || rawPath.trim() === "") {
-            continue;
-        }
-
-        const path = rawPath.trim();
-        const rawName = child.getAttribute("name");
-        const rawCreatedAt = child.getAttribute("created_at");
-        const rawModifiedAt = child.getAttribute("modified_at");
-        entries.push(new StorageThreadListEntry({
-            path,
-            name: typeof rawName === "string" && rawName.trim() !== ""
-                ? rawName.trim()
-                : defaultThreadDisplayNameFromPath(path),
-            createdAt: typeof rawCreatedAt === "string" ? rawCreatedAt : "",
-            modifiedAt: typeof rawModifiedAt === "string" ? rawModifiedAt : "",
-        }));
-    }
-
-    return entries.sort(compareThreadEntries);
-}
-
 function threadEntriesEqual(left: readonly ChatThreadListEntry[], right: readonly ChatThreadListEntry[]): boolean {
     return (
         left.length === right.length &&
@@ -220,83 +129,6 @@ function describeError(error: unknown): string {
     }
 
     return `${error}`;
-}
-
-async function closeDocument(room: RoomClient, path: string): Promise<void> {
-    try {
-        await room.sync.close(path);
-    } catch {
-        // Ignore close errors during teardown.
-    }
-}
-
-class MeshDocumentThreadStorageRepository extends ThreadStorageRepository {
-    private document: MeshDocument | null = null;
-    private readonly onDocumentChanged = () => this.notifyListeners();
-
-    constructor(
-        private readonly room: RoomClient,
-        private readonly path: string,
-    ) {
-        super();
-    }
-
-    public override async open(): Promise<void> {
-        const document = await this.room.sync.open(this.path);
-        this.document = document;
-        document.on("updated", this.onDocumentChanged);
-    }
-
-    public override async close(): Promise<void> {
-        const document = this.document;
-        this.document = null;
-        document?.off("updated", this.onDocumentChanged);
-        await closeDocument(this.room, this.path);
-    }
-
-    public override entries(): StorageThreadListEntry[] {
-        return this.document === null ? [] : parseMeshDocumentThreadListEntries(this.document);
-    }
-
-    public override async addOrUpdateThread(_entry: StorageThreadListEntry): Promise<void> {
-        throw new Error("Mesh document thread lists cannot directly upsert thread entries.");
-    }
-
-    public override async renameThread(threadPath: string, name: string): Promise<void> {
-        const thread = this.threadElement(threadPath);
-        if (thread === null) {
-            throw new Error(`Thread list entry not found: ${threadPath}`);
-        }
-        thread.setAttribute("name", name);
-    }
-
-    public override async deleteThread(threadPath: string): Promise<void> {
-        const thread = this.threadElement(threadPath);
-        if (thread === null) {
-            throw new Error(`Thread list entry not found: ${threadPath}`);
-        }
-        await this.room.storage.delete(threadPath);
-        thread.delete();
-    }
-
-    private threadElement(threadPath: string): MeshElement | null {
-        const normalizedPath = threadPath.trim();
-        const document = this.document;
-        if (document === null || normalizedPath === "") {
-            return null;
-        }
-
-        for (const child of document.root.getChildren()) {
-            if (!(child instanceof MeshElement) || child.tagName !== "thread") {
-                continue;
-            }
-            const rawPath = child.getAttribute("path");
-            if (typeof rawPath === "string" && rawPath.trim() === normalizedPath) {
-                return child;
-            }
-        }
-        return null;
-    }
 }
 
 class ChatThreadListStore {
@@ -328,10 +160,9 @@ class ChatThreadListStore {
     }
 }
 
-function useThreadList({ room, chatClient, path }: {
+function useThreadList({ room, chatClient }: {
     room: RoomClient;
     chatClient: BaseChatClient | null;
-    path: string | null;
 }): {
     entries: ChatThreadListEntry[];
     loading: boolean;
@@ -340,7 +171,7 @@ function useThreadList({ room, chatClient, path }: {
     deleteThread: (entry: ChatThreadListEntry) => Promise<void>;
 } {
     const [entries, setEntries] = useState<ChatThreadListEntry[]>([]);
-    const [loading, setLoading] = useState(path !== null);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState<unknown>(null);
     const storeRef = useRef<ChatThreadListStore | null>(null);
 
@@ -356,48 +187,25 @@ function useThreadList({ room, chatClient, path }: {
         ));
     }, []);
 
-    const createStore = useCallback((nextPath: string): ChatThreadListStore => {
-        if (nextPath.startsWith("agent://")) {
-            if (chatClient === null) {
-                throw new Error("Agent thread lists require a chat client.");
-            }
+    const createStore = useCallback((): ChatThreadListStore => {
+      if (chatClient === null) {
+        throw new Error("Agent thread lists require a chat client.");
+      }
 
-            return new ChatThreadListStore(
-                new AgentThreadStorageRepository({ chatClient }),
-                () => syncEntries(),
-            );
-        }
-
-        if (nextPath.startsWith("dataset://")) {
-            return new ChatThreadListStore(
-                new DatasetThreadStorage({ room, path: nextPath }),
-                () => syncEntries(),
-            );
-        }
-
-        return new ChatThreadListStore(
-            new MeshDocumentThreadStorageRepository(room, nextPath),
-            () => syncEntries(),
-        );
+      return new ChatThreadListStore(
+        new AgentThreadStorageRepository({ chatClient }),
+        () => syncEntries(),
+      );
     }, [chatClient, room, syncEntries]);
 
     useEffect(() => {
         let cancelled = false;
 
-        if (path === null) {
-            const previousStore = storeRef.current;
-            storeRef.current = null;
-            void previousStore?.close();
-            setEntries([]);
-            setLoading(false);
-            setError(null);
-            return;
-        }
         setEntries([]);
         setLoading(true);
         setError(null);
 
-        const store = createStore(path);
+        const store = createStore();
         storeRef.current = store;
 
         void store.open()
@@ -426,7 +234,7 @@ function useThreadList({ room, chatClient, path }: {
             }
             void store.close();
         };
-    }, [createStore, path, syncEntries]);
+    }, [createStore, syncEntries]);
 
     return {
         entries,
@@ -636,7 +444,6 @@ function DeleteThreadDialog({
 export function ThreadListView({
     room,
     chatClient = null,
-    threadListPath,
     selectedThreadPath,
     selectedThreadDisplayName,
     agentName,
@@ -645,22 +452,15 @@ export function ThreadListView({
     onSelectedThreadPathChanged,
     onSelectedThreadResolved,
 }: ThreadListViewProps): ReactElement {
-    const normalizedThreadListPath = normalizePath(threadListPath);
-    const threadListStoragePath = normalizedThreadListPath === null
-        ? null
-        : normalizeThreadListStoragePath(normalizedThreadListPath);
     const normalizedSelectedThreadPath = normalizePath(selectedThreadPath);
     const previousNewThreadResetVersionRef = useRef(newThreadResetVersion);
+
     const [renameThreadDialog, setRenameThreadDialog] = useState<RenameThreadDialogState | null>(null);
     const [deleteThreadDialog, setDeleteThreadDialog] = useState<DeleteThreadDialogState | null>(null);
     const [optimisticNames, setOptimisticNames] = useState<Map<string, string>>(() => new Map());
     const [optimisticDeletedPaths, setOptimisticDeletedPaths] = useState<Set<string>>(() => new Set());
 
-    const threadList = useThreadList({
-        room,
-        chatClient,
-        path: threadListStoragePath,
-    });
+    const threadList = useThreadList({room, chatClient});
 
     const entries = threadList.entries
         .filter((entry) => !optimisticDeletedPaths.has(entry.path))
@@ -682,6 +482,7 @@ export function ThreadListView({
             }
             return next.size === current.size ? current : next;
         });
+
         setOptimisticDeletedPaths((current) => {
             const storePaths = new Set(threadList.entries.map((entry) => entry.path));
             const next = new Set([...current].filter((path) => storePaths.has(path)));
@@ -692,7 +493,7 @@ export function ThreadListView({
     useEffect(() => {
         setOptimisticNames(new Map());
         setOptimisticDeletedPaths(new Set());
-    }, [threadListStoragePath, chatClient, room]);
+    }, [chatClient, room]);
 
     useEffect(() => {
         if (
@@ -841,8 +642,7 @@ export function ThreadListView({
                             selected
                             onSelect={selectEntry}
                             onRename={(entry) => setRenameThreadDialog({ entry, value: entry.name })}
-                            onDelete={(entry) => setDeleteThreadDialog({ entry })}
-                        />
+                            onDelete={(entry) => setDeleteThreadDialog({ entry })} />
                     ) : null}
 
                     {entries.map((entry) => (
@@ -854,8 +654,7 @@ export function ThreadListView({
                             selected={entry.path === normalizedSelectedThreadPath}
                             onSelect={selectEntry}
                             onRename={(nextEntry) => setRenameThreadDialog({ entry: nextEntry, value: nextEntry.name })}
-                            onDelete={(nextEntry) => setDeleteThreadDialog({ entry: nextEntry })}
-                        />
+                            onDelete={(nextEntry) => setDeleteThreadDialog({ entry: nextEntry })} />
                     ))}
                 </div>
             )}
@@ -868,8 +667,8 @@ export function ThreadListView({
                         closeRenameThreadDialog();
                     }
                 }}
-                onSubmit={handleRenameThreadSubmit}
-            />
+                onSubmit={handleRenameThreadSubmit} />
+
             <DeleteThreadDialog
                 dialogState={deleteThreadDialog}
                 onOpenChange={(open) => {
@@ -877,8 +676,7 @@ export function ThreadListView({
                         closeDeleteThreadDialog();
                     }
                 }}
-                onConfirm={handleDeleteThreadConfirm}
-            />
+                onConfirm={handleDeleteThreadConfirm} />
         </div>
     );
 }

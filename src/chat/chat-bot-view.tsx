@@ -5,29 +5,24 @@ import type { Participant, RoomClient } from "@meshagent/meshagent";
 
 import { MessagingChatClient } from "@meshagent/meshagent-agents";
 
-import type {
-    BaseChatClient,
-    ClientToolkitDescription,
-} from "@meshagent/meshagent-agents";
+import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
 import { AlertTriangle } from "lucide-react";
 
 import { AgentThread } from "./agent-thread";
-import {
-    ChatThreadDisplayMode,
-    chatDocumentPath,
-} from "./conversation-descriptor";
+import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor";
+
 import { cn } from "../lib/utils";
 import { MultiThreadView } from "./multi-thread-view";
-import { ThreadListView, resolvedChatThreadListPath } from "./thread-list-view";
+import { ThreadListView } from "./thread-list-view";
 
-const multiThreadLayoutBreakpointPx = 920;
 export {
     ChatThreadDisplayMode,
     chatDocumentPath,
     resolvedThreadListPath,
-} from "./conversation-descriptor.js";
+} from "./conversation-descriptor";
 
+const multiThreadLayoutBreakpointPx = 920;
 
 export interface ChatBotViewProps {
     room: RoomClient;
@@ -118,7 +113,6 @@ export function ChatBotView({
     agentName,
     threadDisplayMode = ChatThreadDisplayMode.SingleThread,
     threadDir,
-    threadListPath,
     toolkit,
     tool,
     centerComposer = false,
@@ -139,37 +133,31 @@ export function ChatBotView({
     collapseMessages = true,
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
-    const resolvedDocumentPath = useMemo(
-        () => normalizePath(documentPath ?? path),
-        [documentPath, path],
-    );
-    const resolvedSingleThreadPath = useMemo(
-        () => resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir }),
-        [agentName, resolvedDocumentPath, threadDir],
-    );
+    const resolvedDocumentPath = useMemo(() => normalizePath(documentPath ?? path), [documentPath, path]);
+    const resolvedSingleThreadPath = useMemo(() => resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir }), [agentName, resolvedDocumentPath, threadDir]);
     const needsChatClient = chatClient != null || threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer;
     const ownsChatClient = chatClient == null && needsChatClient;
+
     const activeChatClient = useMemo<BaseChatClient | null>(
         () => needsChatClient ? (chatClient ?? new MessagingChatClient({ room, agentName })) : null,
         [agentName, chatClient, needsChatClient, room],
     );
+
     const explicitSelectedThreadPath = selectedThreadPath !== undefined
         ? normalizePath(selectedThreadPath)
         : undefined;
+
     const legacySelectedThreadPath = threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer
         ? resolvedDocumentPath
         : null;
+
     const [internalSelectedThreadPath, setInternalSelectedThreadPath] = useState<string | null>(() => (
         explicitSelectedThreadPath ?? legacySelectedThreadPath ?? null
     ));
+
     const previousLegacySelectedThreadPathRef = useRef(legacySelectedThreadPath);
     const previousNewThreadResetVersionRef = useRef(newThreadResetVersion);
     const activeSelectedThreadPath = explicitSelectedThreadPath ?? internalSelectedThreadPath;
-
-    const resolvedThreadStoragePath = useMemo(
-        () => resolvedChatThreadListPath(threadListPath, { threadDir, agentName }),
-        [agentName, threadDir, threadListPath],
-    );
 
     useEffect(() => {
         return () => {
@@ -249,8 +237,7 @@ export function ChatBotView({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
-                collapseMessages={collapseMessages}
-            />
+                collapseMessages={collapseMessages} />
         );
     }
 
@@ -282,42 +269,29 @@ export function ChatBotView({
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
                     clientToolkits={clientToolkits}
-                    collapseMessages={collapseMessages}
-                />
+                    collapseMessages={collapseMessages} />
             )}
         />
     );
 
-    if (!showThreadList) {
-        return (
-            <>
-                {content}
-            </>
-        );
+    if (!showThreadList || activeChatClient === null) {
+        return content;
     }
 
     return (
-        <>
-            <div className={cn("flex flex-1 h-full", isWideLayout ? "flex-row items-stretch" : "flex-col")}>
-                <div className="flex flex-col h-full min-h-0 min-w-0 flex-1">
-                    {content}
-                </div>
+        <div className={cn("flex flex-1 h-full", isWideLayout ? "flex-row items-stretch" : "flex-col")}>
+            <div className="flex flex-col h-full min-h-0 min-w-0 flex-1">{content}</div>
 
-                <div className={cn("shrink-0 mr-4", isWideLayout ? "ml-3" : "mt-3")}
-                    style={isWideLayout ? { width: threadListWidth } : { height: threadListCollapsedHeight }}>
-                    <ThreadListView
-                        room={room}
-                        chatClient={activeChatClient}
-                        threadListPath="agent://threads"
-                        selectedThreadPath={activeSelectedThreadPath}
-                        selectedThreadDisplayName={selectedThreadDisplayName}
-                        agentName={agentName}
-                        onSelectedThreadPathChanged={handleSelectedThreadPathChanged}
-                        onSelectedThreadResolved={emitResolvedThread}
-                    />
-                </div>
+            <div className={cn("shrink-0 mr-4", isWideLayout ? "ml-3" : "mt-3")} style={isWideLayout ? { width: threadListWidth } : { height: threadListCollapsedHeight }}>
+                <ThreadListView
+                    room={room}
+                    chatClient={activeChatClient}
+                    selectedThreadPath={activeSelectedThreadPath}
+                    selectedThreadDisplayName={selectedThreadDisplayName}
+                    agentName={agentName}
+                    onSelectedThreadPathChanged={handleSelectedThreadPathChanged}
+                    onSelectedThreadResolved={emitResolvedThread} />
             </div>
-
-        </>
+        </div>
     );
 }

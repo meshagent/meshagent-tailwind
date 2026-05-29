@@ -1,3 +1,4 @@
+import React from "react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -18,12 +19,12 @@ import {
     ThreadLoaded,
     ThreadsListed,
     TurnStart,
-    type AgentThreadMessage,
 } from "@meshagent/meshagent-agents";
 
-import { AgentThread } from "../../src/chat/agent-thread.js";
-import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view.js";
-import { resolvedChatThreadListPath } from "../../src/chat/thread-list-view.js";
+import type { AgentThreadMessage } from "@meshagent/meshagent-agents";
+
+import { AgentThread } from "../../src/chat/agent-thread";
+import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view";
 
 class FakeParticipant {
     public readonly id: string;
@@ -205,15 +206,6 @@ afterEach(() => {
 });
 
 describe("ChatBotView multi-thread composer", () => {
-    it("does not synthesize a dataset thread list without an agent", () => {
-        expect(resolvedChatThreadListPath(null, { threadDir: "dataset://", agentName: null })).to.equal(null);
-        expect(resolvedChatThreadListPath(null, { threadDir: "dataset://", agentName: "   " })).to.equal(null);
-        expect(resolvedChatThreadListPath("dataset://index", { threadDir: "dataset://", agentName: null })).to.equal(null);
-        expect(resolvedChatThreadListPath("dataset://index", { threadDir: "dataset://", agentName: "assistant" })).to.equal(null);
-        expect(resolvedChatThreadListPath(null, { threadDir: "dataset://", agentName: "assistant" })).to.equal(null);
-        expect(resolvedChatThreadListPath("dataset://news//index/", { agentName: null })).to.equal("dataset://news/index");
-    });
-
     it("maps legacy mesh document thread list paths to dataset thread lists", async () => {
         const openedPaths: string[] = [];
         const datasetCreates: Array<{ name: string; namespace?: string[] }> = [];
