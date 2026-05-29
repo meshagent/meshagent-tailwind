@@ -15,6 +15,7 @@ import {
     StartThread,
     ThreadCreated,
     ThreadStarted,
+    ThreadLoaded,
     ThreadsListed,
     TurnStart,
     type AgentThreadMessage,
@@ -244,6 +245,27 @@ describe("ChatBotView multi-thread composer", () => {
         expect(screen.queryByText(/Unsupported thread list path/i)).to.equal(null);
     });
 
+    it("shows thread list load errors", async () => {
+        const room = fakeRoom({
+            onDatasetCreate: () => {
+                throw new Error("dataset unavailable");
+            },
+        });
+        const chatClient = new FakeChatClient();
+
+        render(
+            <ChatBotView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                threadListPath="agents/assistant/threads/index.threadl"
+            />,
+        );
+
+        expect(await screen.findByText("Unable to load threads: dataset unavailable")).toBeTruthy();
+    });
+
     it("renders typed agent messages and selects the second newly-created thread after returning to New thread", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
@@ -408,6 +430,33 @@ describe("ChatBotView multi-thread composer", () => {
 });
 
 describe("AgentThread", () => {
+    it("shows a spinner for an empty thread until replay loading completes", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-loading"
+                chatClient={chatClient}
+                agentName="codex"
+                emptyStateTitle="Loaded empty thread"
+            />,
+        );
+
+        await waitFor(() => expect(screen.getByLabelText("Loading...")).toBeTruthy());
+        expect(screen.queryByText("Loaded empty thread")).to.equal(null);
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-loading",
+            }));
+        });
+
+        expect(await screen.findByText("Loaded empty thread")).toBeTruthy();
+        expect(screen.queryByLabelText("Loading...")).to.equal(null);
+    });
+
     it("collapses assistant detail messages before the final response", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();

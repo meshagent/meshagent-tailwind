@@ -865,6 +865,14 @@ function EmptyState({ title, description }: { title: string; description?: strin
     );
 }
 
+function LoadingState(): ReactElement {
+    return (
+        <div className="h-full mx-auto flex max-w-2xl flex-col items-center justify-center px-6 py-20 text-muted-foreground">
+            <Spinner size="lg" />
+        </div>
+    );
+}
+
 function ErrorBanner({ message }: { message: string }): ReactElement {
     return (
         <div className="mx-auto w-full max-w-[912px] whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -954,8 +962,10 @@ export function AgentThread({
         };
     }, [activeChatClient, path]);
 
-    const session = sessionRef.current;
+    const normalizedPath = path.trim();
+    const session = sessionRef.current?.threadPath === normalizedPath ? sessionRef.current : null;
     const feedItems = useMemo(() => feedFromSession(session), [session, version]);
+    const showThreadLoading = (session === null || session.isLoading) && feedItems.length === 0;
     const renderedFeedItems = useMemo(() => (
         collapseMessages
             ? threadFeedItems(feedItems, expandedDetailGroupIds, localParticipantName, agentName)
@@ -1082,7 +1092,9 @@ export function AgentThread({
                             feedItems.length > 0 ? "justify-end" : null,
                             statusText ? "pb-24" : "pb-6",
                         )}>
-                        {feedItems.length === 0 ? (
+                        {showThreadLoading ? (
+                            <LoadingState />
+                        ) : feedItems.length === 0 ? (
                             <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
                         ) : null}
 
