@@ -206,7 +206,7 @@ afterEach(() => {
 });
 
 describe("ChatBotView multi-thread composer", () => {
-    it("maps legacy mesh document thread list paths to dataset thread lists", async () => {
+    it("loads thread lists through the chat client instead of legacy mesh documents", async () => {
         const openedPaths: string[] = [];
         const datasetCreates: Array<{ name: string; namespace?: string[] }> = [];
         const room = fakeRoom({
@@ -218,6 +218,13 @@ describe("ChatBotView multi-thread composer", () => {
             },
         });
         const chatClient = new FakeChatClient();
+        const now = new Date().toISOString();
+        chatClient.threadEntries.push({
+            path: "thread-listed",
+            name: "Listed thread",
+            createdAt: now,
+            modifiedAt: now,
+        });
 
         render(
             <ChatBotView
@@ -229,21 +236,22 @@ describe("ChatBotView multi-thread composer", () => {
             />,
         );
 
-        await waitFor(() => expect(datasetCreates.some((request) => (
-            request.name === "index" &&
-            JSON.stringify(request.namespace) === JSON.stringify(["agents", "assistant", "threads"])
-        ))).to.equal(true));
+        await waitFor(() => expect(chatClient.sent.some((message) => message instanceof ListThreads)).to.equal(true));
+        expect(await screen.findByText("Listed thread")).toBeTruthy();
+        expect(datasetCreates).toHaveLength(0);
         expect(openedPaths).not.toContain("agents/assistant/threads/index.threadl");
         expect(screen.queryByText(/Unsupported thread list path/i)).to.equal(null);
     });
 
     it("shows thread list load errors", async () => {
-        const room = fakeRoom({
-            onDatasetCreate: () => {
-                throw new Error("dataset unavailable");
-            },
-        });
-        const chatClient = new FakeChatClient();
+        class BrokenEventsChatClient extends FakeChatClient {
+            public override get events(): AsyncIterable<never> {
+                throw new Error("chat event stream unavailable");
+            }
+        }
+
+        const room = fakeRoom();
+        const chatClient = new BrokenEventsChatClient();
 
         render(
             <ChatBotView
@@ -255,7 +263,7 @@ describe("ChatBotView multi-thread composer", () => {
             />,
         );
 
-        expect(await screen.findByText("Unable to load threads: dataset unavailable")).toBeTruthy();
+        expect(await screen.findByText("Unable to load threads: chat event stream unavailable")).toBeTruthy();
     });
 
     it("renders typed agent messages and selects the second newly-created thread after returning to New thread", async () => {
