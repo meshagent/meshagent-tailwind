@@ -6,6 +6,7 @@ import type { RoomClient } from "@meshagent/meshagent";
 import {
     AgentTextContentDelta,
     AgentMessage,
+    AgentReasoningContentDelta,
     AgentThreadListEntry,
     BaseChatClient,
     ClientToolkitDescription,
@@ -407,6 +408,42 @@ describe("ChatBotView multi-thread composer", () => {
 });
 
 describe("AgentThread", () => {
+    it("collapses assistant detail messages before the final response", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-collapse"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentReasoningContentDelta({
+                threadId: "thread-collapse",
+                turnId: "turn-collapse",
+                itemId: "reasoning-collapse",
+                text: "I checked the logs\nThen verified the fix",
+            }), { createdAt: new Date("2026-05-28T12:00:00.000Z") });
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-collapse",
+                turnId: "turn-collapse",
+                itemId: "answer-collapse",
+                phase: "final_answer",
+                text: "The fix is ready.",
+            }), { createdAt: new Date("2026-05-28T12:00:04.000Z") });
+        });
+
+        expect(await screen.findByText("The fix is ready.")).toBeTruthy();
+        expect(screen.queryByText(/I checked the logs/)).to.equal(null);
+
+        fireEvent.click(screen.getByText("Worked for 4s"));
+        expect(await screen.findByText(/I checked the logs/)).toBeTruthy();
+    });
+
     it("passes client toolkits on turn starts from the composer", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();

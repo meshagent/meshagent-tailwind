@@ -32,7 +32,7 @@ import type {
     ClientToolkitDescription,
     PendingAgentInput,
 } from "@meshagent/meshagent-agents";
-import { Download, FileText, ImageOff } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, FileText, ImageOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
@@ -59,12 +59,26 @@ interface FeedItem {
     attachments: string[];
     createdAt: Date;
     authorName?: string;
+    phase?: string;
+    turnId?: string;
     image?: {
         uri?: string;
         status?: string;
         statusDetail?: string;
     };
 }
+
+interface DetailGroupFeedItem {
+    id: string;
+    kind: "detail_group";
+    messages: FeedItem[];
+    collapsedText: string;
+    authorName: string;
+    createdAt: Date;
+    expanded: boolean;
+}
+
+type ThreadFeedItem = FeedItem | DetailGroupFeedItem;
 
 interface AgentThreadProps {
     room: RoomClient;
@@ -75,6 +89,7 @@ interface AgentThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    collapseMessages?: boolean;
 }
 
 type AgentMessageConstructor = new(params?: Record<string, unknown>) => AgentMessage;
@@ -90,10 +105,12 @@ interface SourceInputContentMessage extends InputContentMessage {
 
 interface ItemMessage extends AgentMessage {
     itemId: string;
+    turnId: string;
 }
 
 interface TextMessage extends ItemMessage {
     text: string;
+    phase?: string;
 }
 
 interface FileMessage extends ItemMessage {
@@ -286,14 +303,14 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
     const items = new Map<string, FeedItem>();
     for (const event of session.messages) {
         const message = event.message;
-        const createdAt = new Date();
+        const createdAt = event.createdAt;
         const inputItem = inputItemFromMessage(message, createdAt);
         if (inputItem !== null && !items.has(inputItem.id)) {
             upsertItem(items, inputItem);
             continue;
         }
 
-        if (isTypedMessage<ItemMessage>(message, AgentTextContentStarted)) {
+        if (isTypedMessage<TextMessage>(message, AgentTextContentStarted)) {
             upsertItem(items, {
                 id: message.itemId,
                 kind: "message",
@@ -301,6 +318,8 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 text: "",
                 attachments: [],
                 createdAt,
+                phase: message.phase,
+                turnId: message.turnId,
             });
         } else if (isTypedMessage<TextMessage>(message, AgentTextContentDelta)) {
             appendText(items, message.itemId, {
@@ -308,8 +327,10 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 kind: "message",
                 role: "agent",
                 createdAt,
+                phase: message.phase,
+                turnId: message.turnId,
             }, message.text);
-        } else if (isTypedMessage<ItemMessage>(message, AgentTextContentEnded)) {
+        } else if (isTypedMessage<TextMessage>(message, AgentTextContentEnded)) {
             if (!items.has(message.itemId)) {
                 upsertItem(items, {
                     id: message.itemId,
@@ -318,6 +339,8 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                     text: "",
                     attachments: [],
                     createdAt,
+                    phase: message.phase,
+                    turnId: message.turnId,
                 });
             }
         } else if (isTypedMessage<ItemMessage>(message, AgentReasoningContentStarted)) {
@@ -328,6 +351,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 text: "",
                 attachments: [],
                 createdAt,
+                turnId: message.turnId,
             });
         } else if (isTypedMessage<TextMessage>(message, AgentReasoningContentDelta)) {
             appendText(items, message.itemId, {
@@ -335,6 +359,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 kind: "reasoning",
                 role: "agent",
                 createdAt,
+                turnId: message.turnId,
             }, message.text);
         } else if (isTypedMessage<ItemMessage>(message, AgentReasoningContentEnded)) {
             if (!items.has(message.itemId)) {
@@ -345,6 +370,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                     text: "",
                     attachments: [],
                     createdAt,
+                    turnId: message.turnId,
                 });
             }
         } else if (isTypedMessage<FileMessage>(message, AgentFileContentDelta)) {
@@ -360,6 +386,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 text: existing?.text ?? "",
                 attachments,
                 createdAt,
+                turnId: message.turnId,
             });
         } else if (
             isTypedMessage<ToolMessage>(message, AgentToolCallPending) ||
@@ -374,6 +401,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 text: [message.toolkit, message.tool].filter((part) => part?.trim()).join(".") || "Tool call",
                 attachments: [],
                 createdAt,
+                turnId: message.turnId,
             });
         } else if (
             isTypedMessage<ItemMessage>(message, AgentImageGenerationStarted) ||
@@ -393,6 +421,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 text: "",
                 attachments: [],
                 createdAt,
+                turnId: message.turnId,
                 image: {
                     uri: image?.uri,
                     status: image?.status ?? imageStatus(message),
@@ -415,6 +444,206 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
         item.image != null ||
         item.kind === "tool_call"
     ));
+}
+
+
+function firstNonEmptyLine(text: string): string | null {
+    for (const line of text.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (trimmed !== "") {
+            return trimmed;
+        }
+    }
+    return null;
+}
+
+function detailGroupId(messages: FeedItem[]): string {
+    const first = messages[0];
+    return ["details", first?.turnId ?? "", first?.id ?? "", first?.createdAt.getTime() ?? 0].join(":");
+}
+
+function messagesShareTurn(left: FeedItem, right: FeedItem): boolean {
+    return left.turnId != null && left.turnId.trim() !== "" && left.turnId === right.turnId;
+}
+
+function canCollapseAsCommentary(message: FeedItem): boolean {
+    if (message.phase === "final_answer") {
+        return false;
+    }
+    return (
+        message.kind === "message" &&
+        message.role === "agent" &&
+        message.attachments.length === 0 &&
+        message.image == null
+    );
+}
+
+function canRenderAsFinalAnswer(message: FeedItem): boolean {
+    if (message.kind !== "message" || message.role !== "agent" || message.phase === "commentary") {
+        return false;
+    }
+    return message.text.trim() !== "" || message.attachments.length > 0 || message.image != null;
+}
+
+function isIntrinsicDetail(message: FeedItem): boolean {
+    return message.kind === "reasoning" || message.kind === "tool_call" || (canCollapseAsCommentary(message) && message.phase === "commentary");
+}
+
+function nextUserMessageIndex(messages: FeedItem[], start: number): number | null {
+    for (let index = start; index < messages.length; index += 1) {
+        const message = messages[index];
+        if (message.kind === "message" && message.role === "user") {
+            return index;
+        }
+    }
+    return null;
+}
+
+function finalAgentMessageIndexForSegment(messages: FeedItem[], start: number, end: number): number {
+    let explicitFinalIndex = -1;
+    for (let index = start; index < end; index += 1) {
+        const message = messages[index];
+        if (canRenderAsFinalAnswer(message) && message.phase === "final_answer") {
+            explicitFinalIndex = index;
+        }
+    }
+    if (explicitFinalIndex !== -1) {
+        return explicitFinalIndex;
+    }
+
+    let inferredFinalIndex = -1;
+    for (let index = start; index < end; index += 1) {
+        if (canRenderAsFinalAnswer(messages[index])) {
+            inferredFinalIndex = index;
+        }
+    }
+    return inferredFinalIndex;
+}
+
+function addDetailIndexesForSegment(messages: FeedItem[], start: number, end: number, detailIndexes: Set<number>): void {
+    const finalAgentMessageIndex = finalAgentMessageIndexForSegment(messages, start, end);
+    for (let index = start; index < end; index += 1) {
+        const message = messages[index];
+        if (isIntrinsicDetail(message)) {
+            detailIndexes.add(index);
+            continue;
+        }
+        if (index !== finalAgentMessageIndex && canCollapseAsCommentary(message)) {
+            detailIndexes.add(index);
+        }
+    }
+}
+
+function nextNonDetailMessage(messages: FeedItem[], detailIndexes: Set<number>, start: number, end: number): FeedItem | null {
+    for (let index = start; index < end; index += 1) {
+        if (!detailIndexes.has(index)) {
+            return messages[index];
+        }
+    }
+    return null;
+}
+
+function detailGroupCollapsedMessage(messages: FeedItem[]): FeedItem | null {
+    for (const message of [...messages].reverse()) {
+        if (canCollapseAsCommentary(message) && message.text.trim() !== "") {
+            return message;
+        }
+    }
+    for (const message of [...messages].reverse()) {
+        if (message.kind === "reasoning" && message.text.trim() !== "") {
+            return message;
+        }
+    }
+    return null;
+}
+
+function formatDetailGroupDuration(milliseconds: number): string {
+    const seconds = Math.max(0, Math.round(milliseconds / 1000));
+    if (seconds < 60) {
+        return `${seconds}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+}
+
+function detailGroupCollapsedText(messages: FeedItem[], nextMessage: FeedItem | null): string {
+    const first = messages[0];
+    if (first && nextMessage != null && canRenderAsFinalAnswer(nextMessage) && messagesShareTurn(first, nextMessage)) {
+        return `Worked for ${formatDetailGroupDuration(nextMessage.createdAt.getTime() - first.createdAt.getTime())}`;
+    }
+    return firstNonEmptyLine(detailGroupCollapsedMessage(messages)?.text ?? "") ?? "Working";
+}
+
+function detailGroupAuthorName(message: FeedItem, localParticipantName: string, agentName?: string): string {
+    const authorName = message.authorName?.trim();
+    if (authorName) {
+        return authorName;
+    }
+    if (message.role === "user") {
+        return localParticipantName;
+    }
+    return displayParticipantName(agentName);
+}
+
+function detailGroupForMessages(messages: FeedItem[], nextMessage: FeedItem | null, expandedIds: Set<string>, localParticipantName: string, agentName?: string): DetailGroupFeedItem {
+    const collapsedMessage = detailGroupCollapsedMessage(messages) ?? messages[0];
+    const id = detailGroupId(messages);
+    return {
+        id,
+        kind: "detail_group",
+        messages,
+        collapsedText: detailGroupCollapsedText(messages, nextMessage),
+        authorName: detailGroupAuthorName(collapsedMessage, localParticipantName, agentName),
+        createdAt: collapsedMessage.createdAt,
+        expanded: expandedIds.has(id),
+    };
+}
+
+function threadFeedItems(messages: FeedItem[], expandedIds: Set<string>, localParticipantName: string, agentName?: string): ThreadFeedItem[] {
+    const items: ThreadFeedItem[] = [];
+    let index = 0;
+    while (index < messages.length) {
+        const segmentEnd = nextUserMessageIndex(messages, index + 1) ?? messages.length;
+        const detailIndexes = new Set<number>();
+        addDetailIndexesForSegment(messages, index, segmentEnd, detailIndexes);
+        const groupedMessages = [...detailIndexes]
+            .sort((left, right) => left - right)
+            .map((detailIndex) => messages[detailIndex]);
+        let insertedDetailGroup = false;
+
+        for (let segmentIndex = index; segmentIndex < segmentEnd; segmentIndex += 1) {
+            if (!detailIndexes.has(segmentIndex)) {
+                items.push(messages[segmentIndex]);
+                continue;
+            }
+            if (insertedDetailGroup || groupedMessages.length === 0) {
+                continue;
+            }
+            items.push(detailGroupForMessages(
+                groupedMessages,
+                nextNonDetailMessage(messages, detailIndexes, segmentIndex + 1, segmentEnd),
+                expandedIds,
+                localParticipantName,
+                agentName,
+            ));
+            insertedDetailGroup = true;
+        }
+
+        index = segmentEnd;
+    }
+    return items;
+}
+
+
+function previousMessageFeedItem(items: ThreadFeedItem[], index: number): FeedItem | null {
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+        const item = items[cursor];
+        if (item.kind !== "detail_group") {
+            return item;
+        }
+    }
+    return null;
 }
 
 function latestThreadStatus(session: ChatThreadSession | null): ThreadStatusMessage | null {
@@ -494,18 +723,72 @@ function AttachmentView({ room, path }: { room: RoomClient; path: string }): Rea
     );
 }
 
+
+function DetailGroupLine({ item, onToggle }: { item: DetailGroupFeedItem; onToggle: () => void }): ReactElement {
+    return (
+        <button
+            type="button"
+            className="mx-auto flex max-w-[85%] items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground sm:max-w-2xl"
+            onClick={onToggle}
+            aria-expanded={item.expanded}
+            title={item.expanded ? "Collapse details" : "Expand details"}>
+            {item.expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+            <span className="min-w-0 truncate">{item.collapsedText}</span>
+            <span className="shrink-0">{timeAgo(item.createdAt)}</span>
+        </button>
+    );
+}
+
+function ExpandedDetailGroup({
+    room,
+    item,
+    localParticipantName,
+    agentName,
+}: {
+    room: RoomClient;
+    item: DetailGroupFeedItem;
+    localParticipantName: string;
+    agentName?: string;
+}): ReactElement {
+    return (
+        <div className="flex flex-col gap-3">
+            <div className="flex w-full justify-start">
+                <div className="max-w-[85%] px-1 text-left sm:max-w-2xl">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {item.authorName.trim() !== "" ? <span className="font-semibold text-foreground">{displayParticipantName(item.authorName)}</span> : null}
+                        <span>{timeAgo(item.createdAt)}</span>
+                    </div>
+                </div>
+            </div>
+            {item.messages.map((message, index) => (
+                <ThreadMessageView
+                    key={message.id}
+                    room={room}
+                    message={message}
+                    previous={index > 0 ? item.messages[index - 1] : null}
+                    localParticipantName={localParticipantName}
+                    agentName={agentName}
+                    forceHideHeader
+                />
+            ))}
+        </div>
+    );
+}
+
 function ThreadMessageView({
     room,
     message,
     previous,
     localParticipantName,
     agentName,
+    forceHideHeader = false,
 }: {
     room: RoomClient;
     message: FeedItem;
     previous: FeedItem | null;
     localParticipantName: string;
     agentName?: string;
+    forceHideHeader?: boolean;
 }): ReactElement | null {
     if (message.kind === "reasoning" || message.kind === "tool_call") {
         return message.text.trim() === "" ? null : (
@@ -518,7 +801,7 @@ function ThreadMessageView({
     const mine = message.role === "user";
     const authorName = message.authorName ?? (mine ? localParticipantName : displayParticipantName(agentName));
     const previousAuthor = previous?.authorName ?? (previous?.role === "user" ? localParticipantName : displayParticipantName(agentName));
-    const shouldShowHeader = previous?.kind !== "message" || previousAuthor !== authorName;
+    const shouldShowHeader = !forceHideHeader && (previous?.kind !== "message" || previousAuthor !== authorName);
 
     return (
         <div className="flex flex-col gap-2">
@@ -623,10 +906,12 @@ export function AgentThread({
     emptyStateTitle = "Chat to get started",
     emptyStateDescription,
     clientToolkits,
+    collapseMessages = true,
 }: AgentThreadProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
     const [sendError, setSendError] = useState<string | null>(null);
     const [version, setVersion] = useState(0);
+    const [expandedDetailGroupIds, setExpandedDetailGroupIds] = useState<Set<string>>(() => new Set<string>());
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
     const stickToBottomRef = useRef(true);
@@ -671,6 +956,11 @@ export function AgentThread({
 
     const session = sessionRef.current;
     const feedItems = useMemo(() => feedFromSession(session), [session, version]);
+    const renderedFeedItems = useMemo(() => (
+        collapseMessages
+            ? threadFeedItems(feedItems, expandedDetailGroupIds, localParticipantName, agentName)
+            : feedItems
+    ), [agentName, collapseMessages, expandedDetailGroupIds, feedItems, localParticipantName]);
     const status = useMemo(() => latestThreadStatus(session), [session, version]);
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
@@ -764,6 +1054,18 @@ export function AgentThread({
         await openSession.interruptTurn(turnId);
     }, [turnId]);
 
+    const toggleDetailGroup = useCallback((id: string) => {
+        setExpandedDetailGroupIds((current) => {
+            const next = new Set(current);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    }, []);
+
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col">
             <div className="relative flex h-full min-h-0 flex-1 flex-col">
@@ -784,15 +1086,33 @@ export function AgentThread({
                             <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
                         ) : null}
 
-                        {feedItems.map((message, index) => (
-                            <ThreadMessageView
-                                key={message.id}
-                                room={room}
-                                message={message}
-                                previous={index > 0 ? feedItems[index - 1] : null}
-                                localParticipantName={localParticipantName}
-                                agentName={agentName}
-                            />
+                        {renderedFeedItems.map((item, index) => (
+                            item.kind === "detail_group" ? (
+                                item.expanded ? (
+                                    <ExpandedDetailGroup
+                                        key={item.id}
+                                        room={room}
+                                        item={item}
+                                        localParticipantName={localParticipantName}
+                                        agentName={agentName}
+                                    />
+                                ) : (
+                                    <DetailGroupLine
+                                        key={item.id}
+                                        item={item}
+                                        onToggle={() => toggleDetailGroup(item.id)}
+                                    />
+                                )
+                            ) : (
+                                <ThreadMessageView
+                                    key={item.id}
+                                    room={room}
+                                    message={item}
+                                    previous={previousMessageFeedItem(renderedFeedItems, index)}
+                                    localParticipantName={localParticipantName}
+                                    agentName={agentName}
+                                />
+                            )
                         ))}
                     </div>
                 </div>

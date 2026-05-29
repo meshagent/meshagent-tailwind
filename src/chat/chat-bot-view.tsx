@@ -57,6 +57,7 @@ export interface ChatBotViewProps {
     threadListWidth?: number;
     threadListCollapsedHeight?: number;
     clientToolkits?: ClientToolkitDescription[];
+    collapseMessages?: boolean;
 }
 
 function normalizePath(path?: string | null): string | null {
@@ -135,6 +136,7 @@ export function ChatBotView({
     threadListWidth = 280,
     threadListCollapsedHeight = 220,
     clientToolkits,
+    collapseMessages = true,
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
     const resolvedDocumentPath = useMemo(
@@ -247,6 +249,7 @@ export function ChatBotView({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                collapseMessages={collapseMessages}
             />
         );
     }
@@ -279,12 +282,13 @@ export function ChatBotView({
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
                     clientToolkits={clientToolkits}
+                    collapseMessages={collapseMessages}
                 />
             )}
         />
     );
 
-    if (!showThreadList || resolvedThreadStoragePath === null) {
+    if (!showThreadList) {
         return (
             <>
                 {content}
@@ -304,7 +308,7 @@ export function ChatBotView({
                     <ThreadListView
                         room={room}
                         chatClient={activeChatClient}
-                        threadListPath={resolvedThreadStoragePath}
+                        threadListPath="agent://threads"
                         selectedThreadPath={activeSelectedThreadPath}
                         selectedThreadDisplayName={selectedThreadDisplayName}
                         agentName={agentName}
