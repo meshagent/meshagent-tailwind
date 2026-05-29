@@ -7,6 +7,7 @@ export * from './chat/conversation-descriptor.js';
 export * from './chat/file-attachment.js';
 export * from './chat/file-uploader.js';
 export * from './chat/multi-thread-view.js';
+export * from './chat/thread-list-view.js';
 export * from './chat/agent-thread.js';
 export * from './chat/new-chat-thread.js';
 export * from './file-preview/file-preview.js';

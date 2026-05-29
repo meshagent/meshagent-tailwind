@@ -21,6 +21,7 @@ import {
 
 import { AgentThread } from "../../src/chat/agent-thread.js";
 import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view.js";
+import { resolvedChatThreadListPath } from "../../src/chat/thread-list-view.js";
 
 class FakeParticipant {
     public readonly id: string;
@@ -93,11 +94,22 @@ class FakeElement {
 
 class FakeDocument {
     public readonly root: FakeElement;
+    private readonly listeners = new Map<string, Set<() => void>>();
 
     constructor() {
         this.root = new FakeElement("thread");
         this.root.createChildElement("members");
         this.root.createChildElement("messages");
+    }
+
+    public on(event: string, listener: () => void): void {
+        const listeners = this.listeners.get(event) ?? new Set<() => void>();
+        listeners.add(listener);
+        this.listeners.set(event, listeners);
+    }
+
+    public off(event: string, listener: () => void): void {
+        this.listeners.get(event)?.delete(listener);
     }
 }
 
@@ -110,7 +122,7 @@ function neverEndingEvents(): AsyncIterable<never> {
     };
 }
 
-function fakeRoom(): RoomClient {
+function fakeRoom({ onOpen, onDatasetCreate }: { onOpen?: (path: string) => void; onDatasetCreate?: (request: { name: string; namespace?: string[] }) => void } = {}): RoomClient {
     return {
         localParticipant: new FakeParticipant({
             id: "local",
@@ -119,8 +131,22 @@ function fakeRoom(): RoomClient {
         }),
         messaging: new FakeMessaging(),
         sync: {
-            open: async () => new FakeDocument(),
+            open: async (path: string) => {
+                onOpen?.(path);
+                return new FakeDocument();
+            },
             close: async () => undefined,
+        },
+        datasets: {
+            createTableWithSchema: async (request: { name: string; namespace?: string[] }) => {
+                onDatasetCreate?.(request);
+            },
+            watchTable: async function* () {
+                yield { phase: "initial", kind: "ready", table: null };
+            },
+            delete: async () => undefined,
+            merge: async () => undefined,
+            search: async () => null,
         },
         listen: neverEndingEvents,
         on: () => undefined,
@@ -149,12 +175,14 @@ class FakeChatClient extends BaseChatClient {
 
     public publishThread(path: string, name: string): void {
         const now = new Date().toISOString();
+
         this.threadEntries.unshift({
             path,
             name,
             createdAt: now,
             modifiedAt: now,
         });
+
         this.handleAgentMessage(new ThreadCreated({
             thread: new AgentThreadListEntry({
                 path,
@@ -175,6 +203,46 @@ afterEach(() => {
 });
 
 describe("ChatBotView multi-thread composer", () => {
+    it("does not synthesize a dataset thread list without an agent", () => {
+        expect(resolvedChatThreadListPath(null, { threadDir: "dataset://", agentName: null })).to.equal(null);
+        expect(resolvedChatThreadListPath(null, { threadDir: "dataset://", agentName: "   " })).to.equal(null);
+        expect(resolvedChatThreadListPath("dataset://index", { threadDir: "dataset://", agentName: null })).to.equal(null);
+        expect(resolvedChatThreadListPath("dataset://index", { threadDir: "dataset://", agentName: "assistant" })).to.equal(null);
+        expect(resolvedChatThreadListPath(null, { threadDir: "dataset://", agentName: "assistant" })).to.equal(null);
+        expect(resolvedChatThreadListPath("dataset://news//index/", { agentName: null })).to.equal("dataset://news/index");
+    });
+
+    it("maps legacy mesh document thread list paths to dataset thread lists", async () => {
+        const openedPaths: string[] = [];
+        const datasetCreates: Array<{ name: string; namespace?: string[] }> = [];
+        const room = fakeRoom({
+            onOpen: (path) => {
+                openedPaths.push(path);
+            },
+            onDatasetCreate: (request) => {
+                datasetCreates.push(request);
+            },
+        });
+        const chatClient = new FakeChatClient();
+
+        render(
+            <ChatBotView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                threadListPath="agents/assistant/threads/index.threadl"
+            />,
+        );
+
+        await waitFor(() => expect(datasetCreates.some((request) => (
+            request.name === "index" &&
+            JSON.stringify(request.namespace) === JSON.stringify(["agents", "assistant", "threads"])
+        ))).to.equal(true));
+        expect(openedPaths).not.toContain("agents/assistant/threads/index.threadl");
+        expect(screen.queryByText(/Unsupported thread list path/i)).to.equal(null);
+    });
+
     it("renders typed agent messages and selects the second newly-created thread after returning to New thread", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
@@ -197,7 +265,6 @@ describe("ChatBotView multi-thread composer", () => {
                 chatClient={chatClient}
                 agentName="codex"
                 threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
-                threadListPath="agent://codex/threads"
                 onSelectedThreadPathChanged={(path) => {
                     selectedPaths.push(path);
                 }}
