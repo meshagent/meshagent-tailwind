@@ -6,8 +6,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import type { RoomClient } from "@meshagent/meshagent";
 import {
     AgentTextContentDelta,
+    AgentError,
     AgentMessage,
     AgentReasoningContentDelta,
+    AgentToolCallEnded,
     AgentThreadListEntry,
     BaseChatClient,
     ClientToolkitDescription,
@@ -19,6 +21,7 @@ import {
     ThreadLoaded,
     ThreadsListed,
     TurnStart,
+    TurnEnded,
 } from "@meshagent/meshagent-agents";
 
 import type { AgentThreadMessage } from "@meshagent/meshagent-agents";
@@ -491,6 +494,91 @@ describe("AgentThread", () => {
 
         fireEvent.click(screen.getByText("Worked for 4s"));
         expect(await screen.findByText(/I checked the logs/)).toBeTruthy();
+    });
+
+    it("shows non-cancellation turn ended errors", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-error"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new TurnEnded({
+                threadId: "thread-error",
+                turnId: "turn-error",
+                error: new AgentError({ message: "Model unavailable" }),
+            }), { createdAt: new Date("2026-05-28T12:00:00.000Z") });
+        });
+
+        const errorMessage = await screen.findByText("Model unavailable");
+        expect(errorMessage.className).toContain("text-destructive");
+    });
+
+    it("does not show cancellation turn ended errors", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-cancelled"
+                chatClient={chatClient}
+                agentName="codex"
+                emptyStateTitle="No visible error"
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new TurnEnded({
+                threadId: "thread-cancelled",
+                turnId: "turn-cancelled",
+                error: new AgentError({ message: "Turn cancelled by user" }),
+            }), { createdAt: new Date("2026-05-28T12:00:00.000Z") });
+        });
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-cancelled",
+            }));
+        });
+
+        expect(screen.queryByText("Turn cancelled by user")).to.equal(null);
+        expect(await screen.findByText("No visible error")).toBeTruthy();
+    });
+
+    it("shows tool call failure details", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-tool-error"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentToolCallEnded({
+                threadId: "thread-tool-error",
+                turnId: "turn-tool-error",
+                itemId: "tool-error",
+                toolkit: "openai",
+                tool: "shell",
+                error: new AgentError({ message: "Command failed" }),
+            }), { createdAt: new Date("2026-05-28T12:00:00.000Z") });
+        });
+
+        expect(await screen.findByText(/Failed openai\.shell/)).toBeTruthy();
+        expect(await screen.findByText(/Command failed/)).toBeTruthy();
     });
 
     it("passes client toolkits on turn starts from the composer", async () => {

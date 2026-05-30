@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
+
 import type { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
+
 import {
     AgentFileContentDelta,
     AgentImageGenerationCompleted,
@@ -22,34 +24,36 @@ import {
     StartThread,
     TurnStart,
     TurnStartAccepted,
+    TurnEnded,
     TurnSteer,
     TurnSteerAccepted,
 } from "@meshagent/meshagent-agents";
 import type {
     AgentMessage,
+    AgentError,
     BaseChatClient,
     ChatThreadSession,
     ClientToolkitDescription,
     PendingAgentInput,
 } from "@meshagent/meshagent-agents";
+
 import { ChevronDown, ChevronRight, Download, FileText, ImageOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { Button } from "../components/ui/button.js";
-import { Spinner } from "../components/ui/spinner.js";
-import { cn } from "../lib/utils.js";
-import { ChatInput } from "./chat-input.js";
-import type { ChatMessage } from "./chat-message.js";
-import { ChatTypingIndicator } from "./chat-typing-indicator.js";
-import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
+import { Spinner } from "../components/ui/spinner";
+import { cn } from "../lib/utils";
+import { ChatInput } from "./chat-input";
+import type { ChatMessage } from "./chat-message";
+import { ChatTypingIndicator } from "./chat-typing-indicator";
+import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 
 const stickyBottomThresholdPx = 24;
 
 type FeedRole = "user" | "agent";
-type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation";
+type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation" | "error";
 
 interface FeedItem {
     id: string;
@@ -61,6 +65,7 @@ interface FeedItem {
     authorName?: string;
     phase?: string;
     turnId?: string;
+    failed?: boolean;
     image?: {
         uri?: string;
         status?: string;
@@ -122,6 +127,10 @@ interface ToolMessage extends ItemMessage {
     tool?: string;
 }
 
+interface ToolEndedMessage extends ToolMessage {
+    error?: AgentError;
+}
+
 interface GeneratedImage {
     uri?: string;
     status?: string;
@@ -144,6 +153,11 @@ interface ThreadStatusMessage extends AgentMessage {
     mode?: string;
     startedAt?: string;
     turnId?: string;
+}
+
+interface TurnEndedMessage extends AgentMessage {
+    turnId?: string;
+    error?: AgentError;
 }
 
 function isTypedMessage<T extends AgentMessage>(message: AgentMessage, ctor: AgentMessageConstructor): message is T {
@@ -295,6 +309,51 @@ function imageStatus(message: AgentMessage): string {
     return "in_progress";
 }
 
+function agentErrorIsCancellation(error: AgentError): boolean {
+    const values = [error.code, error.message].filter((value): value is string => typeof value === "string");
+    return values.some((value) => {
+        const normalized = value.trim().toLowerCase();
+        return normalized.includes("cancel") || normalized.includes("interrupt") || normalized.includes("abort");
+    });
+}
+
+function toolCallLabel(message: ToolMessage): string {
+    return [message.toolkit, message.tool].filter((part) => part?.trim()).join(".") || "Tool call";
+}
+
+function toolCallFailed(message: ToolMessage): boolean {
+    return isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) && message.error != null;
+}
+
+function toolCallText(message: ToolMessage): string {
+    if (toolCallFailed(message) && isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) && message.error != null) {
+        const error = message.error.message.trim();
+        return error === "" ? `Failed ${toolCallLabel(message)}` : `Failed ${toolCallLabel(message)}\n${error}`;
+    }
+    return toolCallLabel(message);
+}
+
+function turnEndedErrorItem(message: TurnEndedMessage, createdAt: Date): FeedItem | null {
+    const error = message.error;
+    if (error == null || agentErrorIsCancellation(error)) {
+        return null;
+    }
+    const text = error.message.trim();
+    if (text === "") {
+        return null;
+    }
+    const turnId = stringValue(message.turnId);
+    return {
+        id: ["turn-error", turnId ?? message.messageId].join(":"),
+        kind: "error",
+        role: "agent",
+        text,
+        attachments: [],
+        createdAt,
+        turnId,
+    };
+}
+
 function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
     if (session === null) {
         return [];
@@ -398,10 +457,11 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 id: message.itemId,
                 kind: "tool_call",
                 role: "agent",
-                text: [message.toolkit, message.tool].filter((part) => part?.trim()).join(".") || "Tool call",
+                text: toolCallText(message),
                 attachments: [],
                 createdAt,
                 turnId: message.turnId,
+                failed: toolCallFailed(message),
             });
         } else if (
             isTypedMessage<ItemMessage>(message, AgentImageGenerationStarted) ||
@@ -428,6 +488,11 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                     statusDetail: isTypedMessage<ImageFailedMessage>(message, AgentImageGenerationFailed) ? message.error.message : undefined,
                 },
             });
+        } else if (isTypedMessage<TurnEndedMessage>(message, TurnEnded)) {
+            const errorItem = turnEndedErrorItem(message, createdAt);
+            if (errorItem !== null) {
+                upsertItem(items, errorItem);
+            }
         }
     }
 
@@ -442,7 +507,8 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
         item.text.trim() !== "" ||
         item.attachments.length > 0 ||
         item.image != null ||
-        item.kind === "tool_call"
+        item.kind === "tool_call" ||
+        item.kind === "error"
     ));
 }
 
@@ -486,7 +552,7 @@ function canRenderAsFinalAnswer(message: FeedItem): boolean {
 }
 
 function isIntrinsicDetail(message: FeedItem): boolean {
-    return message.kind === "reasoning" || message.kind === "tool_call" || (canCollapseAsCommentary(message) && message.phase === "commentary");
+    return message.kind === "reasoning" || (message.kind === "tool_call" && message.failed !== true) || (canCollapseAsCommentary(message) && message.phase === "commentary");
 }
 
 function nextUserMessageIndex(messages: FeedItem[], start: number): number | null {
@@ -790,9 +856,17 @@ function ThreadMessageView({
     agentName?: string;
     forceHideHeader?: boolean;
 }): ReactElement | null {
+    if (message.kind === "error") {
+        return (
+            <div className="px-6 py-1 text-center text-sm text-destructive">
+                {message.text}
+            </div>
+        );
+    }
+
     if (message.kind === "reasoning" || message.kind === "tool_call") {
         return message.text.trim() === "" ? null : (
-            <div className="px-6 py-1 text-center text-sm text-muted-foreground">
+            <div className={cn("px-6 py-1 text-center text-sm whitespace-pre-wrap", message.failed === true ? "text-destructive" : "text-muted-foreground")}>
                 {message.text}
             </div>
         );
