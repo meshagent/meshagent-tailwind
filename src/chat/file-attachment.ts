@@ -7,20 +7,46 @@ export enum UploadStatus {
   Failed    = "failed",
 }
 
+function defaultSuggestedFileNameFromPath(path: string): string {
+    const trimmed = path.trim();
+    if (trimmed === "") {
+        return "file";
+    }
+
+    if (trimmed.startsWith("data:")) {
+        return "attachment";
+    }
+
+    const slash = trimmed.lastIndexOf("/");
+    if (slash < 0 || slash === trimmed.length - 1) {
+        return trimmed === "" ? "file" : trimmed;
+    }
+
+    return trimmed.slice(slash + 1);
+}
+
 export abstract class FileAttachment extends EventEmitter<void> {
     protected _status: UploadStatus;
     public path: string;
+    public readonly mimeType?: string;
+    public readonly displayName?: string;
 
     protected constructor({
         path,
         initialStatus = UploadStatus.Initial,
+        mimeType,
+        displayName,
     }: {
         path: string;
         initialStatus?: UploadStatus;
+        mimeType?: string;
+        displayName?: string;
     }) {
         super();
         this.path = path;
         this._status = initialStatus;
+        this.mimeType = mimeType;
+        this.displayName = displayName;
     }
 
     get status(): UploadStatus {
@@ -39,7 +65,11 @@ export abstract class FileAttachment extends EventEmitter<void> {
     }
 
     get filename(): string {
-        return this.path.split("/").pop() ?? "";
+        const explicitName = this.displayName?.trim();
+        if (explicitName) {
+            return explicitName;
+        }
+        return defaultSuggestedFileNameFromPath(this.path);
     }
 
     get size(): number {
@@ -72,8 +102,10 @@ export class MeshagentFileUpload extends FileAttachment {
         dataStream: AsyncIterable<Uint8Array>,
         size = 0,
         autoStart = true,
+        mimeType?: string,
+        displayName?: string,
     ) {
-        super({ path });
+        super({ path, mimeType, displayName });
 
         this.room = room;
         this.dataStream = dataStream;
@@ -99,8 +131,10 @@ export class MeshagentFileUpload extends FileAttachment {
         path: string,
         dataStream: AsyncIterable<Uint8Array>,
         size = 0,
+        mimeType?: string,
+        displayName?: string,
     ): MeshagentFileUpload {
-        return new MeshagentFileUpload(room, path, dataStream, size, false);
+        return new MeshagentFileUpload(room, path, dataStream, size, false, mimeType, displayName);
     }
 
     get bytesUploaded(): number {

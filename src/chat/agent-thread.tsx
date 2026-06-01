@@ -50,6 +50,7 @@ import { ChatInput } from "./chat-input";
 import type { ChatMessage } from "./chat-message";
 import { ChatTypingIndicator } from "./chat-typing-indicator";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
+import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
 
 const stickyBottomThresholdPx = 24;
 
@@ -831,6 +832,27 @@ function normalizeAttachmentPath(path: string): string {
     return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
 
+function isHttpUrl(path: string): boolean {
+    return /^https?:\/\//iu.test(path.trim());
+}
+
+function isInlineImageUrl(path: string): boolean {
+    return path.trim().toLowerCase().startsWith("data:image/");
+}
+
+function attachmentImagePath(path: string): string | null {
+    const trimmed = path.trim();
+    if (trimmed === "") {
+        return null;
+    }
+    if (isInlineImageUrl(trimmed)) {
+        return trimmed;
+    }
+    const normalized = normalizeAttachmentPath(trimmed);
+    return isImagePath(normalized) ? normalized : null;
+}
+
+
 function MarkdownBlock({ text }: { text: string }): ReactElement {
     return (
         <ReactMarkdown
@@ -934,16 +956,130 @@ export function ShellLine({ command, result, stdout, stderr, title = "Terminal",
     );
 }
 
+export type EventLineState = "info" | "queued" | "running" | "in_progress" | "completed" | "failed" | "cancelled";
+
+export interface EventLineProps {
+    headline: string;
+    details?: string | readonly string[] | null;
+    kind?: string;
+    state?: EventLineState | string;
+    failed?: boolean;
+    className?: string;
+}
+
+function eventLineStateClass(state?: string, failed?: boolean): string {
+    const normalizedState = state?.trim().toLowerCase();
+    if (failed === true || normalizedState === "failed") {
+        return "text-destructive";
+    }
+    if (normalizedState === "cancelled") {
+        return "text-muted-foreground";
+    }
+    if (normalizedState === "running" || normalizedState === "in_progress" || normalizedState === "queued") {
+        return "text-primary";
+    }
+    return "text-muted-foreground";
+}
+
+function eventLineDetails(details?: string | readonly string[] | null): string[] {
+    if (details == null) {
+        return [];
+    }
+    const lines: readonly string[] = typeof details === "string" ? details.split(/\r?\n/) : details;
+    return lines.map((line: string) => line.trim()).filter((line: string) => line !== "");
+}
+
+export function EventLine({ headline, details, state = "info", failed = false, className }: EventLineProps): ReactElement | null {
+    const normalizedHeadline = headline.trim();
+    const detailLines = eventLineDetails(details);
+    if (normalizedHeadline === "") {
+        return null;
+    }
+
+    const textClass = eventLineStateClass(state, failed);
+    return (
+        <div className={cn("ml-1.5 px-4 py-1 text-xs leading-5", textClass, className)}>
+            <div className="font-semibold">{normalizedHeadline}</div>
+            {detailLines.length > 0 ? (
+                <div className="mt-0.5 whitespace-pre-wrap break-words opacity-85">{detailLines.join("\n")}</div>
+            ) : null}
+        </div>
+    );
+}
+
 function AttachmentView({ room, path }: { room: RoomClient; path: string }): ReactElement {
+    return attachmentImagePath(path) == null ? <AttachmentDownloadButton room={room} path={path} /> : <ChatImageAttachment room={room} path={path} />;
+}
+
+function ChatImageAttachment({ room, path }: { room: RoomClient; path: string }): ReactElement {
+    const imagePath = attachmentImagePath(path) ?? path;
+    const [url, setUrl] = useState<string | null>(() => (isInlineImageUrl(imagePath) || isHttpUrl(imagePath) ? imagePath : null));
+    const [error, setError] = useState<unknown>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        setError(null);
+
+        if (isInlineImageUrl(imagePath) || isHttpUrl(imagePath)) {
+            setUrl(imagePath);
+            return;
+        }
+
+        setUrl(null);
+        void room.storage.downloadUrl(imagePath)
+            .then((nextUrl) => {
+                if (!cancelled) {
+                    setUrl(nextUrl);
+                }
+            })
+            .catch((nextError: unknown) => {
+                if (!cancelled) {
+                    setError(nextError);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [imagePath, room]);
+
+    if (error != null) {
+        return <AttachmentDownloadButton room={room} path={path} />;
+    }
+
+    if (url == null) {
+        return (
+            <div className="flex h-[240px] w-[240px] items-center justify-center rounded-md border bg-background text-muted-foreground">
+                <Spinner className="h-5 w-5" />
+            </div>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            className="block max-w-full overflow-hidden rounded-md shadow-xs transition-opacity hover:opacity-90"
+            onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+            title="Open image">
+            <img src={url} alt={filePreviewName(imagePath)} className="max-h-[312px] max-w-full object-contain" />
+        </button>
+    );
+}
+
+function AttachmentDownloadButton({ room, path }: { room: RoomClient; path: string }): ReactElement {
     const preview = normalizeAttachmentPath(path);
-    const filename = preview.split("/").pop() ?? preview;
+    const filename = filePreviewName(preview);
     return (
         <button
             type="button"
             className="inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80"
             onClick={() => {
-                void room.storage.downloadUrl(preview).then((url) => {
-                    window.open(url, "_blank", "noopener,noreferrer");
+                if (isInlineImageUrl(path) || isHttpUrl(path)) {
+                    window.open(path, "_blank", "noopener,noreferrer");
+                    return;
+                }
+                void room.storage.downloadUrl(preview).then((nextUrl) => {
+                    window.open(nextUrl, "_blank", "noopener,noreferrer");
                 });
             }}>
             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -952,6 +1088,8 @@ function AttachmentView({ room, path }: { room: RoomClient; path: string }): Rea
         </button>
     );
 }
+
+
 
 
 function DetailGroupLine({ item, onToggle }: { item: DetailGroupFeedItem; onToggle: () => void }): ReactElement {
@@ -1045,11 +1183,7 @@ function ThreadMessageView({
                 />
             );
         }
-        return message.text.trim() === "" ? null : (
-            <div className={cn("px-6 py-1 text-center text-sm whitespace-pre-wrap", message.failed === true ? "text-destructive" : "text-muted-foreground")}>
-                {message.text}
-            </div>
-        );
+        return <EventLine headline={message.text} state={message.failed === true ? "failed" : "completed"} failed={message.failed} />;
     }
 
     const mine = message.role === "user";

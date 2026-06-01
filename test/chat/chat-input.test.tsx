@@ -6,8 +6,8 @@ import { ChatInput } from "../../src/chat/chat-input.js";
 import { FileAttachment, UploadStatus, type FileUpload } from "../../src/chat/file-attachment.js";
 
 class TestUpload extends FileAttachment {
-    constructor(path: string, initialStatus = UploadStatus.Uploading) {
-        super({ path, initialStatus });
+    constructor(path: string, initialStatus = UploadStatus.Uploading, options: { mimeType?: string; displayName?: string } = {}) {
+        super({ path, initialStatus, ...options });
     }
 
     public complete(): void {
@@ -20,6 +20,20 @@ afterEach(() => {
 });
 
 describe("ChatInput", () => {
+    it("uses display names and stores mime types on file attachments", () => {
+        const upload = new TestUpload("uploaded-files/generated", UploadStatus.Completed, {
+            mimeType: "text/csv",
+            displayName: " report.csv ",
+        });
+        const fallback = new TestUpload("uploaded-files/notes.txt", UploadStatus.Completed);
+        const emptyPath = new TestUpload("", UploadStatus.Completed);
+
+        expect(upload.mimeType).to.equal("text/csv");
+        expect(upload.filename).to.equal("report.csv");
+        expect(fallback.filename).to.equal("notes.txt");
+        expect(emptyPath.filename).to.equal("file");
+    });
+
     it("waits for attachments to finish before sending, then clears the draft and attachments", async () => {
         const upload = new TestUpload("uploaded-files/readme.md");
         const setAttachments = vi.fn();
