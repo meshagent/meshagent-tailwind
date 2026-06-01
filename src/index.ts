@@ -10,6 +10,8 @@ export * from './chat/multi-thread-view.js';
 export * from './chat/thread-list-view.js';
 export * from './chat/agent-thread.js';
 export * from './chat/new-chat-thread.js';
+export * from './chat/tool-call-status-accumulator.js';
+export { AgentThreadMessageStatusStore, resolveChatThreadStatusFromStore, shouldShowChatThreadStatus, trackAgentThreadStatusMessageInStore } from './chat/agent-thread-message-status-store.js';
 export * from './file-preview/file-preview.js';
 export * from './forms/email-address.js';
 export * from './forms/form.js';
