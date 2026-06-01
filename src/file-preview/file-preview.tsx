@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { RoomClient } from "@meshagent/meshagent";
 import { Download, FileText } from "lucide-react";
-import { Document, Page, pdfjs } from "react-pdf";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -20,7 +19,7 @@ import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
 import { AgentThread } from "../chat/agent-thread.js";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+type ReactPdfModule = typeof import("react-pdf");
 
 export enum FileKind {
     Image = "image",
@@ -469,16 +468,45 @@ function useElementWidth(): [React.RefObject<HTMLDivElement | null>, number] {
 export function PdfPreview({ room, path }: { room: RoomClient; path: string }): ReactElement {
     const { url, error } = usePdfUrl(room, path);
     const [numPages, setNumPages] = useState(0);
+    const [reactPdf, setReactPdf] = useState<ReactPdfModule | null>(null);
+    const [reactPdfError, setReactPdfError] = useState<unknown>(null);
     const [containerRef, containerWidth] = useElementWidth();
     const pageWidth = Math.max(Math.min(containerWidth, 960), 320);
+
+    useEffect(() => {
+        let stopped = false;
+
+        import("react-pdf")
+            .then((nextReactPdf) => {
+                nextReactPdf.pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${nextReactPdf.pdfjs.version}/build/pdf.worker.min.mjs`;
+                if (!stopped) {
+                    setReactPdf(nextReactPdf);
+                }
+            })
+            .catch((nextError: unknown) => {
+                if (!stopped) {
+                    setReactPdfError(nextError);
+                }
+            });
+
+        return () => {
+            stopped = true;
+        };
+    }, []);
 
     if (error != null) {
         return <ErrorPreview message={`Unable to load PDF: ${String(error)}`} />;
     }
+    if (reactPdfError != null) {
+        return <ErrorPreview message={`Unable to load PDF renderer: ${String(reactPdfError)}`} />;
+    }
+
+    const Document = reactPdf?.Document;
+    const Page = reactPdf?.Page;
 
     return (
         <div ref={containerRef} className="h-full overflow-auto bg-muted/30 p-4">
-            {url == null ? (
+            {url == null || Document == null || Page == null ? (
                 <LoadingPreview />
             ) : (
                 <Document
