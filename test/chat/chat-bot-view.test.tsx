@@ -26,7 +26,13 @@ import {
 
 import type { AgentThreadMessage } from "@meshagent/meshagent-agents";
 
-import { AgentThread } from "../../src/chat/agent-thread";
+import {
+    AgentThread,
+    AgentUsageSnapshot,
+    formatAgentUsageFooter,
+    formatAgentUsageTooltip,
+    shouldReplaceAgentUsageSnapshot,
+} from "../../src/chat/agent-thread";
 import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view";
 
 class FakeParticipant {
@@ -432,6 +438,62 @@ describe("ChatBotView multi-thread composer", () => {
     });
 });
 
+describe("AgentUsageSnapshot", () => {
+    it("parses usage update payloads and formats footer text", () => {
+        const snapshot = AgentUsageSnapshot.fromPayload({
+            type: "meshagent.agent.usage.updated",
+            thread_id: " thread-usage ",
+            turn_id: " turn-usage ",
+            usage: {
+                input_tokens: 1200,
+                output_tokens: 345,
+                "openai.reasoning_tokens": 100,
+                ignored: "not numeric",
+            },
+            context_window: {
+                used_tokens: 42000,
+                total_tokens: 128000,
+                compaction_mode: "auto",
+                compaction_threshold: 96000,
+            },
+        });
+
+        expect(snapshot).not.to.equal(null);
+        expect(snapshot?.threadPath).to.equal("thread-usage");
+        expect(snapshot?.turnId).to.equal("turn-usage");
+        expect(snapshot?.contextUsedTokens).to.equal(42000);
+        expect(snapshot?.contextTotalTokens).to.equal(128000);
+        expect(snapshot?.compactionThreshold).to.equal(96000);
+        expect(snapshot?.totalTokens).to.equal(1545);
+        expect(snapshot?.usage).to.deep.equal({ input_tokens: 1200, output_tokens: 345, "openai.reasoning_tokens": 100 });
+        expect(formatAgentUsageFooter(snapshot!)).to.equal("context 42K/96K");
+        expect(formatAgentUsageTooltip(snapshot!)).to.equal([
+            "context used: 42K",
+            "context management: auto",
+            "context threshold: 96K",
+            "model window: 128K",
+            "input_tokens: 1.2K",
+            "openai.reasoning_tokens: 100",
+            "output_tokens: 345",
+        ].join("\n"));
+    });
+
+    it("keeps a populated snapshot over an empty zero-token update", () => {
+        const current = new AgentUsageSnapshot({
+            threadPath: "thread-usage",
+            contextUsedTokens: 10,
+            usage: { input_tokens: 10 },
+        });
+        const empty = new AgentUsageSnapshot({
+            threadPath: "thread-usage",
+            contextUsedTokens: 0,
+            usage: {},
+        });
+
+        expect(shouldReplaceAgentUsageSnapshot(current, empty)).to.equal(false);
+    });
+});
+
 describe("AgentThread", () => {
     it("shows a spinner for an empty thread until replay loading completes", async () => {
         const room = fakeRoom();
@@ -494,6 +556,42 @@ describe("AgentThread", () => {
 
         fireEvent.click(screen.getByText("Worked for 4s"));
         expect(await screen.findByText(/I checked the logs/)).toBeTruthy();
+    });
+
+    it("renders usage updates below the composer", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-usage"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-usage",
+            }));
+            chatClient.handleAgentMessage(AgentMessage.fromJson({
+                type: "meshagent.agent.usage.updated",
+                thread_id: "thread-usage",
+                turn_id: "turn-usage",
+                usage: {
+                    input_tokens: 1234,
+                    output_tokens: 56,
+                },
+                context_window: {
+                    used_tokens: 42000,
+                    total_tokens: 128000,
+                },
+            }));
+        });
+
+        expect(await screen.findByText("context 42K/128K")).toBeTruthy();
+        expect(screen.getByLabelText(/input_tokens: 1.2K/)).toBeTruthy();
     });
 
     it("shows non-cancellation turn ended errors", async () => {

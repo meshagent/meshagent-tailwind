@@ -16,6 +16,7 @@ import {
     AgentTextContentEnded,
     AgentTextContentStarted,
     AgentThreadStatus,
+    AgentUsageUpdated,
     AgentToolCallEnded,
     AgentToolCallInProgress,
     AgentToolCallPending,
@@ -107,6 +108,184 @@ export class AgentToolChoice {
     }
 }
 
+
+function finiteNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function integerNumber(value: unknown): number | null {
+    const numeric = finiteNumber(value);
+    return numeric == null ? null : Math.trunc(numeric);
+}
+
+function usageKeyMatches(key: string, names: Set<string>): boolean {
+    for (const name of names) {
+        if (key === name || key.endsWith(`.${name}`)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function sumUsageKeys(rawUsage: Record<string, unknown>, names: Set<string>): number | null {
+    let total = 0;
+    let found = false;
+    for (const [key, value] of Object.entries(rawUsage)) {
+        if (!usageKeyMatches(key, names)) {
+            continue;
+        }
+        const numeric = finiteNumber(value);
+        if (numeric == null) {
+            continue;
+        }
+        total += numeric;
+        found = true;
+    }
+    return found ? total : null;
+}
+
+function usageTotalTokens(rawUsage: Record<string, unknown>): number | null {
+    const explicitTotal = sumUsageKeys(rawUsage, new Set(["total_tokens"]));
+    if (explicitTotal != null) {
+        return explicitTotal;
+    }
+
+    const inputTokens = sumUsageKeys(rawUsage, new Set([
+        "input_tokens",
+        "audio_input_tokens",
+        "image_input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+    ]));
+    const outputTokens = sumUsageKeys(rawUsage, new Set(["output_tokens", "audio_output_tokens", "image_output_tokens"]));
+    const cachedTokens = sumUsageKeys(rawUsage, new Set(["cached_tokens", "audio_cached_tokens", "image_cached_tokens"]));
+    const reasoningTokens = sumUsageKeys(rawUsage, new Set(["reasoning_tokens"]));
+
+    let total = 0;
+    let hasTotal = false;
+    if (inputTokens != null) {
+        total += inputTokens;
+        hasTotal = true;
+    } else if (cachedTokens != null) {
+        total += cachedTokens;
+        hasTotal = true;
+    }
+    if (outputTokens != null) {
+        total += outputTokens;
+        hasTotal = true;
+    } else if (reasoningTokens != null) {
+        total += reasoningTokens;
+        hasTotal = true;
+    }
+    return hasTotal ? total : null;
+}
+
+function usageValues(rawUsage: Record<string, unknown>): Record<string, number> {
+    const usage: Record<string, number> = {};
+    for (const [key, value] of Object.entries(rawUsage)) {
+        const trimmedKey = key.trim();
+        const numeric = finiteNumber(value);
+        if (trimmedKey === "" || numeric == null) {
+            continue;
+        }
+        usage[trimmedKey] = numeric;
+    }
+    return Object.freeze(usage);
+}
+
+export class AgentUsageSnapshot {
+    readonly threadPath: string;
+    readonly turnId?: string;
+    readonly contextUsedTokens: number;
+    readonly contextTotalTokens?: number;
+    readonly compactionMode?: string;
+    readonly compactionThreshold?: number;
+    readonly totalTokens?: number;
+    readonly usage: Record<string, number>;
+
+    constructor({
+        threadPath,
+        turnId,
+        contextUsedTokens,
+        contextTotalTokens,
+        compactionMode,
+        compactionThreshold,
+        totalTokens,
+        usage,
+    }: {
+        threadPath: string;
+        turnId?: string;
+        contextUsedTokens: number;
+        contextTotalTokens?: number;
+        compactionMode?: string;
+        compactionThreshold?: number;
+        totalTokens?: number;
+        usage: Record<string, number>;
+    }) {
+        this.threadPath = threadPath;
+        this.turnId = turnId;
+        this.contextUsedTokens = contextUsedTokens;
+        this.contextTotalTokens = contextTotalTokens;
+        this.compactionMode = compactionMode;
+        this.compactionThreshold = compactionThreshold;
+        this.totalTokens = totalTokens;
+        this.usage = Object.freeze({ ...usage });
+    }
+
+    static fromMessage(message: AgentMessage): AgentUsageSnapshot | null {
+        if (!isTypedMessage<UsageUpdatedMessage>(message, AgentUsageUpdated)) {
+            return null;
+        }
+        return AgentUsageSnapshot.fromPayload(message.toJson() as Record<string, unknown>);
+    }
+
+    static fromPayload(payload: Record<string, unknown>): AgentUsageSnapshot | null {
+        if (payload.type !== "meshagent.agent.usage.updated") {
+            return null;
+        }
+
+        const rawThreadPath = payload.thread_id;
+        if (typeof rawThreadPath !== "string" || rawThreadPath.trim() === "") {
+            return null;
+        }
+
+        const rawContextWindow = payload.context_window;
+        if (rawContextWindow == null || typeof rawContextWindow !== "object") {
+            return null;
+        }
+        const contextWindow = rawContextWindow as Record<string, unknown>;
+        const usedTokens = integerNumber(contextWindow.used_tokens);
+        if (usedTokens == null) {
+            return null;
+        }
+
+        const totalContextTokens = contextWindow.total_tokens == null ? undefined : integerNumber(contextWindow.total_tokens) ?? undefined;
+        const rawCompactionMode = contextWindow.compaction_mode;
+        const compactionMode = typeof rawCompactionMode === "string" && rawCompactionMode.trim() !== "" ? rawCompactionMode.trim() : undefined;
+        const compactionThreshold = contextWindow.compaction_threshold == null ? undefined : integerNumber(contextWindow.compaction_threshold) ?? undefined;
+        const rawUsage = payload.usage != null && typeof payload.usage === "object" ? payload.usage as Record<string, unknown> : {};
+        const rawTurnId = payload.turn_id;
+
+        return new AgentUsageSnapshot({
+            threadPath: rawThreadPath.trim(),
+            turnId: typeof rawTurnId === "string" && rawTurnId.trim() !== "" ? rawTurnId.trim() : undefined,
+            contextUsedTokens: usedTokens,
+            contextTotalTokens: totalContextTokens,
+            compactionMode,
+            compactionThreshold,
+            totalTokens: usageTotalTokens(rawUsage) ?? undefined,
+            usage: usageValues(rawUsage),
+        });
+    }
+}
+
+export function shouldReplaceAgentUsageSnapshot(current: AgentUsageSnapshot | null | undefined, next: AgentUsageSnapshot): boolean {
+    if (current != null && current.contextUsedTokens > 0 && next.contextUsedTokens === 0 && Object.keys(next.usage).length === 0) {
+        return false;
+    }
+    return true;
+}
+
 export interface AgentThreadProps {
     room: RoomClient;
     path: string;
@@ -186,6 +365,19 @@ interface ThreadStatusMessage extends AgentMessage {
 interface TurnEndedMessage extends AgentMessage {
     turnId?: string;
     error?: AgentError;
+}
+
+interface ContextWindowUsage {
+    usedTokens?: number;
+    totalTokens?: number;
+    compactionMode?: string;
+    compactionThreshold?: number;
+}
+
+interface UsageUpdatedMessage extends AgentMessage {
+    turnId?: string;
+    usage?: Record<string, number>;
+    contextWindow?: ContextWindowUsage;
 }
 
 function isTypedMessage<T extends AgentMessage>(message: AgentMessage, ctor: AgentMessageConstructor): message is T {
@@ -819,6 +1011,76 @@ function latestThreadStatus(session: ChatThreadSession | null): ThreadStatusMess
     return null;
 }
 
+function latestUsageSnapshot(session: ChatThreadSession | null): AgentUsageSnapshot | null {
+    if (session === null) {
+        return null;
+    }
+    let usage: AgentUsageSnapshot | null = null;
+    for (const event of session.messages) {
+        const next = AgentUsageSnapshot.fromMessage(event.message);
+        if (next === null) {
+            continue;
+        }
+        if (shouldReplaceAgentUsageSnapshot(usage, next)) {
+            usage = next;
+        }
+    }
+    return usage;
+}
+
+export function formatAgentUsageTokenCount(value: number): string {
+    const magnitude = Math.abs(value);
+    if (magnitude >= 1000000) {
+        return `${trimFixed(value / 1000000)}M`;
+    }
+    if (magnitude >= 1000) {
+        return `${trimFixed(value / 1000)}K`;
+    }
+    return Math.round(value).toString();
+}
+
+function trimFixed(value: number): string {
+    const fixed = value.toFixed(1);
+    return fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed;
+}
+
+export function formatAgentUsageFooter(usage: AgentUsageSnapshot): string {
+    const contextLimitTokens = usage.compactionThreshold ?? usage.contextTotalTokens;
+    const used = formatAgentUsageTokenCount(usage.contextUsedTokens);
+    const limit = contextLimitTokens == null ? "" : `/${formatAgentUsageTokenCount(contextLimitTokens)}`;
+    return `context ${used}${limit}`;
+}
+
+export function formatAgentUsageTooltip(usage: AgentUsageSnapshot): string {
+    const lines = [`context used: ${formatAgentUsageTokenCount(usage.contextUsedTokens)}`];
+    if (usage.compactionMode != null) {
+        lines.push(`context management: ${usage.compactionMode}`);
+        if (usage.compactionThreshold != null) {
+            lines.push(`context threshold: ${formatAgentUsageTokenCount(usage.compactionThreshold)}`);
+        }
+    }
+    if (usage.compactionThreshold != null && usage.contextTotalTokens != null) {
+        lines.push(`model window: ${formatAgentUsageTokenCount(usage.contextTotalTokens)}`);
+    }
+    const entries = Object.entries(usage.usage).sort(([left], [right]) => left.localeCompare(right));
+    for (const [key, value] of entries) {
+        lines.push(`${key}: ${formatAgentUsageTokenCount(value)}`);
+    }
+    return lines.join("\n");
+}
+
+export function AgentUsageFooter({ usage, className }: { usage: AgentUsageSnapshot | null; className?: string }): ReactElement {
+    const tooltip = usage === null ? undefined : formatAgentUsageTooltip(usage);
+    const label = usage === null ? "" : formatAgentUsageFooter(usage);
+    return (
+        <div
+            className={cn("min-h-4 truncate px-2 text-right text-[11px] leading-4 text-muted-foreground", className)}
+            title={tooltip}
+            aria-label={tooltip}>
+            {label}
+        </div>
+    );
+}
 function dateFromString(value?: string): Date | null {
     if (value == null || value.trim() === "") {
         return null;
@@ -1066,13 +1328,13 @@ function ChatImageAttachment({ room, path }: { room: RoomClient; path: string })
     );
 }
 
-function AttachmentDownloadButton({ room, path }: { room: RoomClient; path: string }): ReactElement {
+function AttachmentDownloadButton({ room, path, className }: { room: RoomClient; path: string; className?: string }): ReactElement {
     const preview = normalizeAttachmentPath(path);
     const filename = filePreviewName(preview);
     return (
         <button
             type="button"
-            className="inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80"
+            className={cn("inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80", className)}
             onClick={() => {
                 if (isInlineImageUrl(path) || isHttpUrl(path)) {
                     window.open(path, "_blank", "noopener,noreferrer");
@@ -1091,6 +1353,25 @@ function AttachmentDownloadButton({ room, path }: { room: RoomClient; path: stri
 
 
 
+
+export interface ChatThreadPreviewProps {
+    room: RoomClient;
+    path: string;
+    className?: string;
+}
+
+export function ChatThreadPreview({ room, path, className }: ChatThreadPreviewProps): ReactElement {
+    const normalizedPath = normalizeAttachmentPath(path);
+    if (attachmentImagePath(path) != null) {
+        return (
+            <div className={cn("h-[312.5px] w-[312.5px] max-w-full overflow-hidden rounded-2xl bg-background", className)}>
+                <ChatImageAttachment room={room} path={path} />
+            </div>
+        );
+    }
+
+    return <AttachmentDownloadButton room={room} path={normalizedPath} className={className} />;
+}
 
 function DetailGroupLine({ item, onToggle }: { item: DetailGroupFeedItem; onToggle: () => void }): ReactElement {
     return (
@@ -1361,6 +1642,7 @@ export function AgentThread({
             : feedItems
     ), [agentName, collapseMessages, expandedDetailGroupIds, feedItems, localParticipantName]);
     const status = useMemo(() => latestThreadStatus(session), [session, version]);
+    const usage = useMemo(() => latestUsageSnapshot(session), [session, version]);
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
     const canInterruptActiveTurn = turnId != null && (agentParticipant != null || chatClient != null);
@@ -1545,14 +1827,17 @@ export function AgentThread({
                 </div>
             ) : null}
 
-            <ChatInput
-                onSubmit={handleSend}
-                attachments={attachments}
-                onFilesSelected={selectAttachments}
-                setAttachments={setAttachments}
-                disabled={agentParticipant == null && chatClient == null}
-                placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`}
-            />
+            <div className="flex flex-col gap-1">
+                <ChatInput
+                    onSubmit={handleSend}
+                    attachments={attachments}
+                    onFilesSelected={selectAttachments}
+                    setAttachments={setAttachments}
+                    disabled={agentParticipant == null && chatClient == null}
+                    placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`}
+                />
+                <AgentUsageFooter usage={usage} className="mx-auto w-full max-w-[912px]" />
+            </div>
         </div>
     );
 }
