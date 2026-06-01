@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
-import { MessagingChatClient } from "@meshagent/meshagent-agents";
+import { MessagingChatClient, ToolChoice } from "@meshagent/meshagent-agents";
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import type { AgentToolChoice } from "./agent-thread.js";
 
 import { ChatInput } from "./chat-input.js";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
@@ -25,6 +26,7 @@ export interface NewChatThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    toolChoice?: AgentToolChoice;
 }
 
 class NewThreadCancelledError extends Error {
@@ -132,6 +134,7 @@ export function NewChatThread({
     emptyStateTitle,
     emptyStateDescription,
     clientToolkits,
+    toolChoice,
 }: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
     const [newThreadDraft, setNewThreadDraft] = useState("");
@@ -243,6 +246,7 @@ export function NewChatThread({
                 attachments: newThreadAttachments.map((attachment) => attachment.path),
                 senderName: getParticipantName(room.localParticipant) || undefined,
                 clientToolkits,
+                toolChoice: toolChoice == null ? undefined : new ToolChoice({ toolkitName: toolChoice.toolkitName, toolName: toolChoice.toolName }),
             });
 
             ensureOperationActive(operationId, activeOperationRef);
@@ -277,6 +281,7 @@ export function NewChatThread({
         newThreadAttachments,
         newThreadDraft,
         clientToolkits,
+        toolChoice,
         onThreadPathChanged,
         onThreadResolved,
         room,

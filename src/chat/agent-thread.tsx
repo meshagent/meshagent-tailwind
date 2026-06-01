@@ -21,6 +21,7 @@ import {
     AgentToolCallPending,
     AgentToolCallStarted,
     MessagingChatClient,
+    ToolChoice,
     StartThread,
     TurnStart,
     TurnStartAccepted,
@@ -85,7 +86,21 @@ interface DetailGroupFeedItem {
 
 type ThreadFeedItem = FeedItem | DetailGroupFeedItem;
 
-interface AgentThreadProps {
+export class AgentToolChoice {
+    readonly toolkitName: string;
+    readonly toolName: string;
+
+    constructor({ toolkitName, toolName }: { toolkitName: string; toolName: string }) {
+        this.toolkitName = toolkitName;
+        this.toolName = toolName;
+    }
+
+    toJson(): Record<string, string> {
+        return { toolkit_name: this.toolkitName, tool_name: this.toolName };
+    }
+}
+
+export interface AgentThreadProps {
     room: RoomClient;
     path: string;
     chatClient?: BaseChatClient;
@@ -94,6 +109,7 @@ interface AgentThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
 }
 
@@ -988,6 +1004,7 @@ export function AgentThread({
     emptyStateTitle = "Chat to get started",
     emptyStateDescription,
     clientToolkits,
+    toolChoice,
     collapseMessages = true,
 }: AgentThreadProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
@@ -1122,13 +1139,14 @@ export function AgentThread({
                 steer: status?.mode === "steerable" && turnId != null,
                 senderName: localParticipantName.trim() || undefined,
                 clientToolkits,
+                toolChoice: toolChoice == null ? undefined : new ToolChoice({ toolkitName: toolChoice.toolkitName, toolName: toolChoice.toolName }),
             });
             setSendError(null);
             setVersion((current) => current + 1);
         } catch (error) {
             setSendError(describeError(error));
         }
-    }, [agentParticipant, chatClient, clientToolkits, localParticipantName, status?.mode, turnId]);
+    }, [agentParticipant, chatClient, clientToolkits, localParticipantName, status?.mode, toolChoice, turnId]);
 
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;

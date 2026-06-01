@@ -10,6 +10,7 @@ import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshag
 import { AlertTriangle } from "lucide-react";
 
 import { AgentThread } from "./agent-thread";
+import type { AgentToolChoice } from "./agent-thread";
 import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor";
 
 import { cn } from "../lib/utils";
@@ -52,6 +53,7 @@ export interface ChatBotViewProps {
     threadListWidth?: number;
     threadListCollapsedHeight?: number;
     clientToolkits?: ClientToolkitDescription[];
+    toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
 }
 
@@ -130,6 +132,7 @@ export function ChatBotView({
     threadListWidth = 280,
     threadListCollapsedHeight = 220,
     clientToolkits,
+    toolChoice,
     collapseMessages = true,
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
@@ -237,6 +240,7 @@ export function ChatBotView({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                toolChoice={toolChoice}
                 collapseMessages={collapseMessages} />
         );
     }
@@ -259,6 +263,7 @@ export function ChatBotView({
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
             clientToolkits={clientToolkits}
+            toolChoice={toolChoice}
             builder={(threadPath) => (
                 <AgentThread
                     room={room}
@@ -269,6 +274,7 @@ export function ChatBotView({
                     emptyStateTitle={startNewThreadTitle}
                     emptyStateDescription={startNewThreadDescription}
                     clientToolkits={clientToolkits}
+                    toolChoice={toolChoice}
                     collapseMessages={collapseMessages} />
             )}
         />
