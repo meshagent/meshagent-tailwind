@@ -38,7 +38,7 @@ import type {
     PendingAgentInput,
 } from "@meshagent/meshagent-agents";
 
-import { ChevronDown, ChevronRight, Download, FileText, ImageOff } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, FileText, ImageOff, Terminal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
@@ -66,6 +66,12 @@ interface FeedItem {
     authorName?: string;
     phase?: string;
     turnId?: string;
+    toolkit?: string;
+    tool?: string;
+    command?: string;
+    result?: string;
+    stdout?: string;
+    stderr?: string;
     failed?: boolean;
     image?: {
         uri?: string;
@@ -141,9 +147,11 @@ interface FileMessage extends ItemMessage {
 interface ToolMessage extends ItemMessage {
     toolkit?: string;
     tool?: string;
+    arguments?: Record<string, unknown>;
 }
 
 interface ToolEndedMessage extends ToolMessage {
+    result?: unknown;
     error?: AgentError;
 }
 
@@ -169,6 +177,9 @@ interface ThreadStatusMessage extends AgentMessage {
     mode?: string;
     startedAt?: string;
     turnId?: string;
+    totalBytes?: number;
+    linesAdded?: number;
+    linesRemoved?: number;
 }
 
 interface TurnEndedMessage extends AgentMessage {
@@ -337,6 +348,65 @@ function toolCallLabel(message: ToolMessage): string {
     return [message.toolkit, message.tool].filter((part) => part?.trim()).join(".") || "Tool call";
 }
 
+function toolArgumentString(argumentsValue: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+    if (argumentsValue == null) {
+        return undefined;
+    }
+    for (const key of keys) {
+        const value = argumentsValue[key];
+        if (typeof value === "string" && value.trim() !== "") {
+            return value.trim();
+        }
+        if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+            const joined = value.join(" ").trim();
+            if (joined !== "") {
+                return joined;
+            }
+        }
+    }
+    return undefined;
+}
+
+function toolCommandText(message: ToolMessage): string | undefined {
+    return toolArgumentString(message.arguments, ["command", "cmd", "script", "input", "query"]);
+}
+
+function contentText(value: unknown): string | undefined {
+    if (typeof value === "string" && value.trim() !== "") {
+        return value.trim();
+    }
+    if (value == null || typeof value !== "object") {
+        return undefined;
+    }
+    const obj = value as Record<string, unknown>;
+    for (const key of ["text", "result", "output", "stdout", "stderr"]) {
+        const candidate = obj[key];
+        if (typeof candidate === "string" && candidate.trim() !== "") {
+            return candidate.trim();
+        }
+    }
+    const json = obj["json"];
+    if (json != null) {
+        return JSON.stringify(json, null, 2);
+    }
+    return undefined;
+}
+
+function shellOutputFields(message: ToolEndedMessage): Pick<FeedItem, "result" | "stdout" | "stderr"> {
+    const result = message.result;
+    const resultObject = result != null && typeof result === "object" ? result as Record<string, unknown> : undefined;
+    return {
+        result: contentText(result),
+        stdout: resultObject == null ? undefined : contentText(resultObject["stdout"]),
+        stderr: resultObject == null ? undefined : contentText(resultObject["stderr"]),
+    };
+}
+
+function isShellTool(message: Pick<FeedItem, "toolkit" | "tool" | "command">): boolean {
+    const values = [message.toolkit, message.tool].filter((value): value is string => typeof value === "string").map((value) => value.trim().toLowerCase());
+    return message.command != null || values.some((value) => value === "shell" || value === "exec" || value === "local_shell" || value === "local_shell_call" || value.includes("shell") || value.includes("exec"));
+}
+
 function toolCallFailed(message: ToolMessage): boolean {
     return isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) && message.error != null;
 }
@@ -469,6 +539,9 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
             isTypedMessage<ToolMessage>(message, AgentToolCallStarted) ||
             isTypedMessage<ToolMessage>(message, AgentToolCallEnded)
         ) {
+            const existing = items.get(message.itemId);
+            const command = toolCommandText(message) ?? existing?.command;
+            const endedFields = isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) ? shellOutputFields(message) : {};
             upsertItem(items, {
                 id: message.itemId,
                 kind: "tool_call",
@@ -477,6 +550,12 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 attachments: [],
                 createdAt,
                 turnId: message.turnId,
+                toolkit: message.toolkit ?? existing?.toolkit,
+                tool: message.tool ?? existing?.tool,
+                command,
+                result: endedFields.result ?? existing?.result,
+                stdout: endedFields.stdout ?? existing?.stdout,
+                stderr: endedFields.stderr ?? existing?.stderr,
                 failed: toolCallFailed(message),
             });
         } else if (
@@ -786,6 +865,75 @@ function ChatBubble({ text, mine }: { text: string; mine: boolean }): ReactEleme
     );
 }
 
+export interface ReasoningTraceProps {
+    text: string;
+    className?: string;
+}
+
+export function ReasoningTrace({ text, className }: ReasoningTraceProps): ReactElement | null {
+    if (text.trim() === "") {
+        return null;
+    }
+
+    return (
+        <div className={cn("mr-[50px] ml-1.5 px-4 py-1 text-sm leading-6 text-muted-foreground", className)}>
+            <MarkdownBlock text={text} />
+        </div>
+    );
+}
+
+export interface ShellLineProps {
+    command?: string;
+    result?: string;
+    stdout?: string;
+    stderr?: string;
+    title?: string;
+    className?: string;
+}
+
+function trimShellText(value?: string): string | undefined {
+    if (value == null) {
+        return undefined;
+    }
+    return value.length < 1024 ? value : value.slice(0, 1024) + "...";
+}
+
+export function ShellLine({ command, result, stdout, stderr, title = "Terminal", className }: ShellLineProps): ReactElement | null {
+    const displayCommand = command?.trim() || title;
+    const [expanded, setExpanded] = useState(false);
+    const trimmedResult = trimShellText(result);
+    const trimmedStdout = trimShellText(stdout);
+    const trimmedStderr = trimShellText(stderr);
+    const hasDetails = trimmedResult != null || trimmedStdout != null || trimmedStderr != null;
+
+    return (
+        <div className={cn("mr-[50px] ml-1.5 overflow-hidden rounded-md border bg-background text-sm", className)}>
+            <div className="flex items-center gap-2 border-b bg-secondary/70 px-4 py-1.5 text-foreground">
+                <Terminal className="h-4 w-4 shrink-0" />
+                <span className="font-medium">{title}</span>
+            </div>
+            <div className="flex items-start gap-1 px-2 py-1.5">
+                <button
+                    type="button"
+                    className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setExpanded((current) => !current)}
+                    aria-expanded={expanded}
+                    aria-label={expanded ? "Collapse terminal output" : "Expand terminal output"}>
+                    {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
+                <pre className={cn("min-w-0 flex-1 overflow-hidden whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground", expanded ? null : "line-clamp-1")}>{displayCommand}</pre>
+            </div>
+            {expanded && hasDetails ? (
+                <div className="space-y-2 border-t px-4 py-3">
+                    {trimmedResult != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">{trimmedResult}</pre> : null}
+                    {trimmedStdout != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">{trimmedStdout}</pre> : null}
+                    {trimmedStderr != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-destructive">{trimmedStderr}</pre> : null}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 function AttachmentView({ room, path }: { room: RoomClient; path: string }): ReactElement {
     const preview = normalizeAttachmentPath(path);
     const filename = preview.split("/").pop() ?? preview;
@@ -880,7 +1028,23 @@ function ThreadMessageView({
         );
     }
 
-    if (message.kind === "reasoning" || message.kind === "tool_call") {
+    if (message.kind === "reasoning") {
+        return <ReasoningTrace text={message.text} />;
+    }
+
+    if (message.kind === "tool_call") {
+        if (isShellTool(message)) {
+            return (
+                <ShellLine
+                    command={message.command ?? message.text}
+                    result={message.result}
+                    stdout={message.stdout}
+                    stderr={message.stderr}
+                    title={message.failed === true ? "Terminal Error" : "Terminal"}
+                    className={message.failed === true ? "border-destructive/40" : undefined}
+                />
+            );
+        }
         return message.text.trim() === "" ? null : (
             <div className={cn("px-6 py-1 text-center text-sm whitespace-pre-wrap", message.failed === true ? "text-destructive" : "text-muted-foreground")}>
                 {message.text}
@@ -1229,6 +1393,9 @@ export function AgentThread({
                                 thinking={false}
                                 statusText={statusText}
                                 startedAt={dateFromString(status?.startedAt)}
+                                totalBytes={status?.totalBytes}
+                                linesAdded={status?.linesAdded}
+                                linesRemoved={status?.linesRemoved}
                                 onCancel={canInterruptActiveTurn ? cancelTurn : undefined}
                                 showCancelButton={status?.mode != null}
                                 cancelEnabled

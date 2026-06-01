@@ -53,6 +53,7 @@ export class PendingAgentMessage {
   readonly createdAt?: Date;
   readonly matchByContentOnly: boolean;
   readonly awaitingAcceptance: boolean;
+  readonly awaitingApplication: boolean;
   readonly awaitingOnline: boolean;
 
   constructor({
@@ -65,6 +66,7 @@ export class PendingAgentMessage {
     createdAt,
     matchByContentOnly = false,
     awaitingAcceptance = false,
+    awaitingApplication = false,
     awaitingOnline = false,
   }: {
     messageId: string;
@@ -76,6 +78,7 @@ export class PendingAgentMessage {
     createdAt?: Date;
     matchByContentOnly?: boolean;
     awaitingAcceptance?: boolean;
+    awaitingApplication?: boolean;
     awaitingOnline?: boolean;
   }) {
     this.messageId = messageId;
@@ -87,6 +90,7 @@ export class PendingAgentMessage {
     this.createdAt = createdAt;
     this.matchByContentOnly = matchByContentOnly;
     this.awaitingAcceptance = awaitingAcceptance;
+    this.awaitingApplication = awaitingApplication;
     this.awaitingOnline = awaitingOnline;
   }
 
@@ -140,6 +144,7 @@ export class PendingAgentMessage {
           ? parsedCreatedAt
           : undefined,
       matchByContentOnly: false,
+      awaitingApplication: true,
       awaitingOnline: false,
     });
   }
@@ -412,6 +417,7 @@ function pendingMessagesEqual(
                 message.createdAt?.getTime() === other.createdAt?.getTime() &&
                 message.matchByContentOnly === other.matchByContentOnly &&
                 message.awaitingAcceptance === other.awaitingAcceptance &&
+                message.awaitingApplication === other.awaitingApplication &&
                 message.awaitingOnline === other.awaitingOnline
             );
         })
@@ -430,13 +436,37 @@ function threadStatusEquals(left: ChatThreadStatusState, right: ChatThreadStatus
     );
 }
 
-export function formatThreadStatusText(text: string, startedAt?: Date | null): string {
+function formatGroupedStatusDigits(value: number): string {
+    return Math.trunc(value).toLocaleString("en-US");
+}
+
+function formatStatusSecondUnit(value: number): string {
+    return value === 1 ? "second" : "seconds";
+}
+
+export function formatThreadStatusText(
+    text: string,
+    startedAt?: Date | null,
+    totalBytes?: number | null,
+    linesAdded?: number | null,
+    linesRemoved?: number | null,
+): string {
+    if (linesAdded != null || linesRemoved != null) {
+        const added = linesAdded != null ? "+" + formatGroupedStatusDigits(linesAdded) : null;
+        const removed = linesRemoved != null ? "-" + formatGroupedStatusDigits(linesRemoved) : null;
+        return [text, added, removed].filter((part): part is string => part != null).join(" ");
+    }
+
+    if (totalBytes != null && totalBytes > 100) {
+        return text + " " + formatGroupedStatusDigits(totalBytes) + " bytes";
+    }
+
     if (!(startedAt instanceof Date) || Number.isNaN(startedAt.getTime())) {
         return text;
     }
 
     const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
-    return elapsedSeconds === 0 ? text : `${text} (${elapsedSeconds}s)`;
+    return elapsedSeconds === 0 ? text : text + " " + elapsedSeconds + " " + formatStatusSecondUnit(elapsedSeconds);
 }
 
 export function useThreadStatus({ room, path, agentName }: UseThreadStatusProps): ThreadStatus {

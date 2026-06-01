@@ -123,6 +123,24 @@ export class PendingAgentMessage {
         return this.text.trim() !== "" || this.attachments.length > 0;
     }
 
+    static fromQueueJson(json: Record<string, unknown>): PendingAgentMessage {
+        const parsedContent = parseContent(json["content"]);
+        const createdAt = json["created_at"];
+        const parsedCreatedAt = typeof createdAt === "string" ? new Date(createdAt) : undefined;
+        return new PendingAgentMessage({
+            messageId: typeof json["message_id"] === "string" ? json["message_id"] : crypto.randomUUID(),
+            messageType: typeof json["message_type"] === "string" ? json["message_type"] : agentTurnSteerType,
+            threadPath: typeof json["thread_id"] === "string" ? json["thread_id"] : "",
+            text: parsedContent.text,
+            attachments: parsedContent.attachments,
+            senderName: normalizeString(typeof json["sender_name"] === "string" ? json["sender_name"] : undefined),
+            createdAt: parsedCreatedAt instanceof Date && !Number.isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : undefined,
+            matchByContentOnly: false,
+            awaitingApplication: true,
+            awaitingOnline: false,
+        });
+    }
+
     static fromTurnInputMessage(message: AgentThreadMessage): PendingAgentMessage {
         const content = message.type === agentTurnStartType || message.type === agentTurnSteerType
             ? (message as AgentContentMessage).content
@@ -744,16 +762,23 @@ export function resolveChatThreadStatusFromStore(params: {
     });
 }
 
-function parseContent(content: AgentContentItem[] = []): { text: string; attachments: PendingAgentAttachment[] } {
+function parseContent(content: unknown = []): { text: string; attachments: PendingAgentAttachment[] } {
     const textParts: string[] = [];
     const attachments: PendingAgentAttachment[] = [];
+    if (!Array.isArray(content)) {
+        return { text: "", attachments };
+    }
     for (const item of content) {
-        if (item.type === "text" && item.text?.trim()) {
-            textParts.push(item.text);
-        } else if (item.type === "file" && item.url?.trim()) {
+        if (item == null || typeof item !== "object") {
+            continue;
+        }
+        const typedItem = item as AgentContentItem;
+        if (typedItem.type === "text" && typedItem.text?.trim()) {
+            textParts.push(typedItem.text);
+        } else if (typedItem.type === "file" && typedItem.url?.trim()) {
             attachments.push({
-                url: item.url.trim(),
-                name: normalizeString(item.name),
+                url: typedItem.url.trim(),
+                name: normalizeString(typedItem.name),
             });
         }
     }

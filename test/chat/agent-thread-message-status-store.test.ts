@@ -16,6 +16,7 @@ import {
 
 import {
     AgentThreadMessageStatusStore,
+    PendingAgentMessage,
     resolveChatThreadStatusFromStore,
     shouldShowChatThreadStatus,
     trackAgentThreadStatusMessageInStore,
@@ -33,6 +34,33 @@ const patch = [
 ].join("\n");
 
 describe("AgentThreadMessageStatusStore", () => {
+    it("parses pending messages from queued status JSON", () => {
+        const pending = PendingAgentMessage.fromQueueJson({
+            message_id: "queued-1",
+            message_type: "meshagent.agent.turn.start",
+            thread_id: threadId,
+            sender_name: " user@example.com ",
+            created_at: "2026-01-02T03:04:05.000Z",
+            content: [
+                { type: "text", text: "Hello" },
+                { type: "file", url: " room:///docs/a.txt ", name: " a.txt " },
+            ],
+        });
+
+        expect(pending).to.include({
+            messageId: "queued-1",
+            messageType: "meshagent.agent.turn.start",
+            threadPath: threadId,
+            text: "Hello",
+            senderName: "user@example.com",
+            awaitingAcceptance: false,
+            awaitingApplication: true,
+            awaitingOnline: false,
+        });
+        expect(pending.createdAt?.toISOString()).to.equal("2026-01-02T03:04:05.000Z");
+        expect(pending.attachments).to.deep.equal([{ url: "room:///docs/a.txt", name: "a.txt" }]);
+    });
+
     it("tracks thread status and preserves startedAt for unchanged operations", () => {
         const store = new AgentThreadMessageStatusStore();
         const startedAt = new Date().toISOString();
