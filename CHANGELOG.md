@@ -1,3 +1,9 @@
+## [0.43.4]
+- TypeScript agent messages and events now carry `created_at`, parse it on input, and preserve it when streamed deltas are merged.
+- Messaging chat clients now accept thread lifecycle events without a participant ID and carry room message timestamps into session events for more accurate live synchronization.
+- Live chat test coverage expanded for thread creation, acknowledgements, steer/interrupt flows, and client tool request handling.
+- The workspace app template was rebranded from the meeting app naming and its deploy tag was updated accordingly.
+
 ## [0.43.3]
 - Stability
 
