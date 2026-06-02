@@ -1,3 +1,6 @@
+## [0.44.3]
+- Stability
+
 ## [0.44.2]
 - Messaging chat clients now listen for participant add/remove and room status changes, emit accurate connected/disconnected/reconnecting/reconnected transitions, and reopen open thread sessions after reconnect.
 - Sending agent messages can now skip waiting for an available participant when the caller opts into offline delivery.
