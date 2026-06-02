@@ -9,7 +9,14 @@ import {
     AgentError,
     AgentMessage,
     AgentReasoningContentDelta,
+    AgentToolCallArgumentsDelta,
     AgentToolCallEnded,
+    AgentToolCallLogDelta,
+    AgentToolCallStarted,
+    AgentImageGenerationCompleted,
+    AgentClientToolCallRequested,
+    AgentSecretRequested,
+    AgentModelChanged,
     AgentThreadListEntry,
     BaseChatClient,
     ClientToolkitDescription,
@@ -279,6 +286,7 @@ describe("ChatBotView multi-thread composer", () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
         const selectedPaths: Array<string | null> = [];
+        const resolvedThreads: Array<{ path: string | null; displayName: string | null }> = [];
         const clientToolkits = [new ClientToolkitDescription({
             name: "ask_user",
             title: "Ask User",
@@ -299,6 +307,9 @@ describe("ChatBotView multi-thread composer", () => {
                 threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
                 onSelectedThreadPathChanged={(path) => {
                     selectedPaths.push(path);
+                }}
+                onSelectedThreadResolved={(path, displayName) => {
+                    resolvedThreads.push({ path, displayName });
                 }}
                 clientToolkits={clientToolkits}
             />,
@@ -322,6 +333,7 @@ describe("ChatBotView multi-thread composer", () => {
         });
 
         await waitFor(() => expect(selectedPaths.at(-1)).to.equal("thread-first"));
+        expect(resolvedThreads.at(-1)).to.deep.equal({ path: "thread-first", displayName: "Thread First" });
         expect(await screen.findByText("first pending message")).toBeTruthy();
 
         await act(async () => {
@@ -677,6 +689,103 @@ describe("AgentThread", () => {
 
         expect(await screen.findByText(/Failed openai\.shell/)).toBeTruthy();
         expect(await screen.findByText(/Command failed/)).toBeTruthy();
+    });
+
+    it("renders accumulated tool arguments and logs", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-tool-stream"
+                chatClient={chatClient}
+                agentName="codex"
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentToolCallArgumentsDelta({
+                threadId: "thread-tool-stream",
+                turnId: "turn-tool-stream",
+                itemId: "tool-stream",
+                delta: "{\"command\":\"ls src\"}",
+            }));
+            chatClient.handleAgentMessage(new AgentToolCallLogDelta({
+                threadId: "thread-tool-stream",
+                turnId: "turn-tool-stream",
+                itemId: "tool-stream",
+                lines: [{ source: "stdout", text: "listed src" }],
+            }));
+            chatClient.handleAgentMessage(new AgentToolCallStarted({
+                threadId: "thread-tool-stream",
+                turnId: "turn-tool-stream",
+                itemId: "tool-stream",
+                toolkit: "openai",
+                tool: "shell",
+                arguments: { command: "ls src" },
+            }));
+        });
+
+        fireEvent.click(await screen.findByLabelText("Expand terminal output"));
+        await waitFor(() => expect(screen.getAllByText(/ls src/).length).toBeGreaterThan(0));
+        expect(await screen.findByText(/stdout: listed src/)).toBeTruthy();
+    });
+
+    it("renders model, secret, client tool, and generated image events", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThread
+                room={room}
+                path="thread-agent-events"
+                chatClient={chatClient}
+                agentName="codex"
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentModelChanged({
+                threadId: "thread-agent-events",
+                provider: "openai",
+                model: "gpt-5.1",
+                voice: "alloy",
+            }));
+            chatClient.handleAgentMessage(new AgentSecretRequested({
+                threadId: "thread-agent-events",
+                turnId: "turn-agent-events",
+                itemId: "secret-request",
+                requestId: "secret-1",
+                name: "OPENAI_API_KEY",
+                scope: "project",
+            }));
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId: "thread-agent-events",
+                turnId: "turn-agent-events",
+                itemId: "client-tool-request",
+                requestId: "client-tool-1",
+                toolkit: "ask_user",
+                tool: "ask",
+                arguments: { prompt: "Continue?" },
+            }));
+            chatClient.handleAgentMessage(new AgentImageGenerationCompleted({
+                threadId: "thread-agent-events",
+                turnId: "turn-agent-events",
+                itemId: "image-generation",
+                images: [
+                    { uri: "data:image/png;base64,one" },
+                    { uri: "data:image/png;base64,two" },
+                ],
+            }));
+        });
+
+        expect(await screen.findByText("Model changed to openai / gpt-5.1 (alloy)")).toBeTruthy();
+        expect(await screen.findByText("Secret requested: OPENAI_API_KEY (project)")).toBeTruthy();
+        expect(await screen.findByText("Waiting for client tool ask_user.ask")).toBeTruthy();
+        expect(screen.getAllByAltText("Generated image")).toHaveLength(2);
     });
 
     it("passes client toolkits on turn starts from the composer", async () => {

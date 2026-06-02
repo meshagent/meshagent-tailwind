@@ -4,6 +4,7 @@ import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 import { MessagingChatClient, ToolChoice } from "@meshagent/meshagent-agents";
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 import type { AgentToolChoice } from "./agent-thread.js";
+import { defaultThreadDisplayNameFromPath } from "./conversation-descriptor.js";
 
 import { ChatInput } from "./chat-input.js";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
@@ -251,8 +252,8 @@ export function NewChatThread({
 
             ensureOperationActive(operationId, activeOperationRef);
             const threadPath = result.threadPath;
-            const displayName = null;
             const normalizedPath = normalizeThreadPath(threadPath);
+            const displayName = normalizedPath === null ? null : defaultThreadDisplayNameFromPath(normalizedPath);
             if (controlledThreadPath === undefined) {
                 setInternalThreadPath(normalizedPath);
             }

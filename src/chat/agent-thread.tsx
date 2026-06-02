@@ -5,10 +5,15 @@ import type { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 
 import {
     AgentFileContentDelta,
+    AgentFileContentEnded,
+    AgentFileContentStarted,
     AgentImageGenerationCompleted,
     AgentImageGenerationFailed,
     AgentImageGenerationPartial,
     AgentImageGenerationStarted,
+    AgentClientToolCallRequested,
+    AgentSecretRequested,
+    AgentModelChanged,
     AgentReasoningContentDelta,
     AgentReasoningContentEnded,
     AgentReasoningContentStarted,
@@ -17,8 +22,10 @@ import {
     AgentTextContentStarted,
     AgentThreadStatus,
     AgentUsageUpdated,
+    AgentToolCallArgumentsDelta,
     AgentToolCallEnded,
     AgentToolCallInProgress,
+    AgentToolCallLogDelta,
     AgentToolCallPending,
     AgentToolCallStarted,
     MessagingChatClient,
@@ -26,9 +33,15 @@ import {
     StartThread,
     TurnStart,
     TurnStartAccepted,
+    TurnStartRejected,
     TurnEnded,
+    TurnInterruptAccepted,
+    TurnInterrupted,
     TurnSteer,
     TurnSteerAccepted,
+    TurnSteerRejected,
+    TurnSteered,
+    TurnStarted,
 } from "@meshagent/meshagent-agents";
 import type {
     AgentMessage,
@@ -56,7 +69,7 @@ import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
 const stickyBottomThresholdPx = 24;
 
 type FeedRole = "user" | "agent";
-type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation" | "error";
+type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation" | "event" | "error";
 
 interface FeedItem {
     id: string;
@@ -71,14 +84,18 @@ interface FeedItem {
     toolkit?: string;
     tool?: string;
     command?: string;
+    argumentsText?: string;
+    logs?: string[];
     result?: string;
     stdout?: string;
     stderr?: string;
+    state?: string;
     failed?: boolean;
     image?: {
         uri?: string;
         status?: string;
         statusDetail?: string;
+        images?: GeneratedImage[];
     };
 }
 
@@ -332,6 +349,45 @@ interface ToolMessage extends ItemMessage {
 
 interface ToolEndedMessage extends ToolMessage {
     result?: unknown;
+    error?: AgentError;
+}
+
+interface ToolArgumentsDeltaMessage extends ItemMessage {
+    delta: string;
+}
+
+interface ToolLogLine {
+    source: string;
+    text: string;
+}
+
+interface ToolLogDeltaMessage extends ItemMessage {
+    lines: ToolLogLine[];
+}
+
+interface ClientToolCallRequestedMessage extends ItemMessage {
+    requestId: string;
+    toolkit: string;
+    tool: string;
+    arguments: Record<string, unknown>;
+}
+
+interface SecretRequestedMessage extends ItemMessage {
+    requestId: string;
+    name: string;
+    scope?: string;
+}
+
+interface ModelChangedMessage extends AgentMessage {
+    provider: string;
+    model: string;
+    backend?: string;
+    voice?: string;
+}
+
+interface TurnLifecycleMessage extends AgentMessage {
+    turnId?: string;
+    sourceMessageId?: string;
     error?: AgentError;
 }
 
@@ -591,8 +647,123 @@ function shellOutputFields(message: ToolEndedMessage): Pick<FeedItem, "result" |
     return {
         result: contentText(result),
         stdout: resultObject == null ? undefined : contentText(resultObject["stdout"]),
-        stderr: resultObject == null ? undefined : contentText(resultObject["stderr"]),
+        stderr: message.error?.message.trim() || (resultObject == null ? undefined : contentText(resultObject["stderr"])),
     };
+}
+
+function formatJsonValue(value: unknown): string | undefined {
+    if (value == null) {
+        return undefined;
+    }
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch {
+        return undefined;
+    }
+}
+
+function toolArgumentsText(argumentsValue: Record<string, unknown> | undefined): string | undefined {
+    return argumentsValue == null ? undefined : formatJsonValue(argumentsValue);
+}
+
+function appendToolArgumentsDelta(existing: FeedItem | undefined, delta: string): string | undefined {
+    if (delta.trim() === "") {
+        return existing?.argumentsText;
+    }
+    return `${existing?.argumentsText ?? ""}${delta}`;
+}
+
+function formatToolLogLine(line: ToolLogLine): string | null {
+    const text = line.text.trim();
+    if (text === "") {
+        return null;
+    }
+    const source = line.source.trim();
+    return source === "" ? text : `${source}: ${text}`;
+}
+
+function appendToolLogs(existing: FeedItem | undefined, lines: ToolLogLine[]): string[] {
+    const logs = [...(existing?.logs ?? [])];
+    for (const line of lines) {
+        const formatted = formatToolLogLine(line);
+        if (formatted !== null) {
+            logs.push(formatted);
+        }
+    }
+    return logs;
+}
+
+function toolCallState(message: ToolMessage): string {
+    if (isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded)) {
+        return message.error == null ? "completed" : "failed";
+    }
+    if (isTypedMessage<ToolMessage>(message, AgentToolCallPending)) {
+        return "queued";
+    }
+    return "in_progress";
+}
+
+function toolCallHeadline(message: ToolMessage): string {
+    const label = toolCallLabel(message);
+    if (toolCallFailed(message)) {
+        return `Failed ${label}`;
+    }
+    if (isTypedMessage<ToolMessage>(message, AgentToolCallPending)) {
+        return `Preparing ${label}`;
+    }
+    if (isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded)) {
+        return `Ran ${label}`;
+    }
+    return `Running ${label}`;
+}
+
+function modelChangedText(message: ModelChangedMessage): string {
+    const model = [message.provider, message.model].filter((part) => part.trim() !== "").join(" / ");
+    const voice = message.voice?.trim();
+    return voice ? `Model changed to ${model} (${voice})` : `Model changed to ${model}`;
+}
+
+function rejectionText(message: TurnLifecycleMessage, fallback: string): string {
+    const error = message.error?.message.trim();
+    return error ? `${fallback}: ${error}` : fallback;
+}
+
+function lifecycleEventItem(message: TurnLifecycleMessage, createdAt: Date): FeedItem | null {
+    const turnId = stringValue(message.turnId);
+    const base = {
+        id: ["event", message.type, turnId ?? message.sourceMessageId ?? message.messageId].join(":"),
+        kind: "event" as const,
+        role: "agent" as const,
+        attachments: [],
+        createdAt,
+        turnId,
+    };
+
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnStartAccepted)) {
+        return { ...base, text: "Turn accepted", state: "queued" };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnStarted)) {
+        return { ...base, text: "Turn started", state: "running" };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnStartRejected)) {
+        return { ...base, text: rejectionText(message, "Turn rejected"), state: "failed", failed: true };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnSteerAccepted)) {
+        return { ...base, text: "Steer accepted", state: "queued" };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnSteered)) {
+        return { ...base, text: "Turn steered", state: "running" };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnSteerRejected)) {
+        return { ...base, text: rejectionText(message, "Steer rejected"), state: "failed", failed: true };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnInterruptAccepted)) {
+        return { ...base, text: "Interrupt accepted", state: "cancelled" };
+    }
+    if (isTypedMessage<TurnLifecycleMessage>(message, TurnInterrupted)) {
+        return { ...base, text: "Turn interrupted", state: "cancelled" };
+    }
+    return null;
 }
 
 function isShellTool(message: Pick<FeedItem, "toolkit" | "tool" | "command">): boolean {
@@ -602,14 +773,6 @@ function isShellTool(message: Pick<FeedItem, "toolkit" | "tool" | "command">): b
 
 function toolCallFailed(message: ToolMessage): boolean {
     return isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) && message.error != null;
-}
-
-function toolCallText(message: ToolMessage): string {
-    if (toolCallFailed(message) && isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) && message.error != null) {
-        const error = message.error.message.trim();
-        return error === "" ? `Failed ${toolCallLabel(message)}` : `Failed ${toolCallLabel(message)}\n${error}`;
-    }
-    return toolCallLabel(message);
 }
 
 function turnEndedErrorItem(message: TurnEndedMessage, createdAt: Date): FeedItem | null {
@@ -645,6 +808,25 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
         const inputItem = inputItemFromMessage(message, createdAt);
         if (inputItem !== null && !items.has(inputItem.id)) {
             upsertItem(items, inputItem);
+            continue;
+        }
+
+        const lifecycleItem = lifecycleEventItem(message as TurnLifecycleMessage, createdAt);
+        if (lifecycleItem !== null) {
+            upsertItem(items, lifecycleItem);
+            continue;
+        }
+
+        if (isTypedMessage<ModelChangedMessage>(message, AgentModelChanged)) {
+            upsertItem(items, {
+                id: ["model", message.messageId].join(":"),
+                kind: "event",
+                role: "agent",
+                text: modelChangedText(message),
+                attachments: [],
+                createdAt,
+                state: "completed",
+            });
             continue;
         }
 
@@ -711,10 +893,14 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                     turnId: message.turnId,
                 });
             }
-        } else if (isTypedMessage<FileMessage>(message, AgentFileContentDelta)) {
+        } else if (
+            isTypedMessage<ItemMessage>(message, AgentFileContentStarted) ||
+            isTypedMessage<FileMessage>(message, AgentFileContentDelta) ||
+            isTypedMessage<ItemMessage>(message, AgentFileContentEnded)
+        ) {
             const existing = items.get(message.itemId);
-            const attachments = existing?.attachments ?? [];
-            if (!attachments.includes(message.url)) {
+            const attachments = [...(existing?.attachments ?? [])];
+            if (isTypedMessage<FileMessage>(message, AgentFileContentDelta) && !attachments.includes(message.url)) {
                 attachments.push(message.url);
             }
             upsertItem(items, {
@@ -725,6 +911,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 attachments,
                 createdAt,
                 turnId: message.turnId,
+                state: isTypedMessage<ItemMessage>(message, AgentFileContentEnded) ? "completed" : "in_progress",
             });
         } else if (
             isTypedMessage<ToolMessage>(message, AgentToolCallPending) ||
@@ -735,21 +922,94 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
             const existing = items.get(message.itemId);
             const command = toolCommandText(message) ?? existing?.command;
             const endedFields = isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) ? shellOutputFields(message) : {};
+            const argumentsText = toolArgumentsText(message.arguments) ?? existing?.argumentsText;
             upsertItem(items, {
                 id: message.itemId,
                 kind: "tool_call",
                 role: "agent",
-                text: toolCallText(message),
+                text: toolCallHeadline(message),
                 attachments: [],
                 createdAt,
                 turnId: message.turnId,
                 toolkit: message.toolkit ?? existing?.toolkit,
                 tool: message.tool ?? existing?.tool,
                 command,
+                argumentsText,
+                logs: existing?.logs,
                 result: endedFields.result ?? existing?.result,
                 stdout: endedFields.stdout ?? existing?.stdout,
                 stderr: endedFields.stderr ?? existing?.stderr,
+                state: toolCallState(message),
                 failed: toolCallFailed(message),
+            });
+        } else if (isTypedMessage<ToolArgumentsDeltaMessage>(message, AgentToolCallArgumentsDelta)) {
+            const existing = items.get(message.itemId);
+            upsertItem(items, {
+                id: message.itemId,
+                kind: "tool_call",
+                role: "agent",
+                text: existing?.text ?? "Running tool",
+                attachments: [],
+                createdAt,
+                turnId: message.turnId,
+                toolkit: existing?.toolkit,
+                tool: existing?.tool,
+                command: existing?.command,
+                argumentsText: appendToolArgumentsDelta(existing, message.delta),
+                logs: existing?.logs,
+                result: existing?.result,
+                stdout: existing?.stdout,
+                stderr: existing?.stderr,
+                state: existing?.state ?? "in_progress",
+                failed: existing?.failed,
+            });
+        } else if (isTypedMessage<ToolLogDeltaMessage>(message, AgentToolCallLogDelta)) {
+            const existing = items.get(message.itemId);
+            upsertItem(items, {
+                id: message.itemId,
+                kind: "tool_call",
+                role: "agent",
+                text: existing?.text ?? "Running tool",
+                attachments: [],
+                createdAt,
+                turnId: message.turnId,
+                toolkit: existing?.toolkit,
+                tool: existing?.tool,
+                command: existing?.command,
+                argumentsText: existing?.argumentsText,
+                logs: appendToolLogs(existing, message.lines),
+                result: existing?.result,
+                stdout: existing?.stdout,
+                stderr: existing?.stderr,
+                state: existing?.state ?? "in_progress",
+                failed: existing?.failed,
+            });
+        } else if (isTypedMessage<ClientToolCallRequestedMessage>(message, AgentClientToolCallRequested)) {
+            const argumentsText = toolArgumentsText(message.arguments);
+            upsertItem(items, {
+                id: message.itemId,
+                kind: "tool_call",
+                role: "agent",
+                text: "Waiting for client tool " + toolCallLabel(message),
+                attachments: [],
+                createdAt,
+                turnId: message.turnId,
+                toolkit: message.toolkit,
+                tool: message.tool,
+                argumentsText,
+                state: "queued",
+            });
+        } else if (isTypedMessage<SecretRequestedMessage>(message, AgentSecretRequested)) {
+            const scope = message.scope?.trim();
+            upsertItem(items, {
+                id: message.itemId,
+                kind: "event",
+                role: "agent",
+                text: scope ? "Secret requested: " + message.name + " (" + scope + ")" : "Secret requested: " + message.name,
+                attachments: [],
+                createdAt,
+                turnId: message.turnId,
+                state: "queued",
             });
         } else if (
             isTypedMessage<ItemMessage>(message, AgentImageGenerationStarted) ||
@@ -757,11 +1017,12 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
             isTypedMessage<ImageCompletedMessage>(message, AgentImageGenerationCompleted) ||
             isTypedMessage<ImageFailedMessage>(message, AgentImageGenerationFailed)
         ) {
+            const images = isTypedMessage<ImageCompletedMessage>(message, AgentImageGenerationCompleted)
+                ? message.images
+                : [];
             const image = isTypedMessage<ImagePartialMessage>(message, AgentImageGenerationPartial)
                 ? message.image
-                : isTypedMessage<ImageCompletedMessage>(message, AgentImageGenerationCompleted)
-                    ? message.images[0]
-                    : undefined;
+                : images[0];
             upsertItem(items, {
                 id: message.itemId,
                 kind: "image_generation",
@@ -774,6 +1035,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                     uri: image?.uri,
                     status: image?.status ?? imageStatus(message),
                     statusDetail: isTypedMessage<ImageFailedMessage>(message, AgentImageGenerationFailed) ? message.error.message : undefined,
+                    images,
                 },
             });
         } else if (isTypedMessage<TurnEndedMessage>(message, TurnEnded)) {
@@ -796,6 +1058,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
         item.attachments.length > 0 ||
         item.image != null ||
         item.kind === "tool_call" ||
+        item.kind === "event" ||
         item.kind === "error"
     ));
 }
@@ -840,7 +1103,7 @@ function canRenderAsFinalAnswer(message: FeedItem): boolean {
 }
 
 function isIntrinsicDetail(message: FeedItem): boolean {
-    return message.kind === "reasoning" || (message.kind === "tool_call" && message.failed !== true) || (canCollapseAsCommentary(message) && message.phase === "commentary");
+    return message.kind === "reasoning" || message.kind === "event" || (message.kind === "tool_call" && message.failed !== true) || (canCollapseAsCommentary(message) && message.phase === "commentary");
 }
 
 function nextUserMessageIndex(messages: FeedItem[], start: number): number | null {
@@ -1171,6 +1434,8 @@ export interface ShellLineProps {
     result?: string;
     stdout?: string;
     stderr?: string;
+    argumentsText?: string;
+    logs?: string[];
     title?: string;
     className?: string;
 }
@@ -1182,13 +1447,15 @@ function trimShellText(value?: string): string | undefined {
     return value.length < 1024 ? value : value.slice(0, 1024) + "...";
 }
 
-export function ShellLine({ command, result, stdout, stderr, title = "Terminal", className }: ShellLineProps): ReactElement | null {
+export function ShellLine({ command, result, stdout, stderr, argumentsText, logs, title = "Terminal", className }: ShellLineProps): ReactElement | null {
     const displayCommand = command?.trim() || title;
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(title.toLowerCase().includes("error"));
     const trimmedResult = trimShellText(result);
     const trimmedStdout = trimShellText(stdout);
     const trimmedStderr = trimShellText(stderr);
-    const hasDetails = trimmedResult != null || trimmedStdout != null || trimmedStderr != null;
+    const trimmedArguments = trimShellText(argumentsText);
+    const trimmedLogs = logs == null || logs.length === 0 ? undefined : trimShellText(logs.join("\n"));
+    const hasDetails = trimmedResult != null || trimmedStdout != null || trimmedStderr != null || trimmedArguments != null || trimmedLogs != null;
 
     return (
         <div className={cn("mr-[50px] ml-1.5 overflow-hidden rounded-md border bg-background text-sm", className)}>
@@ -1212,6 +1479,8 @@ export function ShellLine({ command, result, stdout, stderr, title = "Terminal",
                     {trimmedResult != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">{trimmedResult}</pre> : null}
                     {trimmedStdout != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">{trimmedStdout}</pre> : null}
                     {trimmedStderr != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-destructive">{trimmedStderr}</pre> : null}
+                    {trimmedArguments != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">{trimmedArguments}</pre> : null}
+                    {trimmedLogs != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">{trimmedLogs}</pre> : null}
                 </div>
             ) : null}
         </div>
@@ -1264,6 +1533,59 @@ export function EventLine({ headline, details, state = "info", failed = false, c
             <div className="font-semibold">{normalizedHeadline}</div>
             {detailLines.length > 0 ? (
                 <div className="mt-0.5 whitespace-pre-wrap break-words opacity-85">{detailLines.join("\n")}</div>
+            ) : null}
+        </div>
+    );
+}
+
+function toolDetailLines(message: FeedItem): string[] {
+    const details: string[] = [];
+    if (message.argumentsText?.trim()) {
+        details.push(message.argumentsText);
+    }
+    if (message.logs != null && message.logs.length > 0) {
+        details.push(message.logs.join("\n"));
+    }
+    if (message.result?.trim()) {
+        details.push(message.result);
+    }
+    if (message.stdout?.trim()) {
+        details.push(message.stdout);
+    }
+    if (message.stderr?.trim()) {
+        details.push(message.stderr);
+    }
+    return details;
+}
+
+function ToolCallLine({ message }: { message: FeedItem }): ReactElement | null {
+    const detailLines = toolDetailLines(message);
+    const [expanded, setExpanded] = useState(message.failed === true);
+    const hasDetails = detailLines.length > 0;
+
+    if (!hasDetails) {
+        return <EventLine headline={message.text} state={message.state ?? (message.failed === true ? "failed" : "completed")} failed={message.failed} />;
+    }
+
+    return (
+        <div className="ml-1.5 max-w-[85%] overflow-hidden rounded-md border bg-background text-sm sm:max-w-2xl">
+            <button
+                type="button"
+                className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+                onClick={() => setExpanded((current) => !current)}
+                aria-expanded={expanded}
+                aria-label={expanded ? "Collapse tool details" : "Expand tool details"}>
+                <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">
+                    {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </span>
+                <span className={cn("min-w-0 flex-1 text-xs font-semibold leading-5", eventLineStateClass(message.state, message.failed))}>{message.text}</span>
+            </button>
+            {expanded ? (
+                <div className="space-y-2 border-t px-4 py-3">
+                    {detailLines.map((line, index) => (
+                        <pre key={index} className={cn("whitespace-pre-wrap break-words font-mono text-xs leading-5", message.failed === true ? "text-destructive" : "text-muted-foreground")}>{trimShellText(line)}</pre>
+                    ))}
+                </div>
             ) : null}
         </div>
     );
@@ -1424,6 +1746,47 @@ function ExpandedDetailGroup({
     );
 }
 
+function GeneratedImageView({ image }: { image: NonNullable<FeedItem["image"]> }): ReactElement {
+    const completedImages = image.images?.filter((entry) => entry.uri?.trim()) ?? [];
+    if (completedImages.length > 0) {
+        return (
+            <div className="grid max-w-[85%] grid-cols-1 gap-3 sm:max-w-2xl sm:grid-cols-2">
+                {completedImages.map((entry, index) => (
+                    <button
+                        key={`${entry.uri}:${index}`}
+                        type="button"
+                        className="overflow-hidden rounded-md shadow-xs transition-opacity hover:opacity-90"
+                        onClick={() => entry.uri != null ? window.open(entry.uri, "_blank", "noopener,noreferrer") : undefined}
+                        title="Open generated image">
+                        <img src={entry.uri} alt="Generated image" className="max-h-[312px] w-full object-contain" />
+                    </button>
+                ))}
+            </div>
+        );
+    }
+
+    if (image.uri) {
+        return (
+            <button
+                type="button"
+                className="max-w-[85%] overflow-hidden rounded-md shadow-xs transition-opacity hover:opacity-90 sm:max-w-2xl"
+                onClick={() => window.open(image.uri, "_blank", "noopener,noreferrer")}
+                title="Open generated image">
+                <img src={image.uri} alt="Generated image" className="max-h-[312px] max-w-full object-contain" />
+            </button>
+        );
+    }
+
+    return (
+        <div className="flex h-[240px] w-[240px] items-center justify-center rounded-md border bg-background text-muted-foreground">
+            <div className="flex max-w-full flex-col items-center gap-2 px-3 text-center text-xs">
+                {image.status === "failed" ? <ImageOff className="h-5 w-5" /> : <Spinner className="h-5 w-5" />}
+                <span>{image.statusDetail ?? (image.status === "failed" ? "Image failed" : "Generating image")}</span>
+            </div>
+        </div>
+    );
+}
+
 function ThreadMessageView({
     room,
     message,
@@ -1451,6 +1814,10 @@ function ThreadMessageView({
         return <ReasoningTrace text={message.text} />;
     }
 
+    if (message.kind === "event") {
+        return <EventLine headline={message.text} state={message.state} failed={message.failed} />;
+    }
+
     if (message.kind === "tool_call") {
         if (isShellTool(message)) {
             return (
@@ -1459,12 +1826,14 @@ function ThreadMessageView({
                     result={message.result}
                     stdout={message.stdout}
                     stderr={message.stderr}
+                    argumentsText={message.argumentsText}
+                    logs={message.logs}
                     title={message.failed === true ? "Terminal Error" : "Terminal"}
                     className={message.failed === true ? "border-destructive/40" : undefined}
                 />
             );
         }
-        return <EventLine headline={message.text} state={message.failed === true ? "failed" : "completed"} failed={message.failed} />;
+        return <ToolCallLine message={message} />;
     }
 
     const mine = message.role === "user";
@@ -1503,16 +1872,7 @@ function ThreadMessageView({
 
             {message.image ? (
                 <div className="flex w-full justify-start">
-                    {message.image.uri ? (
-                        <img src={message.image.uri} alt="Generated image" className="max-h-[312px] max-w-full rounded-md object-contain shadow-xs" />
-                    ) : (
-                        <div className="flex h-[240px] w-[240px] items-center justify-center rounded-md border bg-background text-muted-foreground">
-                            <div className="flex max-w-full flex-col items-center gap-2 px-3 text-center text-xs">
-                                {message.image.status === "failed" ? <ImageOff className="h-5 w-5" /> : <Spinner className="h-5 w-5" />}
-                                <span>{message.image.statusDetail ?? (message.image.status === "failed" ? "Image failed" : "Generating image")}</span>
-                            </div>
-                        </div>
-                    )}
+                    <GeneratedImageView image={message.image} />
                 </div>
             ) : null}
         </div>
