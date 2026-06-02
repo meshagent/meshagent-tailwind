@@ -1,3 +1,6 @@
+## [0.44.1]
+- Stability
+
 ## [0.44.0]
 - TypeScript agent clients now support thread watch/unwatch, multiple thread storages, and richer start-thread payloads, including tool-choice metadata.
 - Chat sessions now preserve event timestamps, reset replay state correctly, and handle more agent message types such as tool-call progress, secret requests, model changes, interrupts, and usage updates.
