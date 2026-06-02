@@ -11,6 +11,8 @@ import { AlertTriangle } from "lucide-react";
 
 import { AgentThread } from "./agent-thread";
 import type { AgentToolChoice } from "./agent-thread";
+import { DatasetAgentThread } from "./dataset-agent-thread";
+import type { DatasetThreadRowsLoader } from "./dataset-agent-thread";
 import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor";
 
 import { cn } from "../lib/utils";
@@ -55,6 +57,8 @@ export interface ChatBotViewProps {
     clientToolkits?: ClientToolkitDescription[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
+    threadSource?: "session" | "dataset";
+    rowsLoader?: DatasetThreadRowsLoader;
 }
 
 function normalizePath(path?: string | null): string | null {
@@ -134,6 +138,8 @@ export function ChatBotView({
     clientToolkits,
     toolChoice,
     collapseMessages = true,
+    threadSource = "session",
+    rowsLoader,
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
     const resolvedDocumentPath = useMemo(() => normalizePath(documentPath ?? path), [documentPath, path]);
@@ -230,6 +236,22 @@ export function ChatBotView({
     }, [activeSelectedThreadPath, newThreadResetVersion, setSelectedThread, threadDisplayMode]);
 
     if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
+        if (threadSource === "dataset") {
+            return (
+                <DatasetAgentThread
+                    room={room}
+                    path={resolvedSingleThreadPath}
+                    chatClient={activeChatClient ?? undefined}
+                    disposeChatClient={false}
+                    agentName={agentName}
+                    rowsLoader={rowsLoader}
+                    emptyStateTitle={emptyStateTitle}
+                    emptyStateDescription={emptyStateDescription}
+                    clientToolkits={clientToolkits}
+                    toolChoice={toolChoice}
+                    collapseMessages={collapseMessages} />
+            );
+        }
         return (
             <AgentThread
                 room={room}
@@ -265,17 +287,32 @@ export function ChatBotView({
             clientToolkits={clientToolkits}
             toolChoice={toolChoice}
             builder={(threadPath) => (
-                <AgentThread
-                    room={room}
-                    path={threadPath}
-                    chatClient={activeChatClient ?? undefined}
-                    disposeChatClient={false}
-                    agentName={agentName}
-                    emptyStateTitle={startNewThreadTitle}
-                    emptyStateDescription={startNewThreadDescription}
-                    clientToolkits={clientToolkits}
-                    toolChoice={toolChoice}
-                    collapseMessages={collapseMessages} />
+                threadSource === "dataset" ? (
+                    <DatasetAgentThread
+                        room={room}
+                        path={threadPath}
+                        chatClient={activeChatClient ?? undefined}
+                        disposeChatClient={false}
+                        agentName={agentName}
+                        rowsLoader={rowsLoader}
+                        emptyStateTitle={startNewThreadTitle}
+                        emptyStateDescription={startNewThreadDescription}
+                        clientToolkits={clientToolkits}
+                        toolChoice={toolChoice}
+                        collapseMessages={collapseMessages} />
+                ) : (
+                    <AgentThread
+                        room={room}
+                        path={threadPath}
+                        chatClient={activeChatClient ?? undefined}
+                        disposeChatClient={false}
+                        agentName={agentName}
+                        emptyStateTitle={startNewThreadTitle}
+                        emptyStateDescription={startNewThreadDescription}
+                        clientToolkits={clientToolkits}
+                        toolChoice={toolChoice}
+                        collapseMessages={collapseMessages} />
+                )
             )}
         />
     );
