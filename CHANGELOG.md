@@ -1,3 +1,9 @@
+## [0.44.2]
+- Messaging chat clients now listen for participant add/remove and room status changes, emit accurate connected/disconnected/reconnecting/reconnected transitions, and reopen open thread sessions after reconnect.
+- Sending agent messages can now skip waiting for an available participant when the caller opts into offline delivery.
+- Thread storage now reissues watch and list requests after reconnect so watched thread state comes back automatically.
+- Successful tool-call completions no longer create transient tool-call status entries, reducing status noise in threaded chat views.
+
 ## [0.44.1]
 - Stability
 
