@@ -110,14 +110,14 @@ describe("AgentThreadMessageStatusStore", () => {
         expect(state.supportsAgentMessages).to.equal(true);
     });
 
-    it("applies connection status as an override until reconnected", () => {
+    it("ignores client connection status", () => {
         const store = new AgentThreadMessageStatusStore();
 
         store.apply(new AgentThreadStatus({ threadId, status: "Working" }));
-        expect(store.apply(new AgentConnectionStatus({ status: "reconnecting" }), { path: threadId })).to.equal(true);
-        expect(store.state({ path: threadId, supportsAgentMessages: true }).text).to.equal("Reconnecting");
+        expect(store.apply(new AgentConnectionStatus({ status: "reconnecting" }))).to.equal(false);
+        expect(store.state({ path: threadId, supportsAgentMessages: true }).text).to.equal("Working");
 
-        expect(store.apply(new AgentConnectionStatus({ status: "connected" }), { path: threadId })).to.equal(true);
+        expect(store.apply(new AgentConnectionStatus({ status: "connected" }))).to.equal(false);
         expect(store.state({ path: threadId, supportsAgentMessages: true }).text).to.equal("Working");
     });
 
