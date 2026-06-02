@@ -1,3 +1,8 @@
+## [0.44.0]
+- TypeScript agent clients now support thread watch/unwatch, multiple thread storages, and richer start-thread payloads, including tool-choice metadata.
+- Chat sessions now preserve event timestamps, reset replay state correctly, and handle more agent message types such as tool-call progress, secret requests, model changes, interrupts, and usage updates.
+- Tailwind chat UI now tracks thread status, reasoning traces, shell output, file attachments, and improved file preview behavior for streamed agent content.
+
 ## [0.43.4]
 - TypeScript agent messages and events now carry `created_at`, parse it on input, and preserve it when streamed deltas are merged.
 - Messaging chat clients now accept thread lifecycle events without a participant ID and carry room message timestamps into session events for more accurate live synchronization.
