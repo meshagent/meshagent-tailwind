@@ -209,6 +209,7 @@ export class MeetingController {
 	private readonly listeners = new Set<Listener>();
 	private _config: LivekitConnectionInfo | null = null;
 	private _configurationError: unknown = null;
+	private _configurationRequestId = 0;
 
 	constructor({room, roomOptions}: {
     room: RoomClient;
@@ -282,16 +283,28 @@ export class MeetingController {
 			);
 		}
 
+		const requestId = ++this._configurationRequestId;
+
 		this._config = null;
 		this._configurationError = null;
 		this.notify();
 
 		try {
-			this._config = await this.room.livekit.getConnectionInfo({
+			const config = await this.room.livekit.getConnectionInfo({
 				breakoutRoom,
 			});
+
+			if (requestId !== this._configurationRequestId) {
+				return;
+			}
+
+			this._config = config;
 			this.notify();
 		} catch (error) {
+			if (requestId !== this._configurationRequestId) {
+				return;
+			}
+
 			this._configurationError = error;
 			this.notify();
 			throw error;
@@ -451,7 +464,9 @@ export function MeetingScope({
     [client, roomOptions]);
 
   useEffect(() => {
-    controller.configure({ breakoutRoom });
+    void controller.configure({ breakoutRoom }).catch((error: unknown) => {
+      console.warn("unable to configure meeting", error);
+    });
 
     return () => {
       if (controller.isConnected) {
