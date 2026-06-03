@@ -1,3 +1,20 @@
+## [0.44.3]
+- Stability
+
+## [0.44.2]
+- Messaging chat clients now listen for participant add/remove and room status changes, emit accurate connected/disconnected/reconnecting/reconnected transitions, and reopen open thread sessions after reconnect.
+- Sending agent messages can now skip waiting for an available participant when the caller opts into offline delivery.
+- Thread storage now reissues watch and list requests after reconnect so watched thread state comes back automatically.
+- Successful tool-call completions no longer create transient tool-call status entries, reducing status noise in threaded chat views.
+
+## [0.44.1]
+- Stability
+
+## [0.44.0]
+- TypeScript agent clients now support thread watch/unwatch, multiple thread storages, and richer start-thread payloads, including tool-choice metadata.
+- Chat sessions now preserve event timestamps, reset replay state correctly, and handle more agent message types such as tool-call progress, secret requests, model changes, interrupts, and usage updates.
+- Tailwind chat UI now tracks thread status, reasoning traces, shell output, file attachments, and improved file preview behavior for streamed agent content.
+
 ## [0.43.4]
 - TypeScript agent messages and events now carry `created_at`, parse it on input, and preserve it when streamed deltas are merged.
 - Messaging chat clients now accept thread lifecycle events without a participant ID and carry room message timestamps into session events for more accurate live synchronization.

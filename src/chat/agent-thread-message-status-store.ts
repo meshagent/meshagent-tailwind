@@ -229,19 +229,10 @@ export class AgentThreadMessageStatusStore {
 
     private readonly touchedThreadPaths = new Set<string>();
     private readonly statusByThreadPath = new Map<string, AgentThreadMessageStatus>();
-    private readonly connectionStatusByThreadPath = new Map<string, AgentThreadMessageStatus>();
     private readonly pendingMessagesByThreadPath = new Map<string, Map<string, PendingAgentMessage>>();
     private readonly toolCallAccumulatorsByThreadPath = new Map<string, LiveToolCallAccumulator>();
 
     apply(message: AgentMessage, options: { path?: string } = {}): boolean {
-        if (message.type === agentConnectionStatusType) {
-            const normalizedPath = normalizeString(options.path);
-            if (normalizedPath == null) {
-                return false;
-            }
-            this.touchedThreadPaths.add(normalizedPath);
-            return this.applyConnectionStatus(normalizedPath, message as AgentConnectionStatusMessage);
-        }
         if (!isAgentThreadMessage(message) || message.threadId.trim() === "") {
             return false;
         }
@@ -317,14 +308,13 @@ export class AgentThreadMessageStatusStore {
         }
         this.touchedThreadPaths.delete(normalizedPath);
         this.statusByThreadPath.delete(normalizedPath);
-        this.connectionStatusByThreadPath.delete(normalizedPath);
         this.pendingMessagesByThreadPath.delete(normalizedPath);
         this.toolCallAccumulatorsByThreadPath.delete(normalizedPath);
     }
 
     state(params: { path: string; previous?: ChatThreadStatusState; supportsAgentMessages: boolean }): ChatThreadStatusState {
         const normalizedPath = params.path.trim();
-        const status = this.connectionStatusByThreadPath.get(normalizedPath) ?? this.statusByThreadPath.get(normalizedPath);
+        const status = this.statusByThreadPath.get(normalizedPath);
         const pendingMessages = [...(this.pendingMessagesByThreadPath.get(normalizedPath)?.values() ?? [])];
 
         if (status == null && pendingMessages.length === 0) {
@@ -398,35 +388,6 @@ export class AgentThreadMessageStatusStore {
             return false;
         }
         this.statusByThreadPath.set(threadPath, next);
-        return true;
-    }
-
-    private applyConnectionStatus(threadPath: string, message: AgentConnectionStatusMessage): boolean {
-        const status = message.status.trim().toLowerCase();
-        if (status === "connected" || status === "reconnected") {
-            return this.connectionStatusByThreadPath.delete(threadPath);
-        }
-
-        const fallbackText = status === "reconnecting"
-            ? "Reconnecting"
-            : status === "disconnected"
-                ? "Disconnected"
-                : normalizeString(message.message);
-        if (fallbackText == null) {
-            return false;
-        }
-
-        const previous = this.connectionStatusByThreadPath.get(threadPath);
-        const next: AgentThreadMessageStatus = {
-            text: normalizeString(message.message) ?? fallbackText,
-            startedAt: new Date(),
-            mode: "busy",
-            totalBytesFromStatus: false,
-        };
-        if (previous != null && previous.text === next.text && previous.mode === next.mode) {
-            return false;
-        }
-        this.connectionStatusByThreadPath.set(threadPath, next);
         return true;
     }
 
