@@ -1,3 +1,6 @@
+## [0.44.5]
+- Stability
+
 ## [0.44.4]
 - `AgentMessage` now preserves arbitrary metadata in `fromJson`/`toJson`, keeping provider-specific payloads such as encrypted reasoning content intact across round-trips.
 
