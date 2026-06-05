@@ -41,6 +41,7 @@ import {
     shouldReplaceAgentUsageSnapshot,
 } from "../../src/chat/agent-thread";
 import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view";
+import { ThreadView } from "../../src/chat/thread-view";
 
 class FakeParticipant {
     public readonly id: string;
@@ -512,6 +513,47 @@ describe("ChatBotView multi-thread composer", () => {
         expect(screen.queryByText("first strict response")).to.equal(null);
         expect(screen.queryByText(/Starting a thread/i)).to.equal(null);
         expect(chatClient.sent.some((message) => message instanceof CloseThread && message.threadId === "thread-strict-second")).to.equal(false);
+    });
+
+    it("renders the multi-thread composer as a standalone ThreadView", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const selectedPaths: Array<string | null> = [];
+        const resolvedThreads: Array<{ path: string | null; displayName: string | null }> = [];
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                onSelectedThreadPathChanged={(path) => {
+                    selectedPaths.push(path);
+                }}
+                onSelectedThreadResolved={(path, displayName) => {
+                    resolvedThreads.push({ path, displayName });
+                }}
+            />,
+        );
+
+        await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
+            target: { value: "standalone pending message" },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+        await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(1));
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadStarted({
+                sourceMessageId: chatClient.startThreadMessages()[0].messageId,
+                threadId: "thread-standalone",
+            }));
+        });
+
+        await waitFor(() => expect(selectedPaths.at(-1)).to.equal("thread-standalone"));
+        expect(resolvedThreads.at(-1)).to.deep.equal({ path: "thread-standalone", displayName: "Thread Standalone" });
+        expect(await screen.findByText("standalone pending message")).toBeTruthy();
     });
 });
 

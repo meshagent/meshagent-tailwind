@@ -7,17 +7,13 @@ import { MessagingChatClient } from "@meshagent/meshagent-agents";
 
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
-import { AlertTriangle } from "lucide-react";
-
-import { AgentThread } from "./agent-thread";
 import type { AgentToolChoice } from "./agent-thread";
-import { DatasetAgentThread } from "./dataset-agent-thread";
 import type { DatasetThreadRowsLoader } from "./dataset-agent-thread";
-import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor";
+import { ChatThreadDisplayMode } from "./conversation-descriptor";
 
 import { cn } from "../lib/utils";
-import { MultiThreadView } from "./multi-thread-view";
 import { ThreadListView } from "./thread-list-view";
+import { ThreadView } from "./thread-view";
 
 export {
     ChatThreadDisplayMode,
@@ -90,26 +86,6 @@ function useIsWideLayout(minWidth: number): boolean {
     return matches;
 }
 
-function MultiThreadUnavailable(): ReactElement {
-    return (
-        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">
-            <div className="w-full max-w-[912px] rounded-3xl border border-destructive/30 bg-destructive/5 p-6 text-destructive">
-                <div className="flex items-start gap-3">
-                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-                    <div>
-                        <h2 className="text-lg font-semibold">
-                            Unable to start a new thread
-                        </h2>
-                        <p className="mt-1 text-sm text-destructive/80">
-                            No chat agent is selected.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 export function ChatBotView({
     room,
     chatClient,
@@ -143,7 +119,6 @@ export function ChatBotView({
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
     const resolvedDocumentPath = useMemo(() => normalizePath(documentPath ?? path), [documentPath, path]);
-    const resolvedSingleThreadPath = useMemo(() => resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir }), [agentName, resolvedDocumentPath, threadDir]);
     const needsChatClient = chatClient != null || threadDisplayMode === ChatThreadDisplayMode.MultiThreadComposer;
     const ownsChatClient = chatClient == null && needsChatClient;
 
@@ -235,87 +210,36 @@ export function ChatBotView({
         previousNewThreadResetVersionRef.current = newThreadResetVersion;
     }, [activeSelectedThreadPath, newThreadResetVersion, setSelectedThread, threadDisplayMode]);
 
-    if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
-        if (threadSource === "dataset") {
-            return (
-                <DatasetAgentThread
-                    room={room}
-                    path={resolvedSingleThreadPath}
-                    chatClient={activeChatClient ?? undefined}
-                    disposeChatClient={false}
-                    agentName={agentName}
-                    rowsLoader={rowsLoader}
-                    emptyStateTitle={emptyStateTitle}
-                    emptyStateDescription={emptyStateDescription}
-                    clientToolkits={clientToolkits}
-                    toolChoice={toolChoice}
-                    collapseMessages={collapseMessages} />
-            );
-        }
-        return (
-            <AgentThread
-                room={room}
-                path={resolvedSingleThreadPath}
-                chatClient={activeChatClient ?? undefined}
-                disposeChatClient={false}
-                agentName={agentName}
-                emptyStateTitle={emptyStateTitle}
-                emptyStateDescription={emptyStateDescription}
-                clientToolkits={clientToolkits}
-                toolChoice={toolChoice}
-                collapseMessages={collapseMessages} />
-        );
-    }
-
-    if (!agentName?.trim()) {
-        return <MultiThreadUnavailable />;
-    }
-
     const content = (
-        <MultiThreadView
+        <ThreadView
             room={room}
             chatClient={activeChatClient ?? undefined}
-            disposeChatClient={false}
+            path={path}
+            documentPath={documentPath}
             agentName={agentName}
+            threadDisplayMode={threadDisplayMode}
+            threadDir={threadDir}
             toolkit={toolkit}
             tool={tool}
+            centerComposer={centerComposer}
+            emptyStateTitle={emptyStateTitle}
+            emptyStateDescription={emptyStateDescription}
+            startNewThreadTitle={startNewThreadTitle}
+            startNewThreadDescription={startNewThreadDescription}
             selectedThreadPath={activeSelectedThreadPath}
             onSelectedThreadPathChanged={handleSelectedThreadPathChanged}
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
-            centerComposer={centerComposer}
             clientToolkits={clientToolkits}
             toolChoice={toolChoice}
-            builder={(threadPath) => (
-                threadSource === "dataset" ? (
-                    <DatasetAgentThread
-                        room={room}
-                        path={threadPath}
-                        chatClient={activeChatClient ?? undefined}
-                        disposeChatClient={false}
-                        agentName={agentName}
-                        rowsLoader={rowsLoader}
-                        emptyStateTitle={startNewThreadTitle}
-                        emptyStateDescription={startNewThreadDescription}
-                        clientToolkits={clientToolkits}
-                        toolChoice={toolChoice}
-                        collapseMessages={collapseMessages} />
-                ) : (
-                    <AgentThread
-                        room={room}
-                        path={threadPath}
-                        chatClient={activeChatClient ?? undefined}
-                        disposeChatClient={false}
-                        agentName={agentName}
-                        emptyStateTitle={startNewThreadTitle}
-                        emptyStateDescription={startNewThreadDescription}
-                        clientToolkits={clientToolkits}
-                        toolChoice={toolChoice}
-                        collapseMessages={collapseMessages} />
-                )
-            )}
-        />
+            collapseMessages={collapseMessages}
+            threadSource={threadSource}
+            rowsLoader={rowsLoader} />
     );
+
+    if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
+        return content;
+    }
 
     if (!showThreadList || activeChatClient === null) {
         return content;
