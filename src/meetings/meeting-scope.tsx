@@ -210,6 +210,7 @@ export class MeetingController {
 	private _config: LivekitConnectionInfo | null = null;
 	private _configurationError: unknown = null;
 	private _configurationRequestId = 0;
+	private _snapshotVersion = 0;
 
 	constructor({room, roomOptions}: {
     room: RoomClient;
@@ -249,6 +250,10 @@ export class MeetingController {
 
 	get configurationError(): unknown {
 		return this._configurationError;
+	}
+
+	get snapshotVersion(): number {
+		return this._snapshotVersion;
 	}
 
 	get isConnected(): boolean {
@@ -312,6 +317,10 @@ export class MeetingController {
 	}
 
 	async connect(options?: MeetingFastConnectOptions): Promise<void> {
+		if (this._config == null) {
+			await this.configure();
+		}
+
 		const config = this._config;
 		if (config == null) {
 			throw new Error("The controller has not been configured");
@@ -419,6 +428,7 @@ export class MeetingController {
   }
 
   private notify(): void {
+    this._snapshotVersion += 1;
     for (const listener of this.listeners) {
       listener();
     }
@@ -439,8 +449,8 @@ export function useMeetingController(controller?: MeetingController): MeetingCon
 
   useSyncExternalStore(
     (listener) => resolved.subscribe(listener),
-      () => resolved.livekitRoom.state,
-      () => resolved.livekitRoom.state,
+      () => resolved.snapshotVersion,
+      () => resolved.snapshotVersion,
   );
     return resolved;
 }
@@ -464,9 +474,11 @@ export function MeetingScope({
     [client, roomOptions]);
 
   useEffect(() => {
-    void controller.configure({ breakoutRoom }).catch((error: unknown) => {
-      console.warn("unable to configure meeting", error);
-    });
+    if (breakoutRoom !== undefined) {
+      void controller.configure({ breakoutRoom }).catch((error: unknown) => {
+        console.warn("unable to configure meeting", error);
+      });
+    }
 
     return () => {
       if (controller.isConnected) {

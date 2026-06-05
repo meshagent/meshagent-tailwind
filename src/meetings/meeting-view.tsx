@@ -256,7 +256,7 @@ function RemoteAudioTrackView({
 	return <audio ref={audioRef} autoPlay />;
 }
 
-function MeetingAudioRenderer({ room }: { room: Room }): ReactElement | null {
+export function MeetingAudioRenderer({ room }: { room: Room }): ReactElement | null {
 	useRoomSnapshot(room);
 	const publications = Array.from(room.remoteParticipants.values()).flatMap(
 		activeAudioPublications,

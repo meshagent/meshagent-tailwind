@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button.js";
 import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
 import { MeetingControls } from "./controls.js";
+import { MeetingAudioRenderer } from "./meeting-view.js";
 import { type MeetingController, useMeetingController } from "./meeting-scope.js";
 
 function describeStartSessionError(error: unknown): string {
@@ -93,6 +94,7 @@ export function VoiceAgentCaller({
 
 		return (
 			<div className={cn("flex h-full min-h-0 flex-col items-center justify-center gap-6 p-6 text-center", className)}>
+				<MeetingAudioRenderer room={controller.livekitRoom} />
 				<div className="flex min-h-44 w-full max-w-md items-center justify-center rounded-md border bg-muted/20">
 					{remoteParticipant == null ? (
 						<div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
