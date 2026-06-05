@@ -217,6 +217,38 @@ class FakeChatClient extends BaseChatClient {
     }
 }
 
+class DelayedParticipantChatClient extends FakeChatClient {
+    private ready = false;
+    private readonly waiters: Array<() => void> = [];
+
+    public override agentParticipant() {
+        return this.ready ? ({ id: "agent-codex" } as never) : null;
+    }
+
+    public override async waitForAgentParticipant(): Promise<never> {
+        if (!this.ready) {
+            await new Promise<void>((resolve) => {
+                this.waiters.push(resolve);
+            });
+        }
+        return { id: "agent-codex" } as never;
+    }
+
+    public makeParticipantAvailable(): void {
+        this.ready = true;
+        for (const waiter of this.waiters.splice(0)) {
+            waiter();
+        }
+    }
+
+    public override async sendAgentMessage(message: AgentMessage): Promise<void> {
+        if (!this.ready) {
+            throw new Error("Agent messaging participant is not available.");
+        }
+        await super.sendAgentMessage(message);
+    }
+}
+
 afterEach(() => {
     cleanup();
 });
@@ -257,6 +289,39 @@ describe("ChatBotView multi-thread composer", () => {
         expect(datasetCreates).toHaveLength(0);
         expect(openedPaths).not.toContain("agents/assistant/threads/index.threadl");
         expect(screen.queryByText(/Unsupported thread list path/i)).to.equal(null);
+    });
+
+    it("waits for the agent participant before loading thread lists", async () => {
+        const room = fakeRoom();
+        const chatClient = new DelayedParticipantChatClient();
+        const now = new Date().toISOString();
+        chatClient.threadEntries.push({
+            path: "threads/delayed.thread",
+            name: "Delayed thread",
+            createdAt: now,
+            modifiedAt: now,
+        });
+
+        render(
+            <ChatBotView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                threadListPath="agents/assistant/threads/index.threadl"
+            />,
+        );
+
+        expect(chatClient.sent.some((message) => message instanceof ListThreads)).to.equal(false);
+        expect(screen.queryByText(/Unable to load threads/i)).to.equal(null);
+
+        act(() => {
+            chatClient.makeParticipantAvailable();
+        });
+
+        await waitFor(() => expect(chatClient.sent.some((message) => message instanceof ListThreads)).to.equal(true));
+        expect(await screen.findByText("Delayed thread")).toBeTruthy();
+        expect(screen.queryByText(/Unable to load threads/i)).to.equal(null);
     });
 
     it("shows thread list load errors", async () => {
