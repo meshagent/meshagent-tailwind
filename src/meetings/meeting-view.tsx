@@ -33,6 +33,7 @@ import {
 	type CameraGridFrameArgs,
 	TrackSource,
 } from "./camera-grid.js";
+
 import { MeetingControls } from "./controls.js";
 
 import {
@@ -866,7 +867,7 @@ function ActiveMeetingToolbar({controller, onDisconnect}: {
 	onDisconnect?: () => void;
 }): ReactElement {
 	return (
-		<div className="flex flex-wrap items-center justify-center gap-2">
+		<div className="flex flex-wrap gap-2">
 			<MeetingControls controller={controller} onDisconnect={onDisconnect} spacing={8} />
 
 			<ShareScreenToggle controller={controller} />
@@ -884,16 +885,13 @@ export function MeetingView({controller: providedController, onCancel}: {
 	const inPreview = viewState === "preview" || !connected;
 
 	if (inPreview) {
-		return (<MeetingLobby
-      controller={controller}
-      onCancel={onCancel}
-      onJoin={joinMeeting} />);
+		return (<MeetingLobby onCancel={onCancel} onJoin={joinMeeting} />);
 	}
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			<MeetingAudioRenderer room={controller.livekitRoom} />
-			<div className="flex-0 border-b px-5 py-3">
+			<div className="flex-0 px-5 py-3">
 				<ActiveMeetingToolbar controller={controller} onDisconnect={onCancel} />
 			</div>
 			<div className="min-h-0 flex-1 p-5">

@@ -449,10 +449,11 @@ export function useMeetingController(controller?: MeetingController): MeetingCon
 
   useSyncExternalStore(
     (listener) => resolved.subscribe(listener),
-      () => resolved.snapshotVersion,
-      () => resolved.snapshotVersion,
+    () => resolved.snapshotVersion,
+    () => resolved.snapshotVersion,
   );
-    return resolved;
+
+  return resolved;
 }
 
 export function MeetingScope({
@@ -475,7 +476,7 @@ export function MeetingScope({
 
   useEffect(() => {
     if (breakoutRoom !== undefined) {
-      void controller.configure({ breakoutRoom }).catch((error: unknown) => {
+      controller.configure({ breakoutRoom }).catch((error: unknown) => {
         console.warn("unable to configure meeting", error);
       });
     }

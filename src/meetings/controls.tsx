@@ -4,6 +4,7 @@ import { Video, VideoOff, Mic, MicOff, Phone, Settings } from "lucide-react";
 import { ConnectionState, Room } from "livekit-client";
 
 import { Button } from "../components/ui/button.js";
+
 import {
     Dialog,
     DialogContent,
@@ -13,6 +14,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "../components/ui/dialog.js";
+
 import {
     Select,
     SelectContent,
@@ -51,9 +53,7 @@ export function MeetingControls({
     const hasLocalParticipant = controller.livekitRoom.localParticipant != null;
 
     return (
-        <div
-            className="flex flex-wrap items-center justify-center"
-            style={{ gap: spacing }}>
+        <div className="flex flex-wrap items-center justify-center" style={{ gap: spacing }}>
             <ConnectionButton controller={controller} onDisconnect={onDisconnect} />
             {hasLocalParticipant ? (
                 <>

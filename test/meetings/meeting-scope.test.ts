@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
-import { RoomEvent, Track } from "livekit-client";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Room, RoomEvent, Track } from "livekit-client";
 import type { LocalParticipant, Participant, TrackPublication, VideoTrack } from "livekit-client";
 
 import {
@@ -12,6 +12,7 @@ import {
     firstEnabledVideoPublication,
 } from "../../src/meetings/meeting-scope.js";
 import { meetingFastConnectOptions } from "../../src/meetings/lobby.js";
+import { MeetingView } from "../../src/meetings/meeting-view.js";
 
 afterEach(() => {
     cleanup();
@@ -171,6 +172,51 @@ describe("MeetingController configuration", () => {
 
         await Promise.resolve();
         expect(room.livekit.getConnectionInfo).not.toHaveBeenCalled();
+    });
+
+    it("allows the lobby to join with lazily loaded default room config", async () => {
+        const room = fakeRoomClient();
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        vi.spyOn(Room, "getLocalDevices").mockResolvedValue([]);
+        Object.defineProperty(navigator, "mediaDevices", {
+            configurable: true,
+            value: {
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                getUserMedia: vi.fn(async () => {
+                    throw new Error("media unavailable");
+                }),
+            },
+        });
+        let configuredController: MeetingController | null = null;
+
+        function Panel() {
+            return React.createElement(MeetingScope, { client: room }, (nextController: MeetingController) => {
+                if (configuredController !== nextController) {
+                    configuredController = nextController;
+                    vi.spyOn(nextController.livekitRoom, "connect").mockResolvedValue(undefined);
+                    vi.spyOn(nextController.livekitRoom, "startAudio").mockResolvedValue();
+                }
+
+                return React.createElement(MeetingView, { controller: nextController });
+            });
+        }
+
+        render(React.createElement(Panel));
+        expect(room.livekit.getConnectionInfo).not.toHaveBeenCalled();
+
+        const meetButton = await screen.findByRole("button", { name: "Meet now" });
+        await waitFor(() => {
+            expect((meetButton as HTMLButtonElement).disabled).to.equal(false);
+        });
+
+        fireEvent.click(meetButton);
+
+        await waitFor(() => {
+            expect(room.livekit.getConnectionInfo).toHaveBeenCalledWith({ breakoutRoom: "" });
+        });
+        expect(configuredController?.config).to.deep.equal({ url: "wss://livekit.example", token: "token" });
+        warn.mockRestore();
     });
 
     it("preconfigures the provided breakout room when MeetingScope receives one", async () => {

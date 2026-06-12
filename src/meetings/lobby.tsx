@@ -12,6 +12,7 @@ import {
 import { Video, VideoOff, Mic, MicOff, Settings } from "lucide-react";
 
 import { Button } from "../components/ui/button.js";
+
 import {
 	Dialog,
 	DialogContent,
@@ -21,6 +22,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "../components/ui/dialog.js";
+
 import {
 	Select,
 	SelectContent,
@@ -28,6 +30,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../components/ui/select.js";
+
 import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
 import {
@@ -664,7 +667,6 @@ export function meetingFastConnectOptions(
 }
 
 export function MeetingLobby({
-	controller: providedController,
 	onCancel,
 	onJoin,
 }: {
@@ -672,8 +674,8 @@ export function MeetingLobby({
 	onCancel?: () => void;
 	onJoin?: (options: MeetingLobbyJoinOptions) => void | Promise<void>;
 }): ReactElement {
-	const controller = useMeetingController(providedController);
 	const state = useMeetingLobbyState();
+	const [joining, setJoining] = useState(false);
 	const previewRef = useAttachedPreviewVideo(state.videoTrack);
 	const videoPending =
 		state.videoOn && state.videoTrack == null && !state.videoUnavailable;
@@ -684,7 +686,9 @@ export function MeetingLobby({
 		audioPending ||
 		state.videoProcessing ||
 		state.audioProcessing;
-	const canJoin = controller.config != null && !starting;
+
+	const canJoin = !starting && !joining;
+
 	const statusText = state.loaded ? "Get ready to meet" : "Preparing devices";
 
 	return (
@@ -758,9 +762,19 @@ export function MeetingLobby({
                 className="h-10 bg-emerald-600 text-white hover:bg-emerald-700 sm:w-[120px]"
                 disabled={!canJoin}
                 onClick={() => {
-                  onJoin?.(joinOptions(state));
+                  if (joining) {
+                    return;
+                  }
+
+                  setJoining(true);
+                  Promise.resolve()
+                    .then(() => onJoin?.(joinOptions(state)))
+                    .catch((error: unknown) => {
+                      console.warn("Unable to join meeting", error);
+                    })
+                    .finally(() => setJoining(false));
                 }}>
-                {starting ? (
+                {starting || joining ? (
                   <>
                     <Spinner className="h-4 w-4" />
 
