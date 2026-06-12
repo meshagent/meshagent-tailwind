@@ -8,7 +8,7 @@ from meshagent.api import (
     ParticipantGrant,
     ApiScope,
 )
-from meshagent.tools.hosting import _start_hosted_toolkit
+from meshagent.tools.hosting import start_hosted_toolkit
 from test_support.tools.ui import UIToolkit
 from test_support import config
 
@@ -80,7 +80,7 @@ async def show_toast(
 
             toolkit = UIToolkit()
 
-            await _start_hosted_toolkit(room=client, toolkit=toolkit)
+            await start_hosted_toolkit(room=client, toolkit=toolkit)
             print(f"Registering toolkit {toolkit.name}...")
 
             for participant in participants:
