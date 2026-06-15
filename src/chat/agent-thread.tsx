@@ -63,11 +63,10 @@ import { Spinner } from "../components/ui/spinner";
 import { cn } from "../lib/utils";
 import { ChatInput } from "./chat-input";
 import type { ChatMessage } from "./chat-message";
+import { ChatScroller } from "./chat-scroller";
 import { ChatTypingIndicator } from "./chat-typing-indicator";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
-
-const stickyBottomThresholdPx = 24;
 
 type FeedRole = "user" | "agent";
 type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation" | "event" | "error";
@@ -485,14 +484,6 @@ function timeAgo(date: Date): string {
         return `${hours}h`;
     }
     return `${Math.floor(hours / 24)}d`;
-}
-
-function distanceFromBottom(element: HTMLElement): number {
-    return Math.max(element.scrollHeight - element.clientHeight - element.scrollTop, 0);
-}
-
-function isNearBottom(element: HTMLElement): boolean {
-    return distanceFromBottom(element) <= stickyBottomThresholdPx;
 }
 
 function inputContent(message: InputContentMessage): { text: string; attachments: string[] } {
@@ -1951,9 +1942,6 @@ export function AgentThread({
     const [sendError, setSendError] = useState<string | null>(null);
     const [version, setVersion] = useState(0);
     const [expandedDetailGroupIds, setExpandedDetailGroupIds] = useState<Set<string>>(() => new Set<string>());
-    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-    const contentRef = useRef<HTMLDivElement | null>(null);
-    const stickToBottomRef = useRef(true);
     const sessionRef = useRef<ChatThreadSession | null>(null);
     const ownsChatClient = chatClient == null;
     const activeChatClient = useMemo<BaseChatClient>(
@@ -2007,42 +1995,16 @@ export function AgentThread({
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
     const canInterruptActiveTurn = turnId != null && (agentParticipant != null || chatClient != null);
-    const lastItem = feedItems.length > 0 ? feedItems[feedItems.length - 1] : undefined;
-    const lastMessageKey = `${lastItem?.id ?? ""}:${lastItem?.text.length ?? 0}:${feedItems.length}:${version}`;
-
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container) {
-            return;
-        }
-        stickToBottomRef.current = true;
-        container.scrollTop = container.scrollHeight;
-    }, [path]);
-
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        if (!container || !stickToBottomRef.current) {
-            return;
-        }
-        container.scrollTop = container.scrollHeight;
-    }, [lastMessageKey, statusText]);
-
-    useEffect(() => {
-        const container = scrollContainerRef.current;
-        const content = contentRef.current;
-        if (!container || !content || typeof ResizeObserver === "undefined") {
-            return;
-        }
-        const observer = new ResizeObserver(() => {
-            if (stickToBottomRef.current) {
-                container.scrollTop = container.scrollHeight;
-            }
+    const renderedFeedItemsNewestFirst = useMemo(() => [...renderedFeedItems].reverse(), [renderedFeedItems]);
+    const firstRenderedItemId = renderedFeedItems[0]?.id;
+    const lastRenderedItemId = renderedFeedItems[renderedFeedItems.length - 1]?.id;
+    const previousFeedItemById = useMemo(() => {
+        const previousById = new Map<string, FeedItem | null>();
+        renderedFeedItems.forEach((item, index) => {
+            previousById.set(item.id, previousMessageFeedItem(renderedFeedItems, index));
         });
-        observer.observe(content);
-        return () => {
-            observer.disconnect();
-        };
-    }, []);
+        return previousById;
+    }, [renderedFeedItems]);
 
     const selectAttachments = useCallback((files: File[]) => {
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
@@ -2112,55 +2074,54 @@ export function AgentThread({
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col">
             <div className="relative flex h-full min-h-0 flex-1 flex-col">
-                <div
-                    ref={scrollContainerRef}
-                    className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
-                    onScroll={(event) => {
-                        stickToBottomRef.current = isNearBottom(event.currentTarget);
-                    }}>
-                    <div
-                        ref={contentRef}
-                        className={cn(
-                            "mx-auto flex min-h-full w-full max-w-[912px] flex-col gap-8 px-4 pt-6",
-                            feedItems.length > 0 ? "justify-end" : null,
-                            statusText ? "pb-24" : "pb-6",
-                        )}>
-                        {showThreadLoading ? (
-                            <LoadingState />
-                        ) : feedItems.length === 0 ? (
-                            <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
-                        ) : null}
-
-                        {renderedFeedItems.map((item, index) => (
-                            item.kind === "detail_group" ? (
-                                item.expanded ? (
-                                    <ExpandedDetailGroup
-                                        key={item.id}
+                {showThreadLoading ? (
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                        <LoadingState />
+                    </div>
+                ) : feedItems.length === 0 ? (
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                        <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
+                    </div>
+                ) : (
+                    <ChatScroller
+                        bottomThresholdPx={24}
+                        className="flex-1 overflow-x-hidden"
+                        currentUserId="user"
+                        getMessageAuthorId={(item) => item.kind === "detail_group" ? "agent" : item.role}
+                        messages={renderedFeedItemsNewestFirst}
+                        renderMessage={(item) => (
+                            <div
+                                className={cn(
+                                    "mx-auto w-full max-w-[912px] px-1 py-3",
+                                    item.id === firstRenderedItemId ? "pt-6" : null,
+                                    item.id === lastRenderedItemId ? (statusText ? "pb-24" : "pb-6") : null,
+                                )}>
+                                {item.kind === "detail_group" ? (
+                                    item.expanded ? (
+                                        <ExpandedDetailGroup
+                                            room={room}
+                                            item={item}
+                                            localParticipantName={localParticipantName}
+                                            agentName={agentName}
+                                        />
+                                    ) : (
+                                        <DetailGroupLine
+                                            item={item}
+                                            onToggle={() => toggleDetailGroup(item.id)}
+                                        />
+                                    )
+                                ) : (
+                                    <ThreadMessageView
                                         room={room}
-                                        item={item}
+                                        message={item}
+                                        previous={previousFeedItemById.get(item.id) ?? null}
                                         localParticipantName={localParticipantName}
                                         agentName={agentName}
                                     />
-                                ) : (
-                                    <DetailGroupLine
-                                        key={item.id}
-                                        item={item}
-                                        onToggle={() => toggleDetailGroup(item.id)}
-                                    />
-                                )
-                            ) : (
-                                <ThreadMessageView
-                                    key={item.id}
-                                    room={room}
-                                    message={item}
-                                    previous={previousMessageFeedItem(renderedFeedItems, index)}
-                                    localParticipantName={localParticipantName}
-                                    agentName={agentName}
-                                />
-                            )
-                        ))}
-                    </div>
-                </div>
+                                )}
+                            </div>
+                        )} />
+                )}
 
                 {statusText ? (
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-4">

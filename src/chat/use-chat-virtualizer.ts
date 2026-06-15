@@ -225,7 +225,7 @@ function getMessageSelector(messageId: string): string {
   const escapedMessageId =
     typeof CSS !== "undefined" && typeof CSS.escape === "function"
       ? CSS.escape(messageId)
-      : messageId.replaceAll("\"", "\\\"");
+      : messageId.replace(/"/gu, "\\\"");
 
   return ".chat-scroll__message[data-message-id=\"" + escapedMessageId + "\"]";
 }
@@ -244,15 +244,18 @@ function captureScrollAnchor(
     ".chat-scroll__message[data-message-id]",
   );
 
-  for (const messageElement of messageElements) {
+  for (let index = 0; index < messageElements.length; index += 1) {
+    const messageElement = messageElements.item(index);
     const messageRect = messageElement.getBoundingClientRect();
 
     if (messageRect.bottom > scrollRect.top) {
       const messageId = messageElement.dataset.messageId;
-      const pageElement = messageElement.closest<HTMLElement>(
+      const closestPageElement = messageElement.closest(
         ".chat-scroll__page[data-page-index]",
       );
-      const pageIndex = Number(pageElement?.dataset.pageIndex);
+      const pageIndex = closestPageElement instanceof HTMLElement
+        ? Number(closestPageElement.dataset.pageIndex)
+        : Number.NaN;
 
       if (messageId && Number.isInteger(pageIndex)) {
         const anchor = {

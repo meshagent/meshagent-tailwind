@@ -641,6 +641,33 @@ describe("AgentThread", () => {
         expect(screen.queryByLabelText("Loading...")).to.equal(null);
     });
 
+    it("uses the virtual chat scroller for populated threads", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        const { container } = render(
+            <AgentThread
+                room={room}
+                path="thread-virtual-scroller"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-virtual-scroller",
+                turnId: "turn-virtual-scroller",
+                itemId: "answer-virtual-scroller",
+                phase: "final_answer",
+                text: "This thread is virtualized.",
+            }), { createdAt: new Date("2026-05-28T12:00:00.000Z") });
+        });
+
+        expect(await screen.findByText("This thread is virtualized.")).toBeTruthy();
+        expect(container.querySelector(".chat-scroll")).toBeTruthy();
+    });
+
     it("collapses assistant detail messages before the final response", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
