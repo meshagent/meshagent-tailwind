@@ -1,3 +1,6 @@
+## [0.44.13]
+- Stability
+
 ## [0.44.12]
 - Added generated project support flows across the SDK CLI, including visible-room selection, deploy-room updates, and expanded template creation coverage.
 - Added `predev` dependency bootstrapping to generated JavaScript, TypeScript, and React templates, and restored room-workspace install/dev scripts.
