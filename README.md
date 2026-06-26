@@ -38,6 +38,53 @@ MeshAgent removes the infrastructure headaches of building and shipping AI Agent
 
 Follow our [Getting Started Documentation](https://docs.meshagent.com/introduction/get_started) to setup your MeshAgent account, create your first project, and start building agents!
 
+## Threaded Chat
+
+For new chat integrations, compose the thread list and thread view directly. Use a shared room client and chat client, then keep the selected thread path in your app state:
+
+```tsx
+import { useState } from "react";
+import {
+	ChatThreadDisplayMode,
+	ThreadListView,
+	ThreadView,
+} from "@meshagent/meshagent-tailwind";
+import type { RoomClient } from "@meshagent/meshagent";
+import type { BaseChatClient } from "@meshagent/meshagent-agents";
+
+export function AgentChat({
+	roomClient,
+	chatClient,
+}: {
+	roomClient: RoomClient;
+	chatClient: BaseChatClient;
+}) {
+	const [selectedThreadPath, setSelectedThreadPath] = useState<string | null>(null);
+
+	return (
+		<div className="flex min-h-0 flex-1">
+			<ThreadListView
+				room={roomClient}
+				chatClient={chatClient}
+				selectedThreadPath={selectedThreadPath}
+				onSelectedThreadPathChanged={setSelectedThreadPath}
+			/>
+			<ThreadView
+				room={roomClient}
+				chatClient={chatClient}
+				agentName="support-agent"
+				threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+				selectedThreadPath={selectedThreadPath}
+				onSelectedThreadPathChanged={setSelectedThreadPath}
+				onSelectedThreadResolved={(path) => setSelectedThreadPath(path)}
+			/>
+		</div>
+	);
+}
+```
+
+`ThreadListView` loads and manages the available agent threads. `ThreadView` renders the active thread and can start a new thread when `threadDisplayMode` is `ChatThreadDisplayMode.MultiThreadComposer`.
+
 ## Meetings
 
 The meeting components use a connected `RoomClient` to request LiveKit credentials before joining a meeting. Wrap `MeetingView` in `MeetingScope` and pass the same room client used by the rest of your app:

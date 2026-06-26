@@ -57,6 +57,7 @@ describe("AgentThreadMessageStatusStore", () => {
             awaitingApplication: true,
             awaitingOnline: false,
         });
+
         expect(pending.createdAt?.toISOString()).to.equal("2026-01-02T03:04:05.000Z");
         expect(pending.attachments).to.deep.equal([{ url: "room:///docs/a.txt", name: "a.txt" }]);
     });
@@ -95,6 +96,7 @@ describe("AgentThreadMessageStatusStore", () => {
             turnId: "turn-1",
             pendingItemId: "item-1",
         }))).to.equal(true);
+
         expect(store.state({ path: threadId, supportsAgentMessages: false }).startedAt?.getTime()).to.equal(first.startedAt?.getTime());
     });
 

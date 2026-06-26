@@ -1,3 +1,12 @@
+## [0.44.13]
+- Stability
+
+## [0.44.12]
+- Added generated project support flows across the SDK CLI, including visible-room selection, deploy-room updates, and expanded template creation coverage.
+- Added `predev` dependency bootstrapping to generated JavaScript, TypeScript, and React templates, and restored room-workspace install/dev scripts.
+- Expanded chat and voice UI support with realtime audio output, responsive meeting updates, and fixes for room-client invocation and voice-agent handoff behavior.
+- Updated third-party packages: `ws` to `^8.21.0` and added `react-virtuoso` `^4.18.7`.
+
 ## [0.44.11]
 - Stability
 

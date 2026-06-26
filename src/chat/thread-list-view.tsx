@@ -131,6 +131,24 @@ function describeError(error: unknown): string {
     return `${error}`;
 }
 
+interface ParticipantAwareChatClient extends BaseChatClient {
+    waitForAgentParticipant(options?: { waitKey?: string }): Promise<unknown>;
+}
+
+function hasAgentParticipantWaiter(chatClient: BaseChatClient): chatClient is ParticipantAwareChatClient {
+    return "waitForAgentParticipant" in chatClient && typeof chatClient.waitForAgentParticipant === "function";
+}
+
+async function waitForThreadListPrerequisites(chatClient: BaseChatClient): Promise<void> {
+    if (chatClient.agentParticipant() !== null) {
+        return;
+    }
+
+    if (hasAgentParticipantWaiter(chatClient)) {
+        await chatClient.waitForAgentParticipant({ waitKey: "thread-list" });
+    }
+}
+
 class ChatThreadListStore {
     constructor(
         private readonly repository: ThreadStorageRepository,
@@ -205,10 +223,18 @@ function useThreadList({ room, chatClient }: {
         setLoading(true);
         setError(null);
 
+        if (chatClient === null) {
+            setEntries([]);
+            setLoading(false);
+            setError(new Error("Agent thread lists require a chat client."));
+            return;
+        }
+
         const store = createStore();
         storeRef.current = store;
 
-        void store.open()
+        void waitForThreadListPrerequisites(chatClient)
+            .then(() => store.open())
             .then(() => {
                 if (cancelled) {
                     void store.close();

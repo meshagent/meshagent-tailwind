@@ -6,3 +6,4 @@ export * from "./meeting-scope.js";
 export * from "./meeting-view.js";
 export * from "./participants.js";
 export * from "./wake-lock.js";
+export * from "./voice-agent-caller.js";

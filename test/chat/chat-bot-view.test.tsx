@@ -41,6 +41,7 @@ import {
     shouldReplaceAgentUsageSnapshot,
 } from "../../src/chat/agent-thread";
 import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view";
+import { ThreadView } from "../../src/chat/thread-view";
 
 class FakeParticipant {
     public readonly id: string;
@@ -217,6 +218,38 @@ class FakeChatClient extends BaseChatClient {
     }
 }
 
+class DelayedParticipantChatClient extends FakeChatClient {
+    private ready = false;
+    private readonly waiters: Array<() => void> = [];
+
+    public override agentParticipant() {
+        return this.ready ? ({ id: "agent-codex" } as never) : null;
+    }
+
+    public override async waitForAgentParticipant(): Promise<never> {
+        if (!this.ready) {
+            await new Promise<void>((resolve) => {
+                this.waiters.push(resolve);
+            });
+        }
+        return { id: "agent-codex" } as never;
+    }
+
+    public makeParticipantAvailable(): void {
+        this.ready = true;
+        for (const waiter of this.waiters.splice(0)) {
+            waiter();
+        }
+    }
+
+    public override async sendAgentMessage(message: AgentMessage): Promise<void> {
+        if (!this.ready) {
+            throw new Error("Agent messaging participant is not available.");
+        }
+        await super.sendAgentMessage(message);
+    }
+}
+
 afterEach(() => {
     cleanup();
 });
@@ -257,6 +290,39 @@ describe("ChatBotView multi-thread composer", () => {
         expect(datasetCreates).toHaveLength(0);
         expect(openedPaths).not.toContain("agents/assistant/threads/index.threadl");
         expect(screen.queryByText(/Unsupported thread list path/i)).to.equal(null);
+    });
+
+    it("waits for the agent participant before loading thread lists", async () => {
+        const room = fakeRoom();
+        const chatClient = new DelayedParticipantChatClient();
+        const now = new Date().toISOString();
+        chatClient.threadEntries.push({
+            path: "threads/delayed.thread",
+            name: "Delayed thread",
+            createdAt: now,
+            modifiedAt: now,
+        });
+
+        render(
+            <ChatBotView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                threadListPath="agents/assistant/threads/index.threadl"
+            />,
+        );
+
+        expect(chatClient.sent.some((message) => message instanceof ListThreads)).to.equal(false);
+        expect(screen.queryByText(/Unable to load threads/i)).to.equal(null);
+
+        act(() => {
+            chatClient.makeParticipantAvailable();
+        });
+
+        await waitFor(() => expect(chatClient.sent.some((message) => message instanceof ListThreads)).to.equal(true));
+        expect(await screen.findByText("Delayed thread")).toBeTruthy();
+        expect(screen.queryByText(/Unable to load threads/i)).to.equal(null);
     });
 
     it("shows thread list load errors", async () => {
@@ -447,6 +513,47 @@ describe("ChatBotView multi-thread composer", () => {
         expect(screen.queryByText("first strict response")).to.equal(null);
         expect(screen.queryByText(/Starting a thread/i)).to.equal(null);
         expect(chatClient.sent.some((message) => message instanceof CloseThread && message.threadId === "thread-strict-second")).to.equal(false);
+    });
+
+    it("renders the multi-thread composer as a standalone ThreadView", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const selectedPaths: Array<string | null> = [];
+        const resolvedThreads: Array<{ path: string | null; displayName: string | null }> = [];
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                onSelectedThreadPathChanged={(path) => {
+                    selectedPaths.push(path);
+                }}
+                onSelectedThreadResolved={(path, displayName) => {
+                    resolvedThreads.push({ path, displayName });
+                }}
+            />,
+        );
+
+        await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
+            target: { value: "standalone pending message" },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+        await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(1));
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadStarted({
+                sourceMessageId: chatClient.startThreadMessages()[0].messageId,
+                threadId: "thread-standalone",
+            }));
+        });
+
+        await waitFor(() => expect(selectedPaths.at(-1)).to.equal("thread-standalone"));
+        expect(resolvedThreads.at(-1)).to.deep.equal({ path: "thread-standalone", displayName: "Thread Standalone" });
+        expect(await screen.findByText("standalone pending message")).toBeTruthy();
     });
 });
 
