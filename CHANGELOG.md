@@ -1,3 +1,8 @@
+## [0.45.0]
+- Added `pull_secret` to container specs and enforced id-only secret validation at the client boundary, breaking older named secret payloads.
+- Extended service runtime state parsing to include startup errors and lifecycle events.
+- Added service-spec and memory-client tests for the new container secret and runtime fields.
+
 ## [0.44.13]
 - Stability
 
