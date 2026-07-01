@@ -1,3 +1,6 @@
+## [0.45.1]
+- `listServiceAccounts` now accepts a `view` option and forwards it to the service-account listing endpoint.
+
 ## [0.45.0]
 - Added `pull_secret` to container specs and enforced id-only secret validation at the client boundary, breaking older named secret payloads.
 - Extended service runtime state parsing to include startup errors and lifecycle events.
