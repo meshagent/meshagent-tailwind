@@ -1,3 +1,11 @@
+## [0.45.4]
+- Stability
+
+## [0.45.3]
+- Added `pull_secret` support for service container specs and enforced id-only secret payload validation at the client boundary.
+- Added service-account `view` filtering.
+- Extended service runtime parsing to surface startup errors and structured lifecycle events.
+
 ## [0.45.2]
 - Added `pull_secret` support to service container specs and enforced id-only validation for secret payloads at the client boundary.
 - Added `view` support to service-account listing.
