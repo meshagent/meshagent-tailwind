@@ -1,3 +1,9 @@
+## [0.45.2]
+- Added `pull_secret` support to service container specs and enforced id-only validation for secret payloads at the client boundary.
+- Added `view` support to service-account listing.
+- Extended service runtime parsing to surface startup errors and structured lifecycle events.
+- Updated service-spec and memory-client tests to cover the new container secret and runtime fields.
+
 ## [0.45.1]
 - `listServiceAccounts` now accepts a `view` option and forwards it to the service-account listing endpoint.
 
