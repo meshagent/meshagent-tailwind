@@ -1,3 +1,6 @@
+## [0.45.6]
+- Aligned the JavaScript and TypeScript package set, example packages, and inter-package dependencies across the core SDK, agents, React, auth, livekit, tailwind, entrypoint, and node/TS wrappers.
+
 ## [0.45.5]
 - Stability
 
