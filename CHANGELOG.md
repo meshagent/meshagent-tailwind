@@ -1,3 +1,6 @@
+## [0.45.7]
+- Updated JS/TS SDK dependency versions, including `typescript`, `mocha`, `esbuild`, `jose`, `ws`, `yjs`, and `apache-arrow`.
+
 ## [0.45.6]
 - Aligned the JavaScript and TypeScript package set, example packages, and inter-package dependencies across the core SDK, agents, React, auth, livekit, tailwind, entrypoint, and node/TS wrappers.
 
