@@ -1,3 +1,11 @@
+## [0.45.9]
+- The TypeScript services client now exposes `listWithState()` with typed `ServiceRuntimeState`, `ServiceRuntimeStatus`, and `ServicePortRuntimeState`, including per-port liveness.
+- The React dev services view now shows a Ports column with readiness indicators for each exposed port.
+- Breaking change: `SecretVersion.encryption_key_id` was removed from the generated TypeScript client model.
+
+## [0.45.8]
+- Stability
+
 ## [0.45.7]
 - Updated JS/TS SDK dependency versions, including `typescript`, `mocha`, `esbuild`, `jose`, `ws`, `yjs`, and `apache-arrow`.
 
