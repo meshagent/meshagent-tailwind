@@ -1,3 +1,37 @@
+## [0.45.9]
+- The TypeScript services client now exposes `listWithState()` with typed `ServiceRuntimeState`, `ServiceRuntimeStatus`, and `ServicePortRuntimeState`, including per-port liveness.
+- The React dev services view now shows a Ports column with readiness indicators for each exposed port.
+- Breaking change: `SecretVersion.encryption_key_id` was removed from the generated TypeScript client model.
+
+## [0.45.8]
+- Stability
+
+## [0.45.7]
+- Updated JS/TS SDK dependency versions, including `typescript`, `mocha`, `esbuild`, `jose`, `ws`, `yjs`, and `apache-arrow`.
+
+## [0.45.6]
+- Aligned the JavaScript and TypeScript package set, example packages, and inter-package dependencies across the core SDK, agents, React, auth, livekit, tailwind, entrypoint, and node/TS wrappers.
+
+## [0.45.5]
+- Stability
+
+## [0.45.4]
+- Stability
+
+## [0.45.3]
+- Added `pull_secret` support for service container specs and enforced id-only secret payload validation at the client boundary.
+- Added service-account `view` filtering.
+- Extended service runtime parsing to surface startup errors and structured lifecycle events.
+
+## [0.45.2]
+- Added `pull_secret` support to service container specs and enforced id-only validation for secret payloads at the client boundary.
+- Added `view` support to service-account listing.
+- Extended service runtime parsing to surface startup errors and structured lifecycle events.
+- Updated service-spec and memory-client tests to cover the new container secret and runtime fields.
+
+## [0.45.1]
+- `listServiceAccounts` now accepts a `view` option and forwards it to the service-account listing endpoint.
+
 ## [0.45.0]
 - Added `pull_secret` to container specs and enforced id-only secret validation at the client boundary, breaking older named secret payloads.
 - Extended service runtime state parsing to include startup errors and lifecycle events.
