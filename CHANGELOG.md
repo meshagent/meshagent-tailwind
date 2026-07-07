@@ -1,3 +1,6 @@
+## [0.46.0]
+- Stability
+
 ## [0.45.9]
 - The TypeScript services client now exposes `listWithState()` with typed `ServiceRuntimeState`, `ServiceRuntimeStatus`, and `ServicePortRuntimeState`, including per-port liveness.
 - The React dev services view now shows a Ports column with readiness indicators for each exposed port.
