@@ -1,3 +1,6 @@
+## [0.46.1]
+- Breaking change: `ServicesClient.list()` now returns the combined services-and-runtime-state result instead of a plain service array, matching the server response shape.
+
 ## [0.46.0]
 - Stability
 
