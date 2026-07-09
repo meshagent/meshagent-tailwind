@@ -1,5 +1,14 @@
+## [0.46.2]
+- Stability
+
+## [0.46.1]
+- Breaking change: `ServicesClient.list()` now returns the combined services-and-runtime-state result instead of a plain service array, matching the server response shape.
+
+## [0.46.0]
+- Stability
+
 ## [0.45.9]
-- The TypeScript services client now exposes `listWithState()` with typed `ServiceRuntimeState`, `ServiceRuntimeStatus`, and `ServicePortRuntimeState`, including per-port liveness.
+- The TypeScript services client now exposes `list()` with typed `ServiceRuntimeState`, `ServiceRuntimeStatus`, and `ServicePortRuntimeState`, including per-port liveness.
 - The React dev services view now shows a Ports column with readiness indicators for each exposed port.
 - Breaking change: `SecretVersion.encryption_key_id` was removed from the generated TypeScript client model.
 
