@@ -1,3 +1,6 @@
+## [0.46.4]
+- Stability
+
 ## [0.46.3]
 - `LivekitProtocolChannel.sendData` now clones outgoing `Uint8Array` payloads before publishing, avoiding shared-buffer mutation issues.
 
