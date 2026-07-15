@@ -10,6 +10,7 @@ import type { AgentToolChoice } from "./agent-thread";
 import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor";
 import { DatasetAgentThread } from "./dataset-agent-thread";
 import type { DatasetThreadRowsLoader } from "./dataset-agent-thread";
+import type { ChatFeedWidget } from "./chat-feed-widget";
 import { MultiThreadView } from "./multi-thread-view";
 
 export interface ThreadViewProps {
@@ -32,6 +33,7 @@ export interface ThreadViewProps {
     onSelectedThreadResolved?: (path: string | null, displayName: string | null) => void;
     newThreadResetVersion?: number;
     clientToolkits?: ClientToolkitDescription[];
+    chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     threadSource?: "session" | "dataset";
@@ -83,6 +85,7 @@ export function ThreadView({
     onSelectedThreadResolved,
     newThreadResetVersion = 0,
     clientToolkits,
+    chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
     threadSource = "session",
@@ -105,6 +108,7 @@ export function ThreadView({
                     emptyStateTitle={emptyStateTitle}
                     emptyStateDescription={emptyStateDescription}
                     clientToolkits={clientToolkits}
+                    chatFeedWidgets={chatFeedWidgets}
                     toolChoice={toolChoice}
                     collapseMessages={collapseMessages} />
             );
@@ -120,6 +124,7 @@ export function ThreadView({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages} />
         );
@@ -143,6 +148,7 @@ export function ThreadView({
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
             clientToolkits={clientToolkits}
+            chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
             builder={(threadPath) => (
                 threadSource === "dataset" ? (
@@ -156,6 +162,7 @@ export function ThreadView({
                         emptyStateTitle={startNewThreadTitle}
                         emptyStateDescription={startNewThreadDescription}
                         clientToolkits={clientToolkits}
+                        chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages} />
                 ) : (
@@ -168,6 +175,7 @@ export function ThreadView({
                         emptyStateTitle={startNewThreadTitle}
                         emptyStateDescription={startNewThreadDescription}
                         clientToolkits={clientToolkits}
+                        chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages} />
                 )

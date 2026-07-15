@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
-import type { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
+import { ErrorContent, JsonContent } from "@meshagent/meshagent";
+import type { Content, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 
 import {
     AgentFileContentDelta,
@@ -67,6 +68,9 @@ import { ChatScroller } from "./chat-scroller";
 import { ChatTypingIndicator } from "./chat-typing-indicator";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
 import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
+import type { ChatFeedWidget, ToolCallStatus } from "./chat-feed-widget.js";
+import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
+import { ChatFeedWidgetView } from "./chat-feed-widget-view.js";
 
 type FeedRole = "user" | "agent";
 type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation" | "event" | "error";
@@ -85,6 +89,8 @@ interface FeedItem {
     tool?: string;
     command?: string;
     argumentsText?: string;
+    input?: Record<string, unknown>;
+    output?: Content;
     logs?: string[];
     result?: string;
     stdout?: string;
@@ -312,6 +318,7 @@ export interface AgentThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
 }
@@ -348,7 +355,7 @@ interface ToolMessage extends ItemMessage {
 }
 
 interface ToolEndedMessage extends ToolMessage {
-    result?: unknown;
+    result?: Content;
     error?: AgentError;
 }
 
@@ -635,7 +642,9 @@ function contentText(value: unknown): string | undefined {
 
 function shellOutputFields(message: ToolEndedMessage): Pick<FeedItem, "result" | "stdout" | "stderr"> {
     const result = message.result;
-    const resultObject = result != null && typeof result === "object" ? result as Record<string, unknown> : undefined;
+    const resultObject = result instanceof JsonContent && typeof result.json === "object" && result.json !== null && !Array.isArray(result.json)
+        ? result.json as Record<string, unknown>
+        : undefined;
     return {
         result: contentText(result),
         stdout: resultObject == null ? undefined : contentText(resultObject["stdout"]),
@@ -927,6 +936,8 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 tool: message.tool ?? existing?.tool,
                 command,
                 argumentsText,
+                input: message.arguments ?? existing?.input,
+                output: isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) ? message.result : existing?.output,
                 logs: existing?.logs,
                 result: endedFields.result ?? existing?.result,
                 stdout: endedFields.stdout ?? existing?.stdout,
@@ -948,6 +959,8 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 tool: existing?.tool,
                 command: existing?.command,
                 argumentsText: appendToolArgumentsDelta(existing, message.delta),
+                input: existing?.input,
+                output: existing?.output,
                 logs: existing?.logs,
                 result: existing?.result,
                 stdout: existing?.stdout,
@@ -969,6 +982,8 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 tool: existing?.tool,
                 command: existing?.command,
                 argumentsText: existing?.argumentsText,
+                input: existing?.input,
+                output: existing?.output,
                 logs: appendToolLogs(existing, message.lines),
                 result: existing?.result,
                 stdout: existing?.stdout,
@@ -989,6 +1004,7 @@ function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
                 toolkit: message.toolkit,
                 tool: message.tool,
                 argumentsText,
+                input: message.arguments,
                 state: "queued",
             });
         } else if (isTypedMessage<SecretRequestedMessage>(message, AgentSecretRequested)) {
@@ -1707,11 +1723,13 @@ function ExpandedDetailGroup({
     item,
     localParticipantName,
     agentName,
+    chatFeedWidgetsByName,
 }: {
     room: RoomClient;
     item: DetailGroupFeedItem;
     localParticipantName: string;
     agentName?: string;
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
 }): ReactElement {
     return (
         <div className="flex flex-col gap-3">
@@ -1731,6 +1749,7 @@ function ExpandedDetailGroup({
                     previous={index > 0 ? item.messages[index - 1] : null}
                     localParticipantName={localParticipantName}
                     agentName={agentName}
+                    chatFeedWidgetsByName={chatFeedWidgetsByName}
                     forceHideHeader
                 />
             ))}
@@ -1785,6 +1804,7 @@ function ThreadMessageView({
     previous,
     localParticipantName,
     agentName,
+    chatFeedWidgetsByName,
     forceHideHeader = false,
 }: {
     room: RoomClient;
@@ -1792,6 +1812,7 @@ function ThreadMessageView({
     previous: FeedItem | null;
     localParticipantName: string;
     agentName?: string;
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
     forceHideHeader?: boolean;
 }): ReactElement | null {
     if (message.kind === "error") {
@@ -1822,6 +1843,30 @@ function ThreadMessageView({
                     logs={message.logs}
                     title={message.failed === true ? "Terminal Error" : "Terminal"}
                     className={message.failed === true ? "border-destructive/40" : undefined}
+                />
+            );
+        }
+        const widget = message.toolkit === "client" && message.tool != null
+            ? chatFeedWidgetsByName.get(message.tool)
+            : undefined;
+        if (widget != null) {
+            const status: ToolCallStatus = message.failed === true || message.state === "failed"
+                ? "failed"
+                : message.state === "completed"
+                    ? "completed"
+                    : message.state === "in_progress"
+                        ? "in_progress"
+                        : "queued";
+            return (
+                <ChatFeedWidgetView
+                    key={[message.id, status].join(":")}
+                    widget={widget}
+                    toolCall={{
+                        status,
+                        input: message.input ?? {},
+                        output: message.output,
+                    }}
+                    fallback={<ToolCallLine message={message} />}
                 />
             );
         }
@@ -1926,6 +1971,102 @@ function normalizeAgentAttachmentUrl(path: string): string | null {
     return roomPath === "" ? null : `room:///${roomPath}`;
 }
 
+interface ChatFeedWidgetCallOverride {
+    status: ToolCallStatus;
+    output?: Content;
+}
+
+const handledChatFeedWidgetRequests = new WeakMap<ChatThreadSession, Set<string>>();
+const initializedChatFeedWidgetSessions = new WeakSet<ChatThreadSession>();
+const replayingChatFeedWidgetSessions = new WeakSet<ChatThreadSession>();
+
+function handledRequestsForSession(session: ChatThreadSession): Set<string> {
+    const existing = handledChatFeedWidgetRequests.get(session);
+    if (existing != null) {
+        return existing;
+    }
+    const created = new Set<string>();
+    handledChatFeedWidgetRequests.set(session, created);
+    return created;
+}
+
+function chatFeedWidgetCallKey(threadPath: string, itemId: string): string {
+    return [threadPath, itemId].join("\u0000");
+}
+
+function processChatFeedWidgetRequests({
+    session,
+    widgetsByName,
+    updateCall,
+}: {
+    session: ChatThreadSession;
+    widgetsByName: ReadonlyMap<string, ChatFeedWidget>;
+    updateCall: (callKey: string, override: ChatFeedWidgetCallOverride) => void;
+}): void {
+    if (widgetsByName.size === 0) {
+        return;
+    }
+    const requests = session.messages
+        .map((event) => event.message)
+        .filter((message): message is InstanceType<typeof AgentClientToolCallRequested> => (
+            message instanceof AgentClientToolCallRequested &&
+            message.toolkit === "client" &&
+            widgetsByName.has(message.tool)
+        ));
+    const handledRequests = handledRequestsForSession(session);
+    if (!initializedChatFeedWidgetSessions.has(session)) {
+        initializedChatFeedWidgetSessions.add(session);
+        if (session.isLoading || session.loadState.requestMessageId != null) {
+            replayingChatFeedWidgetSessions.add(session);
+        }
+    }
+    if (replayingChatFeedWidgetSessions.has(session)) {
+        for (const request of requests) {
+            handledRequests.add(request.requestId);
+        }
+        if (!session.isLoading) {
+            replayingChatFeedWidgetSessions.delete(session);
+        }
+        return;
+    }
+
+    for (const request of requests) {
+        if (handledRequests.has(request.requestId)) {
+            continue;
+        }
+        const widget = widgetsByName.get(request.tool);
+        if (widget == null) {
+            continue;
+        }
+        handledRequests.add(request.requestId);
+        updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), { status: "in_progress" });
+        void (async () => {
+            let response: Content;
+            let status: ToolCallStatus;
+            try {
+                response = await widget.execute(request.arguments);
+                status = response instanceof ErrorContent ? "failed" : "completed";
+            } catch (error) {
+                response = new ErrorContent({ text: describeError(error) });
+                status = "failed";
+            }
+            updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), { status, output: response });
+            try {
+                await session.respondToClientToolCall({
+                    turnId: request.turnId,
+                    requestId: request.requestId,
+                    response,
+                });
+            } catch (error) {
+                updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
+                    status: "failed",
+                    output: new ErrorContent({ text: describeError(error) }),
+                });
+            }
+        })();
+    }
+}
+
 export function AgentThread({
     room,
     path,
@@ -1935,6 +2076,7 @@ export function AgentThread({
     emptyStateTitle = "Chat to get started",
     emptyStateDescription,
     clientToolkits,
+    chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
 }: AgentThreadProps): ReactElement {
@@ -1942,14 +2084,41 @@ export function AgentThread({
     const [sendError, setSendError] = useState<string | null>(null);
     const [version, setVersion] = useState(0);
     const [expandedDetailGroupIds, setExpandedDetailGroupIds] = useState<Set<string>>(() => new Set<string>());
+    const [chatFeedWidgetCallOverrides, setChatFeedWidgetCallOverrides] = useState<Map<string, ChatFeedWidgetCallOverride>>(() => new Map());
     const sessionRef = useRef<ChatThreadSession | null>(null);
+    const mountedRef = useRef(true);
     const ownsChatClient = chatClient == null;
     const activeChatClient = useMemo<BaseChatClient>(
         () => chatClient ?? new MessagingChatClient({ room, agentName }),
         [agentName, chatClient, room],
     );
+    const resolvedClientToolkits = useMemo(
+        () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets),
+        [chatFeedWidgets, clientToolkits],
+    );
+    const chatFeedWidgetsByName = useMemo(
+        () => new Map((chatFeedWidgets ?? []).map((widget) => [widget.name, widget])),
+        [chatFeedWidgets],
+    );
+    const updateChatFeedWidgetCall = useCallback((callKey: string, override: ChatFeedWidgetCallOverride) => {
+        if (!mountedRef.current) {
+            return;
+        }
+        setChatFeedWidgetCallOverrides((current) => {
+            const next = new Map(current);
+            next.set(callKey, override);
+            return next;
+        });
+    }, []);
     const localParticipantName = getParticipantName(room.localParticipant);
     const agentParticipant = activeChatClient.agentParticipant() ?? findAgentParticipant(room, agentName);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
 
     useEffect(() => {
         void activeChatClient.start();
@@ -1969,6 +2138,11 @@ export function AgentThread({
         const session = activeChatClient.openThread(path);
         sessionRef.current = session;
         const handleChange = () => {
+            processChatFeedWidgetRequests({
+                session,
+                widgetsByName: chatFeedWidgetsByName,
+                updateCall: updateChatFeedWidgetCall,
+            });
             setVersion((current) => current + 1);
         };
         session.addListener(handleChange);
@@ -1979,11 +2153,25 @@ export function AgentThread({
                 sessionRef.current = null;
             }
         };
-    }, [activeChatClient, path]);
+    }, [activeChatClient, chatFeedWidgetsByName, path, updateChatFeedWidgetCall]);
 
     const normalizedPath = path.trim();
     const session = sessionRef.current?.threadPath === normalizedPath ? sessionRef.current : null;
-    const feedItems = useMemo(() => feedFromSession(session), [session, version]);
+
+    const feedItems = useMemo(() => feedFromSession(session).map((item) => {
+        const override = session == null
+            ? undefined
+            : chatFeedWidgetCallOverrides.get(chatFeedWidgetCallKey(session.threadPath, item.id));
+        if (override == null || item.kind !== "tool_call" || (item.state === "completed" || item.state === "failed")) {
+            return item;
+        }
+        return {
+            ...item,
+            state: override.status,
+            failed: override.status === "failed",
+            output: override.output ?? item.output,
+        };
+    }), [chatFeedWidgetCallOverrides, session, version]);
     const showThreadLoading = (session === null || session.isLoading) && feedItems.length === 0;
     const renderedFeedItems = useMemo(() => (
         collapseMessages
@@ -2041,7 +2229,7 @@ export function AgentThread({
                 turnId,
                 steer: status?.mode === "steerable" && turnId != null,
                 senderName: localParticipantName.trim() || undefined,
-                clientToolkits,
+                clientToolkits: resolvedClientToolkits,
                 toolChoice: toolChoice == null ? undefined : new ToolChoice({ toolkitName: toolChoice.toolkitName, toolName: toolChoice.toolName }),
             });
             setSendError(null);
@@ -2049,7 +2237,7 @@ export function AgentThread({
         } catch (error) {
             setSendError(describeError(error));
         }
-    }, [agentParticipant, chatClient, clientToolkits, localParticipantName, status?.mode, toolChoice, turnId]);
+    }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, toolChoice, turnId]);
 
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;
@@ -2103,6 +2291,7 @@ export function AgentThread({
                                             item={item}
                                             localParticipantName={localParticipantName}
                                             agentName={agentName}
+                                            chatFeedWidgetsByName={chatFeedWidgetsByName}
                                         />
                                     ) : (
                                         <DetailGroupLine
@@ -2117,6 +2306,7 @@ export function AgentThread({
                                         previous={previousFeedItemById.get(item.id) ?? null}
                                         localParticipantName={localParticipantName}
                                         agentName={agentName}
+                                        chatFeedWidgetsByName={chatFeedWidgetsByName}
                                     />
                                 )}
                             </div>

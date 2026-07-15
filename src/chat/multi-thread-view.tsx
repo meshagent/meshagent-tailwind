@@ -5,6 +5,7 @@ import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshag
 
 import { NewChatThread } from "./new-chat-thread.js";
 import type { AgentToolChoice } from "./agent-thread.js";
+import type { ChatFeedWidget } from "./chat-feed-widget.js";
 
 export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
 
@@ -24,6 +25,7 @@ export interface MultiThreadViewProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
 }
 
@@ -49,6 +51,7 @@ export function MultiThreadView({
     emptyStateTitle = "Start a new thread",
     emptyStateDescription = "Connect with this agent and your team",
     clientToolkits,
+    chatFeedWidgets,
     toolChoice,
 }: MultiThreadViewProps): ReactElement {
     const controlledSelectedThreadPath = selectedThreadPath !== undefined
@@ -112,6 +115,7 @@ export function MultiThreadView({
             emptyStateTitle={emptyStateTitle}
             emptyStateDescription={emptyStateDescription}
             clientToolkits={clientToolkits}
+            chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
         />
     );

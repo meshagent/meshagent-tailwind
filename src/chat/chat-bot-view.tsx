@@ -9,6 +9,7 @@ import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshag
 
 import type { AgentToolChoice } from "./agent-thread";
 import type { DatasetThreadRowsLoader } from "./dataset-agent-thread";
+import type { ChatFeedWidget } from "./chat-feed-widget";
 import { ChatThreadDisplayMode } from "./conversation-descriptor";
 
 import { cn } from "../lib/utils";
@@ -51,6 +52,7 @@ export interface ChatBotViewProps {
     threadListWidth?: number;
     threadListCollapsedHeight?: number;
     clientToolkits?: ClientToolkitDescription[];
+    chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     threadSource?: "session" | "dataset";
@@ -112,6 +114,7 @@ export function ChatBotView({
     threadListWidth = 280,
     threadListCollapsedHeight = 220,
     clientToolkits,
+    chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
     threadSource = "session",
@@ -231,6 +234,7 @@ export function ChatBotView({
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
             clientToolkits={clientToolkits}
+            chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
             collapseMessages={collapseMessages}
             threadSource={threadSource}

@@ -4,6 +4,8 @@ import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 import { MessagingChatClient, ToolChoice } from "@meshagent/meshagent-agents";
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 import type { AgentToolChoice } from "./agent-thread.js";
+import type { ChatFeedWidget } from "./chat-feed-widget.js";
+import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
 import { defaultThreadDisplayNameFromPath } from "./conversation-descriptor.js";
 
 import { ChatInput } from "./chat-input.js";
@@ -27,6 +29,7 @@ export interface NewChatThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
 }
 
@@ -135,6 +138,7 @@ export function NewChatThread({
     emptyStateTitle,
     emptyStateDescription,
     clientToolkits,
+    chatFeedWidgets,
     toolChoice,
 }: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
@@ -152,6 +156,10 @@ export function NewChatThread({
         [agentName, chatClient, room],
     );
     const [clientVersion, setClientVersion] = useState(0);
+    const resolvedClientToolkits = useMemo(
+        () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets),
+        [chatFeedWidgets, clientToolkits],
+    );
 
     useEffect(() => {
         return () => {
@@ -246,7 +254,7 @@ export function NewChatThread({
                 message: text,
                 attachments: newThreadAttachments.map((attachment) => attachment.path),
                 senderName: getParticipantName(room.localParticipant) || undefined,
-                clientToolkits,
+                clientToolkits: resolvedClientToolkits,
                 toolChoice: toolChoice == null ? undefined : new ToolChoice({ toolkitName: toolChoice.toolkitName, toolName: toolChoice.toolName }),
             });
 
@@ -281,7 +289,7 @@ export function NewChatThread({
         creatingNewThread,
         newThreadAttachments,
         newThreadDraft,
-        clientToolkits,
+        resolvedClientToolkits,
         toolChoice,
         onThreadPathChanged,
         onThreadResolved,

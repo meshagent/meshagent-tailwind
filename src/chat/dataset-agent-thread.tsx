@@ -23,6 +23,7 @@ import {
 import type { ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
 import { AgentThread, type AgentToolChoice } from "./agent-thread.js";
+import type { ChatFeedWidget } from "./chat-feed-widget.js";
 
 export type DatasetThreadRow = Record<string, unknown>;
 export type DatasetThreadRows = Iterable<DatasetThreadRow>;
@@ -49,6 +50,7 @@ export interface DatasetAgentThreadProps {
     emptyStateTitle?: string;
     emptyStateDescription?: string;
     clientToolkits?: ClientToolkitDescription[];
+    chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     retryMissingTableMs?: number;
@@ -135,6 +137,7 @@ export function DatasetAgentThread({
     emptyStateTitle,
     emptyStateDescription,
     clientToolkits,
+    chatFeedWidgets,
     toolChoice,
     collapseMessages,
     retryMissingTableMs = 500,
@@ -230,6 +233,7 @@ export function DatasetAgentThread({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}
             />

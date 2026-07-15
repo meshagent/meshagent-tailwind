@@ -1,4 +1,6 @@
 export * from './chat/chat-bot-view.js';
+export { ChatFeedWidget } from './chat/chat-feed-widget.js';
+export type { ToolCall, ToolCallStatus } from './chat/chat-feed-widget.js';
 export * from './chat/chat-hooks.js';
 export * from './chat/chat-input.js';
 export * from './chat/chat-message.js';
