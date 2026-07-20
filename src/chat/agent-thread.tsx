@@ -1110,8 +1110,18 @@ function canRenderAsFinalAnswer(message: FeedItem): boolean {
     return message.text.trim() !== "" || message.attachments.length > 0 || message.image != null;
 }
 
-function isIntrinsicDetail(message: FeedItem): boolean {
-    return message.kind === "reasoning" || message.kind === "event" || (message.kind === "tool_call" && message.failed !== true) || (canCollapseAsCommentary(message) && message.phase === "commentary");
+function isChatFeedWidgetCall(message: FeedItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
+    return message.kind === "tool_call" &&
+        message.toolkit === "client" &&
+        message.tool != null &&
+        chatFeedWidgetsByName.has(message.tool);
+}
+
+function isIntrinsicDetail(message: FeedItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
+    return message.kind === "reasoning" ||
+        message.kind === "event" ||
+        (message.kind === "tool_call" && message.failed !== true && !isChatFeedWidgetCall(message, chatFeedWidgetsByName)) ||
+        (canCollapseAsCommentary(message) && message.phase === "commentary");
 }
 
 function nextUserMessageIndex(messages: FeedItem[], start: number): number | null {
@@ -1145,11 +1155,17 @@ function finalAgentMessageIndexForSegment(messages: FeedItem[], start: number, e
     return inferredFinalIndex;
 }
 
-function addDetailIndexesForSegment(messages: FeedItem[], start: number, end: number, detailIndexes: Set<number>): void {
+function addDetailIndexesForSegment(
+    messages: FeedItem[],
+    start: number,
+    end: number,
+    detailIndexes: Set<number>,
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
+): void {
     const finalAgentMessageIndex = finalAgentMessageIndexForSegment(messages, start, end);
     for (let index = start; index < end; index += 1) {
         const message = messages[index];
-        if (isIntrinsicDetail(message)) {
+        if (isIntrinsicDetail(message, chatFeedWidgetsByName)) {
             detailIndexes.add(index);
             continue;
         }
@@ -1225,13 +1241,19 @@ function detailGroupForMessages(messages: FeedItem[], nextMessage: FeedItem | nu
     };
 }
 
-function threadFeedItems(messages: FeedItem[], expandedIds: Set<string>, localParticipantName: string, agentName?: string): ThreadFeedItem[] {
+function threadFeedItems(
+    messages: FeedItem[],
+    expandedIds: Set<string>,
+    localParticipantName: string,
+    agentName: string | undefined,
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
+): ThreadFeedItem[] {
     const items: ThreadFeedItem[] = [];
     let index = 0;
     while (index < messages.length) {
         const segmentEnd = nextUserMessageIndex(messages, index + 1) ?? messages.length;
         const detailIndexes = new Set<number>();
-        addDetailIndexesForSegment(messages, index, segmentEnd, detailIndexes);
+        addDetailIndexesForSegment(messages, index, segmentEnd, detailIndexes, chatFeedWidgetsByName);
         const groupedMessages = [...detailIndexes]
             .sort((left, right) => left - right)
             .map((detailIndex) => messages[detailIndex]);
@@ -1815,6 +1837,8 @@ function ThreadMessageView({
     chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
     forceHideHeader?: boolean;
 }): ReactElement | null {
+    console.log(message.kind);
+
     if (message.kind === "error") {
         return (
             <div className="px-6 py-1 text-center text-sm text-destructive">
@@ -1846,17 +1870,17 @@ function ThreadMessageView({
                 />
             );
         }
-        const widget = message.toolkit === "client" && message.tool != null
-            ? chatFeedWidgetsByName.get(message.tool)
-            : undefined;
+
+        const widget = message.toolkit === "client" && message.tool != null ? chatFeedWidgetsByName.get(message.tool) : undefined;
+
         if (widget != null) {
             const status: ToolCallStatus = message.failed === true || message.state === "failed"
                 ? "failed"
-                : message.state === "completed"
-                    ? "completed"
+                : message.state === "completed" ? "completed"
                     : message.state === "in_progress"
                         ? "in_progress"
                         : "queued";
+
             return (
                 <ChatFeedWidgetView
                     key={[message.id, status].join(":")}
@@ -1866,8 +1890,7 @@ function ThreadMessageView({
                         input: message.input ?? {},
                         output: message.output,
                     }}
-                    fallback={<ToolCallLine message={message} />}
-                />
+                    fallback={<ToolCallLine message={message} />} />
             );
         }
         return <ToolCallLine message={message} />;
@@ -2003,9 +2026,11 @@ function processChatFeedWidgetRequests({
     widgetsByName: ReadonlyMap<string, ChatFeedWidget>;
     updateCall: (callKey: string, override: ChatFeedWidgetCallOverride) => void;
 }): void {
+
     if (widgetsByName.size === 0) {
         return;
     }
+
     const requests = session.messages
         .map((event) => event.message)
         .filter((message): message is InstanceType<typeof AgentClientToolCallRequested> => (
@@ -2013,6 +2038,7 @@ function processChatFeedWidgetRequests({
             message.toolkit === "client" &&
             widgetsByName.has(message.tool)
         ));
+
     const handledRequests = handledRequestsForSession(session);
     if (!initializedChatFeedWidgetSessions.has(session)) {
         initializedChatFeedWidgetSessions.add(session);
@@ -2020,6 +2046,7 @@ function processChatFeedWidgetRequests({
             replayingChatFeedWidgetSessions.add(session);
         }
     }
+
     if (replayingChatFeedWidgetSessions.has(session)) {
         for (const request of requests) {
             handledRequests.add(request.requestId);
@@ -2039,24 +2066,36 @@ function processChatFeedWidgetRequests({
             continue;
         }
         handledRequests.add(request.requestId);
-        updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), { status: "in_progress" });
+
+        updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
+          status: "in_progress"
+        });
+
         void (async () => {
             let response: Content;
             let status: ToolCallStatus;
+
             try {
                 response = await widget.execute(request.arguments);
                 status = response instanceof ErrorContent ? "failed" : "completed";
+
             } catch (error) {
                 response = new ErrorContent({ text: describeError(error) });
                 status = "failed";
             }
-            updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), { status, output: response });
+
+            updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
+              status,
+              output: response,
+            });
+
             try {
                 await session.respondToClientToolCall({
                     turnId: request.turnId,
                     requestId: request.requestId,
                     response,
                 });
+
             } catch (error) {
                 updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
                     status: "failed",
@@ -2175,9 +2214,9 @@ export function AgentThread({
     const showThreadLoading = (session === null || session.isLoading) && feedItems.length === 0;
     const renderedFeedItems = useMemo(() => (
         collapseMessages
-            ? threadFeedItems(feedItems, expandedDetailGroupIds, localParticipantName, agentName)
+            ? threadFeedItems(feedItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
             : feedItems
-    ), [agentName, collapseMessages, expandedDetailGroupIds, feedItems, localParticipantName]);
+    ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, feedItems, localParticipantName]);
     const status = useMemo(() => latestThreadStatus(session), [session, version]);
     const usage = useMemo(() => latestUsageSnapshot(session), [session, version]);
     const statusText = status?.status?.trim() || null;
@@ -2277,13 +2316,13 @@ export function AgentThread({
                         currentUserId="user"
                         getMessageAuthorId={(item) => item.kind === "detail_group" ? "agent" : item.role}
                         messages={renderedFeedItemsNewestFirst}
-                        renderMessage={(item) => (
-                            <div
-                                className={cn(
-                                    "mx-auto w-full max-w-[912px] px-1 py-3",
-                                    item.id === firstRenderedItemId ? "pt-6" : null,
-                                    item.id === lastRenderedItemId ? (statusText ? "pb-24" : "pb-6") : null,
-                                )}>
+                        renderMessage={(item) => {
+                          return (
+                            <div className={cn(
+                                "mx-auto w-full max-w-[912px] px-1 py-3",
+                                item.id === firstRenderedItemId ? "pt-6" : null,
+                                item.id === lastRenderedItemId ? (statusText ? "pb-24" : "pb-6") : null)}>
+
                                 {item.kind === "detail_group" ? (
                                     item.expanded ? (
                                         <ExpandedDetailGroup
@@ -2291,13 +2330,9 @@ export function AgentThread({
                                             item={item}
                                             localParticipantName={localParticipantName}
                                             agentName={agentName}
-                                            chatFeedWidgetsByName={chatFeedWidgetsByName}
-                                        />
+                                            chatFeedWidgetsByName={chatFeedWidgetsByName} />
                                     ) : (
-                                        <DetailGroupLine
-                                            item={item}
-                                            onToggle={() => toggleDetailGroup(item.id)}
-                                        />
+                                        <DetailGroupLine item={item} onToggle={() => toggleDetailGroup(item.id)} />
                                     )
                                 ) : (
                                     <ThreadMessageView
@@ -2310,7 +2345,8 @@ export function AgentThread({
                                     />
                                 )}
                             </div>
-                        )} />
+                          );
+                        }} />
                 )}
 
                 {statusText ? (

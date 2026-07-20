@@ -1,7 +1,7 @@
+import type { ReactElement } from "react";
 import { Tool } from "@meshagent/meshagent";
 import type { Content } from "@meshagent/meshagent";
 import { ClientToolkitDescription } from "@meshagent/meshagent-agents";
-import type { ReactElement } from "react";
 
 export type ToolCallStatus = "queued" | "in_progress" | "completed" | "failed";
 

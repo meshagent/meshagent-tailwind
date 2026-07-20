@@ -130,7 +130,6 @@ describe("ChatFeedWidget", () => {
                     chatClient={chatClient}
                     agentName="codex"
                     chatFeedWidgets={[widget]}
-                    collapseMessages={false}
                 />
             </StrictMode>,
         );

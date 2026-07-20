@@ -9,7 +9,8 @@ import type { ReactElement, ReactNode } from "react";
 
 import type { RoomClient } from "@meshagent/meshagent";
 import "@meshagent/meshagent-react";
-import type { LivekitConnectionInfo } from "@meshagent/meshagent-react";
+import "@meshagent/meshagent-livekit";
+import type { LivekitConnectionInfo } from "@meshagent/meshagent-livekit";
 
 import {
 	ConnectionState,
