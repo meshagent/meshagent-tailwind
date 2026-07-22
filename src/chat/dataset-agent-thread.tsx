@@ -4,18 +4,17 @@ import type { ReactElement } from "react";
 import type { RoomClient } from "@meshagent/meshagent";
 import {
     BaseChatClient,
-    DatasetChatClient,
     MessagingChatClient,
-    parseDatasetThreadRef,
 } from "@meshagent/meshagent-agents";
+import type { ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import { DatasetChatClient, parseDatasetThreadRef } from "./dataset-chat-client.js";
 import type {
-    ClientToolkitDescription,
     DatasetThreadRow,
     DatasetThreadRows,
     DatasetThreadRowsLoader,
     DatasetThreadRowsLoaderArgs,
     DatasetThreadRef,
-} from "@meshagent/meshagent-agents";
+} from "./dataset-chat-client.js";
 
 import { AgentThread, type AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";

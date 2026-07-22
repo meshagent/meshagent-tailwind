@@ -1,4 +1,5 @@
 ## [0.47.0]
+- Moved dataset-thread hydration and chat timeline reduction into the Tailwind UI package so `meshagent-agents-ts` can match the Dart agents API.
 - Improved TypeScript messaging clients so room delivery order and startup/presence behavior stay consistent.
 - Moved managed-agent client routing onto the Rust tunnel path and hardened agent chat-client event handling.
 - Added a `test:rust-process-e2e` entry point for the agents-ts package and expanded live chat/process-agent coverage.

@@ -891,15 +891,12 @@ describe("AgentThread", () => {
             chatClient.handleAgentMessage(new AgentSecretRequested({
                 threadId: "thread-agent-events",
                 turnId: "turn-agent-events",
-                itemId: "secret-request",
                 requestId: "secret-1",
-                name: "OPENAI_API_KEY",
-                scope: "project",
+                secretName: "OPENAI_API_KEY",
             }));
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "thread-agent-events",
                 turnId: "turn-agent-events",
-                itemId: "client-tool-request",
                 requestId: "client-tool-1",
                 toolkit: "ask_user",
                 tool: "ask",
@@ -917,7 +914,7 @@ describe("AgentThread", () => {
         });
 
         expect(await screen.findByText("Model changed to openai / gpt-5.1 (alloy)")).toBeTruthy();
-        expect(await screen.findByText("Secret requested: OPENAI_API_KEY (project)")).toBeTruthy();
+        expect(await screen.findByText("Secret requested: OPENAI_API_KEY")).toBeTruthy();
         expect(await screen.findByText("Waiting for client tool ask_user.ask")).toBeTruthy();
         expect(screen.getAllByAltText("Generated image")).toHaveLength(2);
     });

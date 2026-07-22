@@ -5,18 +5,23 @@ import { ErrorContent } from "@meshagent/meshagent";
 import type { Content, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 
 import {
+    AgentClientToolCallRequested,
+    AgentFileContent,
+    AgentThreadStatus,
+    AgentToolCallEnded,
     MessagingChatClient,
-    ToolChoice,
+    TurnEnded,
+    TurnStarted,
 } from "@meshagent/meshagent-agents";
 
 import type {
-    AgentUsageSnapshot,
     BaseChatClient,
-    ChatThreadItem,
     ChatThreadSession,
     ClientToolkitDescription,
 } from "@meshagent/meshagent-agents";
-export { AgentUsageSnapshot, shouldReplaceAgentUsageSnapshot } from "@meshagent/meshagent-agents";
+import { buildChatThreadTimeline } from "./chat-thread-timeline.js";
+import type { AgentUsageSnapshot, ChatThreadItem } from "./chat-thread-timeline.js";
+export { AgentUsageSnapshot, shouldReplaceAgentUsageSnapshot } from "./chat-thread-timeline.js";
 
 import { ChevronDown, ChevronRight, Download, FileText, ImageOff, Terminal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -1053,7 +1058,10 @@ function processChatFeedWidgetRequests({
         return;
     }
 
-    const requests = session.clientToolCallRequests.filter((message) => (
+    const requests = session.messages
+        .map((event) => event.message)
+        .filter((message): message is InstanceType<typeof AgentClientToolCallRequested> => message instanceof AgentClientToolCallRequested)
+        .filter((message) => (
         message.toolkit === "client" && widgetsByName.has(message.tool)
     ));
 
@@ -1071,10 +1079,15 @@ function processChatFeedWidgetRequests({
         }
 
         replayingChatFeedWidgetSessions.delete(session);
-        const completedItemIds = session.completedClientToolCallItemIds;
+        const completedItemIds = new Set(session.messages
+            .map((event) => event.message)
+            .filter((message): message is InstanceType<typeof AgentToolCallEnded> => (
+                message instanceof AgentToolCallEnded && message.toolkit === "client"
+            ))
+            .map((message) => message.itemId));
 
         for (const request of requests) {
-            if (completedItemIds.has(request.itemId)) {
+            if (completedItemIds.has(request.requestId)) {
                 handledRequests.add(request.requestId);
             }
         }
@@ -1088,9 +1101,13 @@ function processChatFeedWidgetRequests({
         if (widget == null) {
             continue;
         }
+        if (!session.claimClientToolCall(request.requestId)) {
+            handledRequests.add(request.requestId);
+            continue;
+        }
         handledRequests.add(request.requestId);
 
-        updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
+        updateCall(chatFeedWidgetCallKey(session.threadPath, request.requestId), {
           status: "in_progress"
         });
 
@@ -1107,7 +1124,7 @@ function processChatFeedWidgetRequests({
                 status = "failed";
             }
 
-            updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
+            updateCall(chatFeedWidgetCallKey(session.threadPath, request.requestId), {
               status,
               output: response,
             });
@@ -1118,9 +1135,11 @@ function processChatFeedWidgetRequests({
                     requestId: request.requestId,
                     response,
                 });
+                session.finishClientToolCall(request.requestId, { responseSent: true });
 
             } catch (error) {
-                updateCall(chatFeedWidgetCallKey(session.threadPath, request.itemId), {
+                session.finishClientToolCall(request.requestId, { responseSent: false });
+                updateCall(chatFeedWidgetCallKey(session.threadPath, request.requestId), {
                     status: "failed",
                     output: new ErrorContent({ text: describeError(error) }),
                 });
@@ -1139,7 +1158,6 @@ export function AgentThread({
     emptyStateDescription,
     clientToolkits,
     chatFeedWidgets,
-    toolChoice,
     collapseMessages = true,
 }: AgentThreadProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
@@ -1219,7 +1237,9 @@ export function AgentThread({
 
     const normalizedPath = path.trim();
     const session = sessionRef.current?.threadPath === normalizedPath ? sessionRef.current : null;
-    const timeline = useMemo(() => session?.timeline ?? null, [session, version]);
+    const timeline = useMemo(() => (
+        session == null ? null : buildChatThreadTimeline(session.messages, session.pendingInputs)
+    ), [session, version]);
 
     const timelineItems = useMemo(() => (timeline?.items ?? []).map((item) => {
         const override = session == null
@@ -1241,7 +1261,23 @@ export function AgentThread({
             ? groupThreadItems(timelineItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
             : timelineItems
     ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, timelineItems, localParticipantName]);
-    const status = session?.threadStatus ?? null;
+    const status = useMemo(() => {
+        if (session == null) return null;
+        let current: InstanceType<typeof AgentThreadStatus> | null = null;
+        for (const event of session.messages) {
+            const message = event.message;
+            if (message instanceof AgentThreadStatus) {
+                current = stringValue(message.status) == null ? null : message;
+                continue;
+            }
+            if (message instanceof TurnStarted || message instanceof TurnEnded) {
+                const statusTurnId = stringValue(current?.turnId);
+                const messageTurnId = stringValue(message.turnId);
+                if (statusTurnId == null || statusTurnId === messageTurnId) current = null;
+            }
+        }
+        return current;
+    }, [session, version]);
     const usage = timeline?.usage ?? null;
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
@@ -1288,19 +1324,18 @@ export function AgentThread({
             await openSession.sendText({
                 messageId: message.id,
                 text: message.text,
-                attachments: normalizedAttachments,
+                attachments: normalizedAttachments.map((url) => new AgentFileContent({ url })),
                 turnId,
                 steer: status?.mode === "steerable" && turnId != null,
                 senderName: localParticipantName.trim() || undefined,
                 clientToolkits: resolvedClientToolkits,
-                toolChoice: toolChoice == null ? undefined : new ToolChoice({ toolkitName: toolChoice.toolkitName, toolName: toolChoice.toolName }),
             });
             setSendError(null);
             setVersion((current) => current + 1);
         } catch (error) {
             setSendError(describeError(error));
         }
-    }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, toolChoice, turnId]);
+    }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, turnId]);
 
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;

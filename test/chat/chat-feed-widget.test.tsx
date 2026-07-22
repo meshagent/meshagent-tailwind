@@ -140,7 +140,6 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "thread-live-widget",
                 turnId: "turn-live-widget",
-                itemId: "item-live-widget",
                 requestId: "request-live-widget",
                 toolkit: "client",
                 tool: "weather",
@@ -174,7 +173,6 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "thread-loading-widget",
                 turnId: "turn-loading-widget",
-                itemId: "item-loading-widget",
                 requestId: "request-loading-widget",
                 toolkit: "client",
                 tool: "weather",
@@ -219,7 +217,6 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "thread-failed-widget",
                 turnId: "turn-failed-widget",
-                itemId: "item-failed-widget",
                 requestId: "request-failed-widget",
                 toolkit: "client",
                 tool: "weather",
@@ -251,7 +248,6 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "thread-restored-widget",
                 turnId: "turn-restored-widget",
-                itemId: "item-restored-widget",
                 requestId: "request-restored-widget",
                 toolkit: "client",
                 tool: "weather",
@@ -260,7 +256,7 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentToolCallEnded({
                 threadId: "thread-restored-widget",
                 turnId: "turn-restored-widget",
-                itemId: "item-restored-widget",
+                itemId: "request-restored-widget",
                 toolkit: "client",
                 tool: "weather",
                 result: new JsonContent({ json: { forecast: "rain" } }),
@@ -333,7 +329,6 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "thread-broken-widget",
                 turnId: "turn-broken-widget",
-                itemId: "item-broken-widget",
                 requestId: "request-broken-widget",
                 toolkit: "client",
                 tool: "weather",
@@ -342,7 +337,7 @@ describe("ChatFeedWidget", () => {
             chatClient.handleAgentMessage(new AgentToolCallEnded({
                 threadId: "thread-broken-widget",
                 turnId: "turn-broken-widget",
-                itemId: "item-broken-widget",
+                itemId: "request-broken-widget",
                 toolkit: "client",
                 tool: "weather",
                 result: new JsonContent({ json: { forecast: "cloudy" } }),

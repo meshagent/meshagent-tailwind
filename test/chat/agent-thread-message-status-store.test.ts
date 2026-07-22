@@ -145,7 +145,7 @@ describe("AgentThreadMessageStatusStore", () => {
             awaitingAcceptance: true,
             awaitingApplication: true,
         });
-        expect(state.pendingMessages[0]?.attachments).to.deep.equal([{ url: "room:///docs/a.txt", name: undefined }]);
+        expect(state.pendingMessages[0]?.attachments).to.deep.equal([{ url: "room:///docs/a.txt", name: "a.txt" }]);
 
         expect(store.apply(new TurnStartAccepted({
             threadId,

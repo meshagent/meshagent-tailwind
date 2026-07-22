@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
-import { MessagingChatClient, ToolChoice } from "@meshagent/meshagent-agents";
+import { AgentFileContent, MessagingChatClient } from "@meshagent/meshagent-agents";
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 import type { AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
@@ -252,10 +252,9 @@ export function NewChatThread({
 
             const result = await activeChatClient.startThread({
                 message: text,
-                attachments: newThreadAttachments.map((attachment) => attachment.path),
+                attachments: newThreadAttachments.map((attachment) => new AgentFileContent({ url: attachment.path })),
                 senderName: getParticipantName(room.localParticipant) || undefined,
                 clientToolkits: resolvedClientToolkits,
-                toolChoice: toolChoice == null ? undefined : new ToolChoice({ toolkitName: toolChoice.toolkitName, toolName: toolChoice.toolName }),
             });
 
             ensureOperationActive(operationId, activeOperationRef);
@@ -290,8 +289,7 @@ export function NewChatThread({
         newThreadAttachments,
         newThreadDraft,
         resolvedClientToolkits,
-        toolChoice,
-        onThreadPathChanged,
+                onThreadPathChanged,
         onThreadResolved,
         room,
         waitingForAgent,

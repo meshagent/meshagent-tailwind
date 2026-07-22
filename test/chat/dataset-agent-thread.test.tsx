@@ -185,7 +185,6 @@ describe("DatasetAgentThread", () => {
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "dataset://threads/main",
                 turnId: "turn-weather",
-                itemId: "item-weather",
                 requestId: "request-weather",
                 targetParticipantId: "local-user",
                 toolkit: "client",
