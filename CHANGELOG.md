@@ -1,3 +1,9 @@
+## [0.47.0]
+- Improved TypeScript messaging clients so room delivery order and startup/presence behavior stay consistent.
+- Moved managed-agent client routing onto the Rust tunnel path and hardened agent chat-client event handling.
+- Added a `test:rust-process-e2e` entry point for the agents-ts package and expanded live chat/process-agent coverage.
+- Finished aligning CLI pagination behavior across feeds, rooms, mailboxes, scheduled tasks, and shared helpers.
+
 ## [0.46.3]
 - Added `ChatFeedWidget` support for executable, custom React rendering of live and restored client-tool calls in chat feeds.
 - Dataset-backed chat now consumes the typed timeline from `meshagent-agents-ts` instead of parsing and reducing protocol messages in React.
