@@ -5,8 +5,8 @@ import {
   useRef,
 } from "react";
 
-import { DEFAULT_OVERSCAN_PAGES, DEFAULT_PAGE_SIZE } from "./virtualization";
-import { useChatVirtualizer } from "./use-chat-virtualizer";
+import { DEFAULT_OVERSCAN_PAGES, DEFAULT_PAGE_SIZE } from "./virtualization.js";
+import { useChatVirtualizer } from "./use-chat-virtualizer.js";
 
 export type ChatMessageBase = {
   id: string;

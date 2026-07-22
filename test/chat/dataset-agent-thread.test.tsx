@@ -1,11 +1,21 @@
 import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import type { RoomClient } from "@meshagent/meshagent";
-import { AgentMessage, BaseChatClient, TurnStart } from "@meshagent/meshagent-agents";
+import { JsonContent } from "@meshagent/meshagent";
+import type { Content, RoomClient } from "@meshagent/meshagent";
+import {
+    AgentClientToolCallRequested,
+    AgentMessage,
+    AgentTextContentDelta,
+    BaseChatClient,
+    TurnStart,
+    agentClientToolCallResponseType,
+} from "@meshagent/meshagent-agents";
 
 import { ChatBotView } from "../../src/chat/chat-bot-view";
+import { ChatFeedWidget } from "../../src/chat/chat-feed-widget";
+import type { ToolCall } from "../../src/chat/chat-feed-widget";
 import { DatasetAgentThread, parseDatasetThreadRef } from "../../src/chat/dataset-agent-thread";
 import type { DatasetThreadRow } from "../../src/chat/dataset-agent-thread";
 
@@ -29,8 +39,34 @@ class FakeChatClient extends BaseChatClient {
         return new FakeParticipant({ name: "codex", supports_agent_messages: true }) as never;
     }
 
+    public override localParticipantId(): string {
+        return "local-user";
+    }
+
     public override async sendAgentMessage(message: AgentMessage): Promise<void> {
         this.sent.push(message);
+    }
+}
+
+class TestChatFeedWidget extends ChatFeedWidget {
+    public readonly calls: Record<string, unknown>[] = [];
+
+    constructor() {
+        super({
+            name: "weather",
+            title: "Weather card",
+            description: "Show the weather in chat.",
+            inputSchema: { type: "object" },
+        });
+    }
+
+    public async execute(arguments_: Record<string, unknown>): Promise<Content> {
+        this.calls.push(arguments_);
+        return new JsonContent({ json: { forecast: "sunny" } });
+    }
+
+    public render(toolCall: ToolCall): React.ReactElement {
+        return <div>{["weather-widget", toolCall.status, toolCall.input["city"]].join(":")}</div>;
     }
 }
 
@@ -55,7 +91,7 @@ function fakeRoom(): RoomClient {
     } as unknown as RoomClient;
 }
 
-function row(data: Record<string, unknown>, overrides: Partial<DatasetThreadRow> = {}): DatasetThreadRow {
+function row(data: unknown, overrides: Partial<DatasetThreadRow> = {}): DatasetThreadRow {
     return {
         item_id: "item-1",
         sequence: 1,
@@ -83,22 +119,31 @@ describe("DatasetAgentThread", () => {
     });
 
     it("renders persisted dataset rows", async () => {
-        const rows = [
-            row({ kind: "message", role: "user", text: "hello dataset", sender_name: "Jesse" }),
-            row({ kind: "message", role: "assistant", text: "hello from dataset" }, { item_id: "item-2", sequence: 2 }),
-        ];
+        const userRow = row(new TurnStart({
+                threadId: "dataset://threads/main",
+                messageId: "message-user",
+                senderName: "Jesse",
+                content: [{ type: "text", text: "hello dataset" }],
+            }).toJson());
+        const assistantRow = row(JSON.stringify(new AgentTextContentDelta({
+                threadId: "dataset://threads/main",
+                turnId: "turn-1",
+                itemId: "item-2",
+                text: "hello from dataset",
+            }).toJson()), { item_id: "item-2", sequence: 2 });
 
         render(
             <DatasetAgentThread
                 room={fakeRoom()}
                 path="dataset://threads/main"
                 chatClient={new FakeChatClient()}
-                rowsLoader={() => rows}
+                rowsLoader={() => [assistantRow, userRow]}
             />,
         );
 
-        expect(await screen.findByText("hello dataset")).toBeTruthy();
-        expect(await screen.findByText("hello from dataset")).toBeTruthy();
+        const userMessage = await screen.findByText("hello dataset");
+        const assistantMessage = await screen.findByText("hello from dataset");
+        expect(userMessage.compareDocumentPosition(assistantMessage) & Node.DOCUMENT_POSITION_FOLLOWING).not.to.equal(0);
     });
 
     it("forwards composer sends through the provided chat client", async () => {
@@ -122,6 +167,40 @@ describe("DatasetAgentThread", () => {
         });
     });
 
+    it("forwards targeted live client-tool requests through the replay client", async () => {
+        const chatClient = new FakeChatClient();
+        const widget = new TestChatFeedWidget();
+        render(
+            <DatasetAgentThread
+                room={fakeRoom()}
+                path="dataset://threads/main"
+                chatClient={chatClient}
+                rowsLoader={() => []}
+                chatFeedWidgets={[widget]}
+            />,
+        );
+
+        await screen.findByPlaceholderText("Type a message");
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId: "dataset://threads/main",
+                turnId: "turn-weather",
+                itemId: "item-weather",
+                requestId: "request-weather",
+                targetParticipantId: "local-user",
+                toolkit: "client",
+                tool: "weather",
+                arguments: { city: "Seattle" },
+            }));
+        });
+
+        expect(await screen.findByText("weather-widget:completed:Seattle")).toBeTruthy();
+        expect(widget.calls).to.deep.equal([{ city: "Seattle" }]);
+        await waitFor(() => {
+            expect(chatClient.sent.filter((message) => message.type === agentClientToolCallResponseType)).to.have.length(1);
+        });
+    });
+
     it("ChatBotView can opt into the dataset-backed renderer", async () => {
         render(
             <ChatBotView
@@ -130,7 +209,12 @@ describe("DatasetAgentThread", () => {
                 agentName="codex"
                 path="dataset://threads/main"
                 threadSource="dataset"
-                rowsLoader={() => [row({ kind: "message", role: "assistant", text: "from ChatBotView dataset" })]}
+                rowsLoader={() => [row(new AgentTextContentDelta({
+                    threadId: "dataset://threads/main",
+                    turnId: "turn-1",
+                    itemId: "item-1",
+                    text: "from ChatBotView dataset",
+                }).toJson())]}
             />,
         );
 

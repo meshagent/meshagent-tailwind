@@ -19,7 +19,7 @@ import {
   shouldAdjustScrollForHeightChange,
   type Page,
   type VisiblePageRange,
-} from "./virtualization";
+} from "./virtualization.js";
 
 type ScrollAnchor = {
   messageId: string;

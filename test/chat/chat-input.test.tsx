@@ -20,6 +20,29 @@ afterEach(() => {
 });
 
 describe("ChatInput", () => {
+    it("hides the inner scrollbar until the composer reaches its height cap", () => {
+        render(
+            <ChatInput
+                attachments={[]}
+                setAttachments={() => undefined}
+                onFilesSelected={() => undefined}
+                onSubmit={() => undefined}
+                defaultValue="one line"
+            />,
+        );
+
+        const textarea = screen.getByPlaceholderText("Message the room") as HTMLTextAreaElement;
+        Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 80 });
+        fireEvent.change(textarea, { target: { value: "two lines" } });
+        expect(textarea.style.height).to.equal("80px");
+        expect(textarea.style.overflowY).to.equal("hidden");
+
+        Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 240 });
+        fireEvent.change(textarea, { target: { value: "many lines" } });
+        expect(textarea.style.height).to.equal("160px");
+        expect(textarea.style.overflowY).to.equal("auto");
+    });
+
     it("uses display names and stores mime types on file attachments", () => {
         const upload = new TestUpload("uploaded-files/generated", UploadStatus.Completed, {
             mimeType: "text/csv",

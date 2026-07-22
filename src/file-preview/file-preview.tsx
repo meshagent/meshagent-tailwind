@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { RoomClient } from "@meshagent/meshagent";
 import { Download, FileText } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
 import {
     Dialog,

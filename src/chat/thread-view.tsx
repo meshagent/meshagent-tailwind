@@ -5,13 +5,13 @@ import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshag
 
 import { AlertTriangle } from "lucide-react";
 
-import { AgentThread } from "./agent-thread";
-import type { AgentToolChoice } from "./agent-thread";
-import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor";
-import { DatasetAgentThread } from "./dataset-agent-thread";
-import type { DatasetThreadRowsLoader } from "./dataset-agent-thread";
-import type { ChatFeedWidget } from "./chat-feed-widget";
-import { MultiThreadView } from "./multi-thread-view";
+import { AgentThread } from "./agent-thread.js";
+import type { AgentToolChoice } from "./agent-thread.js";
+import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor.js";
+import { DatasetAgentThread } from "./dataset-agent-thread.js";
+import type { DatasetThreadRowsLoader } from "./dataset-agent-thread.js";
+import type { ChatFeedWidget } from "./chat-feed-widget.js";
+import { MultiThreadView } from "./multi-thread-view.js";
 
 export interface ThreadViewProps {
     room: RoomClient;
@@ -42,6 +42,7 @@ export interface ThreadViewProps {
 
 function normalizePath(path?: string | null): string | null {
     const normalized = path?.trim();
+
     return normalized ? normalized : null;
 }
 

@@ -64,12 +64,16 @@ function useAutoResizingTextarea(
 
         if (value === "") {
             element.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
+            element.style.overflowY = "hidden";
         } else {
             element.style.height = "0px";
+            element.style.overflowY = "hidden";
+            const contentHeight = element.scrollHeight;
             element.style.height = `${Math.max(
                 MIN_TEXTAREA_HEIGHT,
-                Math.min(element.scrollHeight, MAX_TEXTAREA_HEIGHT),
+                Math.min(contentHeight, MAX_TEXTAREA_HEIGHT),
             )}px`;
+            element.style.overflowY = contentHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
         }
     }, [textareaRef, value]);
 }

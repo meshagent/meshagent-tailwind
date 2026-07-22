@@ -16,6 +16,7 @@ export * from './chat/agent-thread.js';
 export * from './chat/new-chat-thread.js';
 export * from './chat/realtime-audio-output.js';
 export * from './chat/tool-call-status-accumulator.js';
+export { PortalContainerProvider } from './components/ui/portal-container.js';
 export { AgentThreadMessageStatusStore, resolveChatThreadStatusFromStore, shouldShowChatThreadStatus, trackAgentThreadStatusMessageInStore } from './chat/agent-thread-message-status-store.js';
 export * from './file-preview/file-preview.js';
 export * from './forms/email-address.js';

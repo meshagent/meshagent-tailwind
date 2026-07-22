@@ -1,5 +1,6 @@
 ## [0.46.3]
 - Added `ChatFeedWidget` support for executable, custom React rendering of live and restored client-tool calls in chat feeds.
+- Dataset-backed chat now consumes the typed timeline from `meshagent-agents-ts` instead of parsing and reducing protocol messages in React.
 - `LivekitProtocolChannel.sendData` now clones outgoing `Uint8Array` payloads before publishing, avoiding shared-buffer mutation issues.
 
 ## [0.46.2]

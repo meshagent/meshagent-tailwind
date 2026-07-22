@@ -7,20 +7,20 @@ import { MessagingChatClient } from "@meshagent/meshagent-agents";
 
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
-import type { AgentToolChoice } from "./agent-thread";
-import type { DatasetThreadRowsLoader } from "./dataset-agent-thread";
-import type { ChatFeedWidget } from "./chat-feed-widget";
-import { ChatThreadDisplayMode } from "./conversation-descriptor";
+import type { AgentToolChoice } from "./agent-thread.js";
+import type { DatasetThreadRowsLoader } from "./dataset-agent-thread.js";
+import type { ChatFeedWidget } from "./chat-feed-widget.js";
+import { ChatThreadDisplayMode } from "./conversation-descriptor.js";
 
-import { cn } from "../lib/utils";
-import { ThreadListView } from "./thread-list-view";
-import { ThreadView } from "./thread-view";
+import { cn } from "../lib/utils.js";
+import { ThreadListView } from "./thread-list-view.js";
+import { ThreadView } from "./thread-view.js";
 
 export {
     ChatThreadDisplayMode,
     chatDocumentPath,
     resolvedThreadListPath,
-} from "./conversation-descriptor";
+} from "./conversation-descriptor.js";
 
 const multiThreadLayoutBreakpointPx = 920;
 

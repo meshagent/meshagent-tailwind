@@ -8,6 +8,7 @@ import {
     AgentClientToolCallRequested,
     AgentMessage,
     AgentToolCallEnded,
+    AgentToolCallStarted,
     BaseChatClient,
     ClientToolkitDescription,
     ThreadLoaded,
@@ -154,6 +155,47 @@ describe("ChatFeedWidget", () => {
         });
     });
 
+    it("executes a request received while replay is loading after replay completes", async () => {
+        const chatClient = new FakeChatClient();
+        const widget = new TestChatFeedWidget();
+
+        render(
+            <AgentThread
+                room={fakeRoom()}
+                path="thread-loading-widget"
+                chatClient={chatClient}
+                agentName="codex"
+                chatFeedWidgets={[widget]}
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId: "thread-loading-widget",
+                turnId: "turn-loading-widget",
+                itemId: "item-loading-widget",
+                requestId: "request-loading-widget",
+                toolkit: "client",
+                tool: "weather",
+                arguments: { city: "Bellingham" },
+            }));
+        });
+
+        expect(widget.calls).to.deep.equal([]);
+        expect(chatClient.sent.some((message) => message.type === agentClientToolCallResponseType)).to.equal(false);
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-loading-widget" }));
+        });
+
+        expect(await screen.findByText("weather-widget:completed:Bellingham:sunny")).toBeTruthy();
+        expect(widget.calls).to.deep.equal([{ city: "Bellingham" }]);
+        await waitFor(() => {
+            expect(chatClient.sent.filter((message) => message.type === agentClientToolCallResponseType)).to.have.length(1);
+        });
+    });
+
     it("responds with ErrorContent and renders failure when execution throws", async () => {
         const chatClient = new FakeChatClient();
         const widget = new TestChatFeedWidget();
@@ -227,6 +269,46 @@ describe("ChatFeedWidget", () => {
         });
 
         expect(await screen.findByText("weather-widget:completed:Portland:rain")).toBeTruthy();
+        expect(widget.calls).to.deep.equal([]);
+        expect(chatClient.sent.some((message) => message.type === agentClientToolCallResponseType)).to.equal(false);
+    });
+
+    it("preserves persisted tool input when the completed event has only output", async () => {
+        const chatClient = new FakeChatClient();
+        const widget = new TestChatFeedWidget();
+
+        render(
+            <AgentThread
+                room={fakeRoom()}
+                path="thread-persisted-widget"
+                chatClient={chatClient}
+                agentName="codex"
+                chatFeedWidgets={[widget]}
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentToolCallStarted({
+                threadId: "thread-persisted-widget",
+                turnId: "turn-persisted-widget",
+                itemId: "item-persisted-widget",
+                toolkit: "client",
+                tool: "weather",
+                arguments: { city: "Vancouver" },
+            }));
+            chatClient.handleAgentMessage(new AgentToolCallEnded({
+                threadId: "thread-persisted-widget",
+                turnId: "turn-persisted-widget",
+                itemId: "item-persisted-widget",
+                toolkit: "client",
+                tool: "weather",
+                result: new JsonContent({ json: { forecast: "windy" } }),
+            }));
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-persisted-widget" }));
+        });
+
+        expect(await screen.findByText("weather-widget:completed:Vancouver:windy")).toBeTruthy();
         expect(widget.calls).to.deep.equal([]);
         expect(chatClient.sent.some((message) => message.type === agentClientToolCallResponseType)).to.equal(false);
     });

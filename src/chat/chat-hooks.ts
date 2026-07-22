@@ -12,8 +12,8 @@ import {
 
 import { subscribe } from "@meshagent/meshagent-react";
 
-import { ChatMessage } from "./chat-message";
-import type { FileUpload } from "./file-attachment";
+import { ChatMessage } from "./chat-message.js";
+import type { FileUpload } from "./file-attachment.js";
 
 const agentTurnSteerType = "meshagent.agent.turn.steer";
 
@@ -512,4 +512,3 @@ export function useThreadStatus({ room, path, agentName }: UseThreadStatusProps)
 
     return status;
 }
-

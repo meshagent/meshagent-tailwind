@@ -1,58 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
-import { ErrorContent, JsonContent } from "@meshagent/meshagent";
+import { ErrorContent } from "@meshagent/meshagent";
 import type { Content, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 
 import {
-    AgentFileContentDelta,
-    AgentFileContentEnded,
-    AgentFileContentStarted,
-    AgentImageGenerationCompleted,
-    AgentImageGenerationFailed,
-    AgentImageGenerationPartial,
-    AgentImageGenerationStarted,
-    AgentClientToolCallRequested,
-    AgentSecretRequested,
-    AgentModelChanged,
-    AgentReasoningContentDelta,
-    AgentReasoningContentEnded,
-    AgentReasoningContentStarted,
-    AgentTextContentDelta,
-    AgentTextContentEnded,
-    AgentTextContentStarted,
-    AgentThreadStatus,
-    AgentUsageUpdated,
-    AgentToolCallArgumentsDelta,
-    AgentToolCallEnded,
-    AgentToolCallInProgress,
-    AgentToolCallLogDelta,
-    AgentToolCallPending,
-    AgentToolCallStarted,
     MessagingChatClient,
     ToolChoice,
-    StartThread,
-    TurnStart,
-    TurnStartAccepted,
-    TurnStartRejected,
-    TurnEnded,
-    TurnInterruptAccepted,
-    TurnInterrupted,
-    TurnSteer,
-    TurnSteerAccepted,
-    TurnSteerRejected,
-    TurnSteered,
-    TurnStarted,
 } from "@meshagent/meshagent-agents";
 
 import type {
-    AgentMessage,
-    AgentError,
+    AgentUsageSnapshot,
     BaseChatClient,
+    ChatThreadItem,
     ChatThreadSession,
     ClientToolkitDescription,
-    PendingAgentInput,
 } from "@meshagent/meshagent-agents";
+export { AgentUsageSnapshot, shouldReplaceAgentUsageSnapshot } from "@meshagent/meshagent-agents";
 
 import { ChevronDown, ChevronRight, Download, FileText, ImageOff, Terminal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -60,62 +24,29 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { Spinner } from "../components/ui/spinner";
-import { cn } from "../lib/utils";
-import { ChatInput } from "./chat-input";
-import type { ChatMessage } from "./chat-message";
-import { ChatScroller } from "./chat-scroller";
-import { ChatTypingIndicator } from "./chat-typing-indicator";
-import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment";
+import { Spinner } from "../components/ui/spinner.js";
+import { cn } from "../lib/utils.js";
+import { ChatInput } from "./chat-input.js";
+import type { ChatMessage } from "./chat-message.js";
+import { ChatScroller } from "./chat-scroller.js";
+import { ChatTypingIndicator } from "./chat-typing-indicator.js";
+import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
 import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
 import type { ChatFeedWidget, ToolCallStatus } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
 import { ChatFeedWidgetView } from "./chat-feed-widget-view.js";
 
-type FeedRole = "user" | "agent";
-type FeedKind = "message" | "reasoning" | "tool_call" | "image_generation" | "event" | "error";
-
-interface FeedItem {
-    id: string;
-    kind: FeedKind;
-    role: FeedRole;
-    text: string;
-    attachments: string[];
-    createdAt: Date;
-    authorName?: string;
-    phase?: string;
-    turnId?: string;
-    toolkit?: string;
-    tool?: string;
-    command?: string;
-    argumentsText?: string;
-    input?: Record<string, unknown>;
-    output?: Content;
-    logs?: string[];
-    result?: string;
-    stdout?: string;
-    stderr?: string;
-    state?: string;
-    failed?: boolean;
-    image?: {
-        uri?: string;
-        status?: string;
-        statusDetail?: string;
-        images?: GeneratedImage[];
-    };
-}
-
-interface DetailGroupFeedItem {
+interface DetailGroupItem {
     id: string;
     kind: "detail_group";
-    messages: FeedItem[];
+    messages: ChatThreadItem[];
     collapsedText: string;
     authorName: string;
     createdAt: Date;
     expanded: boolean;
 }
 
-type ThreadFeedItem = FeedItem | DetailGroupFeedItem;
+type RenderedThreadItem = ChatThreadItem | DetailGroupItem;
 
 export class AgentToolChoice {
     readonly toolkitName: string;
@@ -129,184 +60,6 @@ export class AgentToolChoice {
     toJson(): Record<string, string> {
         return { toolkit_name: this.toolkitName, tool_name: this.toolName };
     }
-}
-
-
-function finiteNumber(value: unknown): number | null {
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function integerNumber(value: unknown): number | null {
-    const numeric = finiteNumber(value);
-    return numeric == null ? null : Math.trunc(numeric);
-}
-
-function usageKeyMatches(key: string, names: Set<string>): boolean {
-    for (const name of names) {
-        if (key === name || key.endsWith(`.${name}`)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function sumUsageKeys(rawUsage: Record<string, unknown>, names: Set<string>): number | null {
-    let total = 0;
-    let found = false;
-    for (const [key, value] of Object.entries(rawUsage)) {
-        if (!usageKeyMatches(key, names)) {
-            continue;
-        }
-        const numeric = finiteNumber(value);
-        if (numeric == null) {
-            continue;
-        }
-        total += numeric;
-        found = true;
-    }
-    return found ? total : null;
-}
-
-function usageTotalTokens(rawUsage: Record<string, unknown>): number | null {
-    const explicitTotal = sumUsageKeys(rawUsage, new Set(["total_tokens"]));
-    if (explicitTotal != null) {
-        return explicitTotal;
-    }
-
-    const inputTokens = sumUsageKeys(rawUsage, new Set([
-        "input_tokens",
-        "audio_input_tokens",
-        "image_input_tokens",
-        "cache_creation_input_tokens",
-        "cache_read_input_tokens",
-    ]));
-    const outputTokens = sumUsageKeys(rawUsage, new Set(["output_tokens", "audio_output_tokens", "image_output_tokens"]));
-    const cachedTokens = sumUsageKeys(rawUsage, new Set(["cached_tokens", "audio_cached_tokens", "image_cached_tokens"]));
-    const reasoningTokens = sumUsageKeys(rawUsage, new Set(["reasoning_tokens"]));
-
-    let total = 0;
-    let hasTotal = false;
-    if (inputTokens != null) {
-        total += inputTokens;
-        hasTotal = true;
-    } else if (cachedTokens != null) {
-        total += cachedTokens;
-        hasTotal = true;
-    }
-    if (outputTokens != null) {
-        total += outputTokens;
-        hasTotal = true;
-    } else if (reasoningTokens != null) {
-        total += reasoningTokens;
-        hasTotal = true;
-    }
-    return hasTotal ? total : null;
-}
-
-function usageValues(rawUsage: Record<string, unknown>): Record<string, number> {
-    const usage: Record<string, number> = {};
-    for (const [key, value] of Object.entries(rawUsage)) {
-        const trimmedKey = key.trim();
-        const numeric = finiteNumber(value);
-        if (trimmedKey === "" || numeric == null) {
-            continue;
-        }
-        usage[trimmedKey] = numeric;
-    }
-    return Object.freeze(usage);
-}
-
-export class AgentUsageSnapshot {
-    readonly threadPath: string;
-    readonly turnId?: string;
-    readonly contextUsedTokens: number;
-    readonly contextTotalTokens?: number;
-    readonly compactionMode?: string;
-    readonly compactionThreshold?: number;
-    readonly totalTokens?: number;
-    readonly usage: Record<string, number>;
-
-    constructor({
-        threadPath,
-        turnId,
-        contextUsedTokens,
-        contextTotalTokens,
-        compactionMode,
-        compactionThreshold,
-        totalTokens,
-        usage,
-    }: {
-        threadPath: string;
-        turnId?: string;
-        contextUsedTokens: number;
-        contextTotalTokens?: number;
-        compactionMode?: string;
-        compactionThreshold?: number;
-        totalTokens?: number;
-        usage: Record<string, number>;
-    }) {
-        this.threadPath = threadPath;
-        this.turnId = turnId;
-        this.contextUsedTokens = contextUsedTokens;
-        this.contextTotalTokens = contextTotalTokens;
-        this.compactionMode = compactionMode;
-        this.compactionThreshold = compactionThreshold;
-        this.totalTokens = totalTokens;
-        this.usage = Object.freeze({ ...usage });
-    }
-
-    static fromMessage(message: AgentMessage): AgentUsageSnapshot | null {
-        if (!isTypedMessage<UsageUpdatedMessage>(message, AgentUsageUpdated)) {
-            return null;
-        }
-        return AgentUsageSnapshot.fromPayload(message.toJson() as Record<string, unknown>);
-    }
-
-    static fromPayload(payload: Record<string, unknown>): AgentUsageSnapshot | null {
-        if (payload.type !== "meshagent.agent.usage.updated") {
-            return null;
-        }
-
-        const rawThreadPath = payload.thread_id;
-        if (typeof rawThreadPath !== "string" || rawThreadPath.trim() === "") {
-            return null;
-        }
-
-        const rawContextWindow = payload.context_window;
-        if (rawContextWindow == null || typeof rawContextWindow !== "object") {
-            return null;
-        }
-        const contextWindow = rawContextWindow as Record<string, unknown>;
-        const usedTokens = integerNumber(contextWindow.used_tokens);
-        if (usedTokens == null) {
-            return null;
-        }
-
-        const totalContextTokens = contextWindow.total_tokens == null ? undefined : integerNumber(contextWindow.total_tokens) ?? undefined;
-        const rawCompactionMode = contextWindow.compaction_mode;
-        const compactionMode = typeof rawCompactionMode === "string" && rawCompactionMode.trim() !== "" ? rawCompactionMode.trim() : undefined;
-        const compactionThreshold = contextWindow.compaction_threshold == null ? undefined : integerNumber(contextWindow.compaction_threshold) ?? undefined;
-        const rawUsage = payload.usage != null && typeof payload.usage === "object" ? payload.usage as Record<string, unknown> : {};
-        const rawTurnId = payload.turn_id;
-
-        return new AgentUsageSnapshot({
-            threadPath: rawThreadPath.trim(),
-            turnId: typeof rawTurnId === "string" && rawTurnId.trim() !== "" ? rawTurnId.trim() : undefined,
-            contextUsedTokens: usedTokens,
-            contextTotalTokens: totalContextTokens,
-            compactionMode,
-            compactionThreshold,
-            totalTokens: usageTotalTokens(rawUsage) ?? undefined,
-            usage: usageValues(rawUsage),
-        });
-    }
-}
-
-export function shouldReplaceAgentUsageSnapshot(current: AgentUsageSnapshot | null | undefined, next: AgentUsageSnapshot): boolean {
-    if (current != null && current.contextUsedTokens > 0 && next.contextUsedTokens === 0 && Object.keys(next.usage).length === 0) {
-        return false;
-    }
-    return true;
 }
 
 export interface AgentThreadProps {
@@ -323,129 +76,6 @@ export interface AgentThreadProps {
     collapseMessages?: boolean;
 }
 
-type AgentMessageConstructor = new(params?: Record<string, unknown>) => AgentMessage;
-type NativeInputContent = { type: "text"; text: string } | { type: "file"; url: string };
-
-interface InputContentMessage extends AgentMessage {
-    content?: NativeInputContent[];
-}
-
-interface SourceInputContentMessage extends InputContentMessage {
-    sourceMessageId: string;
-}
-
-interface ItemMessage extends AgentMessage {
-    itemId: string;
-    turnId: string;
-}
-
-interface TextMessage extends ItemMessage {
-    text: string;
-    phase?: string;
-}
-
-interface FileMessage extends ItemMessage {
-    url: string;
-}
-
-interface ToolMessage extends ItemMessage {
-    toolkit?: string;
-    tool?: string;
-    arguments?: Record<string, unknown>;
-}
-
-interface ToolEndedMessage extends ToolMessage {
-    result?: Content;
-    error?: AgentError;
-}
-
-interface ToolArgumentsDeltaMessage extends ItemMessage {
-    delta: string;
-}
-
-interface ToolLogLine {
-    source: string;
-    text: string;
-}
-
-interface ToolLogDeltaMessage extends ItemMessage {
-    lines: ToolLogLine[];
-}
-
-interface ClientToolCallRequestedMessage extends ItemMessage {
-    requestId: string;
-    toolkit: string;
-    tool: string;
-    arguments: Record<string, unknown>;
-}
-
-interface SecretRequestedMessage extends ItemMessage {
-    requestId: string;
-    name: string;
-    scope?: string;
-}
-
-interface ModelChangedMessage extends AgentMessage {
-    provider: string;
-    model: string;
-    backend?: string;
-    voice?: string;
-}
-
-interface TurnLifecycleMessage extends AgentMessage {
-    turnId?: string;
-    sourceMessageId?: string;
-    error?: AgentError;
-}
-
-interface GeneratedImage {
-    uri?: string;
-    status?: string;
-}
-
-interface ImagePartialMessage extends ItemMessage {
-    image?: GeneratedImage;
-}
-
-interface ImageCompletedMessage extends ItemMessage {
-    images: GeneratedImage[];
-}
-
-interface ImageFailedMessage extends ItemMessage {
-    error: { message: string };
-}
-
-interface ThreadStatusMessage extends AgentMessage {
-    status?: string;
-    mode?: string;
-    startedAt?: string;
-    turnId?: string;
-    totalBytes?: number;
-    linesAdded?: number;
-    linesRemoved?: number;
-}
-
-interface TurnEndedMessage extends AgentMessage {
-    turnId?: string;
-    error?: AgentError;
-}
-
-interface ContextWindowUsage {
-    usedTokens?: number;
-    totalTokens?: number;
-    compactionMode?: string;
-    compactionThreshold?: number;
-}
-
-interface UsageUpdatedMessage extends AgentMessage {
-    turnId?: string;
-    usage?: Record<string, number>;
-    contextWindow?: ContextWindowUsage;
-}
-
-function isTypedMessage<T extends AgentMessage>(message: AgentMessage, ctor: AgentMessageConstructor): message is T {
-    return message instanceof ctor;
-}
 
 function stringValue(value: unknown): string | undefined {
     return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
@@ -479,598 +109,19 @@ function findAgentParticipant(room: RoomClient, agentName?: string): RemoteParti
 
 function timeAgo(date: Date): string {
     const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
-    if (seconds < 60) {
-        return "now";
-    }
+    if (seconds < 60) return "now";
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) {
-        return `${minutes}m`;
-    }
+    if (minutes < 60) return String(minutes) + "m";
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) {
-        return `${hours}h`;
-    }
-    return `${Math.floor(hours / 24)}d`;
+    return hours < 24 ? String(hours) + "h" : String(Math.floor(hours / 24)) + "d";
 }
 
-function inputContent(message: InputContentMessage): { text: string; attachments: string[] } {
-    const textParts: string[] = [];
-    const attachments: string[] = [];
-    for (const item of message.content ?? []) {
-        if (item.type === "text" && item.text.trim() !== "") {
-            textParts.push(item.text);
-        } else if (item.type === "file" && item.url.trim() !== "") {
-            attachments.push(item.url);
-        }
-    }
-    return { text: textParts.join("\n"), attachments };
+function isShellTool(message: Pick<ChatThreadItem, "toolkit" | "tool" | "command">): boolean {
+    const values = [message.toolkit, message.tool]
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim().toLowerCase());
+    return values.some((value) => value === "shell" || value === "exec" || value === "local_shell" || value === "local_shell_call" || value.includes("shell") || value.includes("exec"));
 }
-
-function inputItemFromMessage(message: AgentMessage, createdAt: Date): FeedItem | null {
-    if (
-        isTypedMessage<InputContentMessage>(message, StartThread) ||
-        isTypedMessage<InputContentMessage>(message, TurnStart) ||
-        isTypedMessage<InputContentMessage>(message, TurnSteer)
-    ) {
-        const content = inputContent(message);
-        if (content.text.trim() === "" && content.attachments.length === 0) {
-            return null;
-        }
-        return {
-            id: message.messageId,
-            kind: "message",
-            role: "user",
-            text: content.text,
-            attachments: content.attachments,
-            authorName: message.senderName,
-            createdAt,
-        };
-    }
-
-    if (
-        isTypedMessage<SourceInputContentMessage>(message, TurnStartAccepted) ||
-        isTypedMessage<SourceInputContentMessage>(message, TurnSteerAccepted)
-    ) {
-        const content = inputContent(message);
-        if (content.text.trim() === "" && content.attachments.length === 0) {
-            return null;
-        }
-        return {
-            id: message.sourceMessageId,
-            kind: "message",
-            role: "user",
-            text: content.text,
-            attachments: content.attachments,
-            authorName: message.senderName,
-            createdAt,
-        };
-    }
-
-    return null;
-}
-
-function pendingItemFromInput(pending: PendingAgentInput): FeedItem | null {
-    const item = inputItemFromMessage(pending.payload, pending.createdAt);
-    if (item === null) {
-        return null;
-    }
-    return { ...item, id: pending.messageId };
-}
-
-function upsertItem(items: Map<string, FeedItem>, item: FeedItem): void {
-    items.set(item.id, { ...items.get(item.id), ...item });
-}
-
-function appendText(items: Map<string, FeedItem>, itemId: string, base: Omit<FeedItem, "text" | "attachments">, text: string): void {
-    if (text === "") {
-        return;
-    }
-    const existing = items.get(itemId);
-    upsertItem(items, {
-        ...base,
-        id: itemId,
-        text: `${existing?.text ?? ""}${text}`,
-        attachments: existing?.attachments ?? [],
-    });
-}
-
-function imageStatus(message: AgentMessage): string {
-    if (isTypedMessage<ImageCompletedMessage>(message, AgentImageGenerationCompleted)) {
-        return "completed";
-    }
-    if (isTypedMessage<ImageFailedMessage>(message, AgentImageGenerationFailed)) {
-        return "failed";
-    }
-    return "in_progress";
-}
-
-function agentErrorIsCancellation(error: AgentError): boolean {
-    const values = [error.code, error.message].filter((value): value is string => typeof value === "string");
-    return values.some((value) => {
-        const normalized = value.trim().toLowerCase();
-        return normalized.includes("cancel") || normalized.includes("interrupt") || normalized.includes("abort");
-    });
-}
-
-function toolCallLabel(message: ToolMessage): string {
-    return [message.toolkit, message.tool].filter((part) => part?.trim()).join(".") || "Tool call";
-}
-
-function toolArgumentString(argumentsValue: Record<string, unknown> | undefined, keys: string[]): string | undefined {
-    if (argumentsValue == null) {
-        return undefined;
-    }
-    for (const key of keys) {
-        const value = argumentsValue[key];
-        if (typeof value === "string" && value.trim() !== "") {
-            return value.trim();
-        }
-        if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-            const joined = value.join(" ").trim();
-            if (joined !== "") {
-                return joined;
-            }
-        }
-    }
-    return undefined;
-}
-
-function toolCommandText(message: ToolMessage): string | undefined {
-    return toolArgumentString(message.arguments, ["command", "cmd", "script", "input", "query"]);
-}
-
-function contentText(value: unknown): string | undefined {
-    if (typeof value === "string" && value.trim() !== "") {
-        return value.trim();
-    }
-    if (value == null || typeof value !== "object") {
-        return undefined;
-    }
-    const obj = value as Record<string, unknown>;
-    for (const key of ["text", "result", "output", "stdout", "stderr"]) {
-        const candidate = obj[key];
-        if (typeof candidate === "string" && candidate.trim() !== "") {
-            return candidate.trim();
-        }
-    }
-    const json = obj["json"];
-    if (json != null) {
-        return JSON.stringify(json, null, 2);
-    }
-    return undefined;
-}
-
-function shellOutputFields(message: ToolEndedMessage): Pick<FeedItem, "result" | "stdout" | "stderr"> {
-    const result = message.result;
-    const resultObject = result instanceof JsonContent && typeof result.json === "object" && result.json !== null && !Array.isArray(result.json)
-        ? result.json as Record<string, unknown>
-        : undefined;
-    return {
-        result: contentText(result),
-        stdout: resultObject == null ? undefined : contentText(resultObject["stdout"]),
-        stderr: message.error?.message.trim() || (resultObject == null ? undefined : contentText(resultObject["stderr"])),
-    };
-}
-
-function formatJsonValue(value: unknown): string | undefined {
-    if (value == null) {
-        return undefined;
-    }
-    try {
-        return JSON.stringify(value, null, 2);
-    } catch {
-        return undefined;
-    }
-}
-
-function toolArgumentsText(argumentsValue: Record<string, unknown> | undefined): string | undefined {
-    return argumentsValue == null ? undefined : formatJsonValue(argumentsValue);
-}
-
-function appendToolArgumentsDelta(existing: FeedItem | undefined, delta: string): string | undefined {
-    if (delta.trim() === "") {
-        return existing?.argumentsText;
-    }
-    return `${existing?.argumentsText ?? ""}${delta}`;
-}
-
-function formatToolLogLine(line: ToolLogLine): string | null {
-    const text = line.text.trim();
-    if (text === "") {
-        return null;
-    }
-    const source = line.source.trim();
-    return source === "" ? text : `${source}: ${text}`;
-}
-
-function appendToolLogs(existing: FeedItem | undefined, lines: ToolLogLine[]): string[] {
-    const logs = [...(existing?.logs ?? [])];
-    for (const line of lines) {
-        const formatted = formatToolLogLine(line);
-        if (formatted !== null) {
-            logs.push(formatted);
-        }
-    }
-    return logs;
-}
-
-function toolCallState(message: ToolMessage): string {
-    if (isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded)) {
-        return message.error == null ? "completed" : "failed";
-    }
-    if (isTypedMessage<ToolMessage>(message, AgentToolCallPending)) {
-        return "queued";
-    }
-    return "in_progress";
-}
-
-function toolCallHeadline(message: ToolMessage): string {
-    const label = toolCallLabel(message);
-    if (toolCallFailed(message)) {
-        return `Failed ${label}`;
-    }
-    if (isTypedMessage<ToolMessage>(message, AgentToolCallPending)) {
-        return `Preparing ${label}`;
-    }
-    if (isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded)) {
-        return `Ran ${label}`;
-    }
-    return `Running ${label}`;
-}
-
-function modelChangedText(message: ModelChangedMessage): string {
-    const model = [message.provider, message.model].filter((part) => part.trim() !== "").join(" / ");
-    const voice = message.voice?.trim();
-    return voice ? `Model changed to ${model} (${voice})` : `Model changed to ${model}`;
-}
-
-function rejectionText(message: TurnLifecycleMessage, fallback: string): string {
-    const error = message.error?.message.trim();
-    return error ? `${fallback}: ${error}` : fallback;
-}
-
-function lifecycleEventItem(message: TurnLifecycleMessage, createdAt: Date): FeedItem | null {
-    const turnId = stringValue(message.turnId);
-    const base = {
-        id: ["event", message.type, turnId ?? message.sourceMessageId ?? message.messageId].join(":"),
-        kind: "event" as const,
-        role: "agent" as const,
-        attachments: [],
-        createdAt,
-        turnId,
-    };
-
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnStartAccepted)) {
-        return { ...base, text: "Turn accepted", state: "queued" };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnStarted)) {
-        return { ...base, text: "Turn started", state: "running" };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnStartRejected)) {
-        return { ...base, text: rejectionText(message, "Turn rejected"), state: "failed", failed: true };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnSteerAccepted)) {
-        return { ...base, text: "Steer accepted", state: "queued" };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnSteered)) {
-        return { ...base, text: "Turn steered", state: "running" };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnSteerRejected)) {
-        return { ...base, text: rejectionText(message, "Steer rejected"), state: "failed", failed: true };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnInterruptAccepted)) {
-        return { ...base, text: "Interrupt accepted", state: "cancelled" };
-    }
-    if (isTypedMessage<TurnLifecycleMessage>(message, TurnInterrupted)) {
-        return { ...base, text: "Turn interrupted", state: "cancelled" };
-    }
-    return null;
-}
-
-function isShellTool(message: Pick<FeedItem, "toolkit" | "tool" | "command">): boolean {
-    const values = [message.toolkit, message.tool].filter((value): value is string => typeof value === "string").map((value) => value.trim().toLowerCase());
-    return message.command != null || values.some((value) => value === "shell" || value === "exec" || value === "local_shell" || value === "local_shell_call" || value.includes("shell") || value.includes("exec"));
-}
-
-function toolCallFailed(message: ToolMessage): boolean {
-    return isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) && message.error != null;
-}
-
-function turnEndedErrorItem(message: TurnEndedMessage, createdAt: Date): FeedItem | null {
-    const error = message.error;
-    if (error == null || agentErrorIsCancellation(error)) {
-        return null;
-    }
-    const text = error.message.trim();
-    if (text === "") {
-        return null;
-    }
-    const turnId = stringValue(message.turnId);
-    return {
-        id: ["turn-error", turnId ?? message.messageId].join(":"),
-        kind: "error",
-        role: "agent",
-        text,
-        attachments: [],
-        createdAt,
-        turnId,
-    };
-}
-
-function feedFromSession(session: ChatThreadSession | null): FeedItem[] {
-    if (session === null) {
-        return [];
-    }
-
-    const items = new Map<string, FeedItem>();
-    for (const event of session.messages) {
-        const message = event.message;
-        const createdAt = event.createdAt;
-        const inputItem = inputItemFromMessage(message, createdAt);
-        if (inputItem !== null && !items.has(inputItem.id)) {
-            upsertItem(items, inputItem);
-            continue;
-        }
-
-        const lifecycleItem = lifecycleEventItem(message as TurnLifecycleMessage, createdAt);
-        if (lifecycleItem !== null) {
-            upsertItem(items, lifecycleItem);
-            continue;
-        }
-
-        if (isTypedMessage<ModelChangedMessage>(message, AgentModelChanged)) {
-            upsertItem(items, {
-                id: ["model", message.messageId].join(":"),
-                kind: "event",
-                role: "agent",
-                text: modelChangedText(message),
-                attachments: [],
-                createdAt,
-                state: "completed",
-            });
-            continue;
-        }
-
-        if (isTypedMessage<TextMessage>(message, AgentTextContentStarted)) {
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "message",
-                role: "agent",
-                text: "",
-                attachments: [],
-                createdAt,
-                phase: message.phase,
-                turnId: message.turnId,
-            });
-        } else if (isTypedMessage<TextMessage>(message, AgentTextContentDelta)) {
-            appendText(items, message.itemId, {
-                id: message.itemId,
-                kind: "message",
-                role: "agent",
-                createdAt,
-                phase: message.phase,
-                turnId: message.turnId,
-            }, message.text);
-        } else if (isTypedMessage<TextMessage>(message, AgentTextContentEnded)) {
-            if (!items.has(message.itemId)) {
-                upsertItem(items, {
-                    id: message.itemId,
-                    kind: "message",
-                    role: "agent",
-                    text: "",
-                    attachments: [],
-                    createdAt,
-                    phase: message.phase,
-                    turnId: message.turnId,
-                });
-            }
-        } else if (isTypedMessage<ItemMessage>(message, AgentReasoningContentStarted)) {
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "reasoning",
-                role: "agent",
-                text: "",
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-            });
-        } else if (isTypedMessage<TextMessage>(message, AgentReasoningContentDelta)) {
-            appendText(items, message.itemId, {
-                id: message.itemId,
-                kind: "reasoning",
-                role: "agent",
-                createdAt,
-                turnId: message.turnId,
-            }, message.text);
-        } else if (isTypedMessage<ItemMessage>(message, AgentReasoningContentEnded)) {
-            if (!items.has(message.itemId)) {
-                upsertItem(items, {
-                    id: message.itemId,
-                    kind: "reasoning",
-                    role: "agent",
-                    text: "",
-                    attachments: [],
-                    createdAt,
-                    turnId: message.turnId,
-                });
-            }
-        } else if (
-            isTypedMessage<ItemMessage>(message, AgentFileContentStarted) ||
-            isTypedMessage<FileMessage>(message, AgentFileContentDelta) ||
-            isTypedMessage<ItemMessage>(message, AgentFileContentEnded)
-        ) {
-            const existing = items.get(message.itemId);
-            const attachments = [...(existing?.attachments ?? [])];
-            if (isTypedMessage<FileMessage>(message, AgentFileContentDelta) && !attachments.includes(message.url)) {
-                attachments.push(message.url);
-            }
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "message",
-                role: "agent",
-                text: existing?.text ?? "",
-                attachments,
-                createdAt,
-                turnId: message.turnId,
-                state: isTypedMessage<ItemMessage>(message, AgentFileContentEnded) ? "completed" : "in_progress",
-            });
-        } else if (
-            isTypedMessage<ToolMessage>(message, AgentToolCallPending) ||
-            isTypedMessage<ToolMessage>(message, AgentToolCallInProgress) ||
-            isTypedMessage<ToolMessage>(message, AgentToolCallStarted) ||
-            isTypedMessage<ToolMessage>(message, AgentToolCallEnded)
-        ) {
-            const existing = items.get(message.itemId);
-            const command = toolCommandText(message) ?? existing?.command;
-            const endedFields = isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) ? shellOutputFields(message) : {};
-            const argumentsText = toolArgumentsText(message.arguments) ?? existing?.argumentsText;
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "tool_call",
-                role: "agent",
-                text: toolCallHeadline(message),
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-                toolkit: message.toolkit ?? existing?.toolkit,
-                tool: message.tool ?? existing?.tool,
-                command,
-                argumentsText,
-                input: message.arguments ?? existing?.input,
-                output: isTypedMessage<ToolEndedMessage>(message, AgentToolCallEnded) ? message.result : existing?.output,
-                logs: existing?.logs,
-                result: endedFields.result ?? existing?.result,
-                stdout: endedFields.stdout ?? existing?.stdout,
-                stderr: endedFields.stderr ?? existing?.stderr,
-                state: toolCallState(message),
-                failed: toolCallFailed(message),
-            });
-        } else if (isTypedMessage<ToolArgumentsDeltaMessage>(message, AgentToolCallArgumentsDelta)) {
-            const existing = items.get(message.itemId);
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "tool_call",
-                role: "agent",
-                text: existing?.text ?? "Running tool",
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-                toolkit: existing?.toolkit,
-                tool: existing?.tool,
-                command: existing?.command,
-                argumentsText: appendToolArgumentsDelta(existing, message.delta),
-                input: existing?.input,
-                output: existing?.output,
-                logs: existing?.logs,
-                result: existing?.result,
-                stdout: existing?.stdout,
-                stderr: existing?.stderr,
-                state: existing?.state ?? "in_progress",
-                failed: existing?.failed,
-            });
-        } else if (isTypedMessage<ToolLogDeltaMessage>(message, AgentToolCallLogDelta)) {
-            const existing = items.get(message.itemId);
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "tool_call",
-                role: "agent",
-                text: existing?.text ?? "Running tool",
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-                toolkit: existing?.toolkit,
-                tool: existing?.tool,
-                command: existing?.command,
-                argumentsText: existing?.argumentsText,
-                input: existing?.input,
-                output: existing?.output,
-                logs: appendToolLogs(existing, message.lines),
-                result: existing?.result,
-                stdout: existing?.stdout,
-                stderr: existing?.stderr,
-                state: existing?.state ?? "in_progress",
-                failed: existing?.failed,
-            });
-        } else if (isTypedMessage<ClientToolCallRequestedMessage>(message, AgentClientToolCallRequested)) {
-            const argumentsText = toolArgumentsText(message.arguments);
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "tool_call",
-                role: "agent",
-                text: "Waiting for client tool " + toolCallLabel(message),
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-                toolkit: message.toolkit,
-                tool: message.tool,
-                argumentsText,
-                input: message.arguments,
-                state: "queued",
-            });
-        } else if (isTypedMessage<SecretRequestedMessage>(message, AgentSecretRequested)) {
-            const scope = message.scope?.trim();
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "event",
-                role: "agent",
-                text: scope ? "Secret requested: " + message.name + " (" + scope + ")" : "Secret requested: " + message.name,
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-                state: "queued",
-            });
-        } else if (
-            isTypedMessage<ItemMessage>(message, AgentImageGenerationStarted) ||
-            isTypedMessage<ImagePartialMessage>(message, AgentImageGenerationPartial) ||
-            isTypedMessage<ImageCompletedMessage>(message, AgentImageGenerationCompleted) ||
-            isTypedMessage<ImageFailedMessage>(message, AgentImageGenerationFailed)
-        ) {
-            const images = isTypedMessage<ImageCompletedMessage>(message, AgentImageGenerationCompleted)
-                ? message.images
-                : [];
-            const image = isTypedMessage<ImagePartialMessage>(message, AgentImageGenerationPartial)
-                ? message.image
-                : images[0];
-            upsertItem(items, {
-                id: message.itemId,
-                kind: "image_generation",
-                role: "agent",
-                text: "",
-                attachments: [],
-                createdAt,
-                turnId: message.turnId,
-                image: {
-                    uri: image?.uri,
-                    status: image?.status ?? imageStatus(message),
-                    statusDetail: isTypedMessage<ImageFailedMessage>(message, AgentImageGenerationFailed) ? message.error.message : undefined,
-                    images,
-                },
-            });
-        } else if (isTypedMessage<TurnEndedMessage>(message, TurnEnded)) {
-            const errorItem = turnEndedErrorItem(message, createdAt);
-            if (errorItem !== null) {
-                upsertItem(items, errorItem);
-            }
-        }
-    }
-
-    for (const pending of session.pendingInputs) {
-        const item = pendingItemFromInput(pending);
-        if (item !== null && !items.has(item.id)) {
-            upsertItem(items, item);
-        }
-    }
-
-    return [...items.values()].filter((item) => (
-        item.text.trim() !== "" ||
-        item.attachments.length > 0 ||
-        item.image != null ||
-        item.kind === "tool_call" ||
-        item.kind === "event" ||
-        item.kind === "error"
-    ));
-}
-
 
 function firstNonEmptyLine(text: string): string | null {
     for (const line of text.split(/\r?\n/)) {
@@ -1082,16 +133,16 @@ function firstNonEmptyLine(text: string): string | null {
     return null;
 }
 
-function detailGroupId(messages: FeedItem[]): string {
+function detailGroupId(messages: ChatThreadItem[]): string {
     const first = messages[0];
     return ["details", first?.turnId ?? "", first?.id ?? "", first?.createdAt.getTime() ?? 0].join(":");
 }
 
-function messagesShareTurn(left: FeedItem, right: FeedItem): boolean {
+function messagesShareTurn(left: ChatThreadItem, right: ChatThreadItem): boolean {
     return left.turnId != null && left.turnId.trim() !== "" && left.turnId === right.turnId;
 }
 
-function canCollapseAsCommentary(message: FeedItem): boolean {
+function canCollapseAsCommentary(message: ChatThreadItem): boolean {
     if (message.phase === "final_answer") {
         return false;
     }
@@ -1103,28 +154,28 @@ function canCollapseAsCommentary(message: FeedItem): boolean {
     );
 }
 
-function canRenderAsFinalAnswer(message: FeedItem): boolean {
+function canRenderAsFinalAnswer(message: ChatThreadItem): boolean {
     if (message.kind !== "message" || message.role !== "agent" || message.phase === "commentary") {
         return false;
     }
     return message.text.trim() !== "" || message.attachments.length > 0 || message.image != null;
 }
 
-function isChatFeedWidgetCall(message: FeedItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
+function isChatFeedWidgetCall(message: ChatThreadItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
     return message.kind === "tool_call" &&
         message.toolkit === "client" &&
         message.tool != null &&
         chatFeedWidgetsByName.has(message.tool);
 }
 
-function isIntrinsicDetail(message: FeedItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
+function isIntrinsicDetail(message: ChatThreadItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
     return message.kind === "reasoning" ||
         message.kind === "event" ||
         (message.kind === "tool_call" && message.failed !== true && !isChatFeedWidgetCall(message, chatFeedWidgetsByName)) ||
         (canCollapseAsCommentary(message) && message.phase === "commentary");
 }
 
-function nextUserMessageIndex(messages: FeedItem[], start: number): number | null {
+function nextUserMessageIndex(messages: ChatThreadItem[], start: number): number | null {
     for (let index = start; index < messages.length; index += 1) {
         const message = messages[index];
         if (message.kind === "message" && message.role === "user") {
@@ -1134,7 +185,7 @@ function nextUserMessageIndex(messages: FeedItem[], start: number): number | nul
     return null;
 }
 
-function finalAgentMessageIndexForSegment(messages: FeedItem[], start: number, end: number): number {
+function finalAgentMessageIndexForSegment(messages: ChatThreadItem[], start: number, end: number): number {
     let explicitFinalIndex = -1;
     for (let index = start; index < end; index += 1) {
         const message = messages[index];
@@ -1156,7 +207,7 @@ function finalAgentMessageIndexForSegment(messages: FeedItem[], start: number, e
 }
 
 function addDetailIndexesForSegment(
-    messages: FeedItem[],
+    messages: ChatThreadItem[],
     start: number,
     end: number,
     detailIndexes: Set<number>,
@@ -1175,7 +226,7 @@ function addDetailIndexesForSegment(
     }
 }
 
-function nextNonDetailMessage(messages: FeedItem[], detailIndexes: Set<number>, start: number, end: number): FeedItem | null {
+function nextNonDetailMessage(messages: ChatThreadItem[], detailIndexes: Set<number>, start: number, end: number): ChatThreadItem | null {
     for (let index = start; index < end; index += 1) {
         if (!detailIndexes.has(index)) {
             return messages[index];
@@ -1184,7 +235,7 @@ function nextNonDetailMessage(messages: FeedItem[], detailIndexes: Set<number>, 
     return null;
 }
 
-function detailGroupCollapsedMessage(messages: FeedItem[]): FeedItem | null {
+function detailGroupCollapsedMessage(messages: ChatThreadItem[]): ChatThreadItem | null {
     for (const message of [...messages].reverse()) {
         if (canCollapseAsCommentary(message) && message.text.trim() !== "") {
             return message;
@@ -1208,7 +259,7 @@ function formatDetailGroupDuration(milliseconds: number): string {
     return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
 }
 
-function detailGroupCollapsedText(messages: FeedItem[], nextMessage: FeedItem | null): string {
+function detailGroupCollapsedText(messages: ChatThreadItem[], nextMessage: ChatThreadItem | null): string {
     const first = messages[0];
     if (first && nextMessage != null && canRenderAsFinalAnswer(nextMessage) && messagesShareTurn(first, nextMessage)) {
         return `Worked for ${formatDetailGroupDuration(nextMessage.createdAt.getTime() - first.createdAt.getTime())}`;
@@ -1216,7 +267,7 @@ function detailGroupCollapsedText(messages: FeedItem[], nextMessage: FeedItem | 
     return firstNonEmptyLine(detailGroupCollapsedMessage(messages)?.text ?? "") ?? "Working";
 }
 
-function detailGroupAuthorName(message: FeedItem, localParticipantName: string, agentName?: string): string {
+function detailGroupAuthorName(message: ChatThreadItem, localParticipantName: string, agentName?: string): string {
     const authorName = message.authorName?.trim();
     if (authorName) {
         return authorName;
@@ -1227,7 +278,7 @@ function detailGroupAuthorName(message: FeedItem, localParticipantName: string, 
     return displayParticipantName(agentName);
 }
 
-function detailGroupForMessages(messages: FeedItem[], nextMessage: FeedItem | null, expandedIds: Set<string>, localParticipantName: string, agentName?: string): DetailGroupFeedItem {
+function detailGroupForMessages(messages: ChatThreadItem[], nextMessage: ChatThreadItem | null, expandedIds: Set<string>, localParticipantName: string, agentName?: string): DetailGroupItem {
     const collapsedMessage = detailGroupCollapsedMessage(messages) ?? messages[0];
     const id = detailGroupId(messages);
     return {
@@ -1241,14 +292,14 @@ function detailGroupForMessages(messages: FeedItem[], nextMessage: FeedItem | nu
     };
 }
 
-function threadFeedItems(
-    messages: FeedItem[],
+function groupThreadItems(
+    messages: ChatThreadItem[],
     expandedIds: Set<string>,
     localParticipantName: string,
     agentName: string | undefined,
     chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
-): ThreadFeedItem[] {
-    const items: ThreadFeedItem[] = [];
+): RenderedThreadItem[] {
+    const items: RenderedThreadItem[] = [];
     let index = 0;
     while (index < messages.length) {
         const segmentEnd = nextUserMessageIndex(messages, index + 1) ?? messages.length;
@@ -1283,7 +334,7 @@ function threadFeedItems(
 }
 
 
-function previousMessageFeedItem(items: ThreadFeedItem[], index: number): FeedItem | null {
+function previousMessageItem(items: RenderedThreadItem[], index: number): ChatThreadItem | null {
     for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
         const item = items[cursor];
         if (item.kind !== "detail_group") {
@@ -1291,34 +342,6 @@ function previousMessageFeedItem(items: ThreadFeedItem[], index: number): FeedIt
         }
     }
     return null;
-}
-
-function latestThreadStatus(session: ChatThreadSession | null): ThreadStatusMessage | null {
-    if (session === null) {
-        return null;
-    }
-    const status = session.threadStatus;
-    if (status !== undefined && isTypedMessage<ThreadStatusMessage>(status, AgentThreadStatus)) {
-        return status;
-    }
-    return null;
-}
-
-function latestUsageSnapshot(session: ChatThreadSession | null): AgentUsageSnapshot | null {
-    if (session === null) {
-        return null;
-    }
-    let usage: AgentUsageSnapshot | null = null;
-    for (const event of session.messages) {
-        const next = AgentUsageSnapshot.fromMessage(event.message);
-        if (next === null) {
-            continue;
-        }
-        if (shouldReplaceAgentUsageSnapshot(usage, next)) {
-            usage = next;
-        }
-    }
-    return usage;
 }
 
 export function formatAgentUsageTokenCount(value: number): string {
@@ -1568,7 +591,7 @@ export function EventLine({ headline, details, state = "info", failed = false, c
     );
 }
 
-function toolDetailLines(message: FeedItem): string[] {
+function toolDetailLines(message: ChatThreadItem): string[] {
     const details: string[] = [];
     if (message.argumentsText?.trim()) {
         details.push(message.argumentsText);
@@ -1588,7 +611,7 @@ function toolDetailLines(message: FeedItem): string[] {
     return details;
 }
 
-function ToolCallLine({ message }: { message: FeedItem }): ReactElement | null {
+function ToolCallLine({ message }: { message: ChatThreadItem }): ReactElement | null {
     const detailLines = toolDetailLines(message);
     const [expanded, setExpanded] = useState(message.failed === true);
     const hasDetails = detailLines.length > 0;
@@ -1725,7 +748,7 @@ export function ChatThreadPreview({ room, path, className }: ChatThreadPreviewPr
     return <AttachmentDownloadButton room={room} path={normalizedPath} className={className} />;
 }
 
-function DetailGroupLine({ item, onToggle }: { item: DetailGroupFeedItem; onToggle: () => void }): ReactElement {
+function DetailGroupLine({ item, onToggle }: { item: DetailGroupItem; onToggle: () => void }): ReactElement {
     return (
         <button
             type="button"
@@ -1748,7 +771,7 @@ function ExpandedDetailGroup({
     chatFeedWidgetsByName,
 }: {
     room: RoomClient;
-    item: DetailGroupFeedItem;
+    item: DetailGroupItem;
     localParticipantName: string;
     agentName?: string;
     chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
@@ -1779,7 +802,7 @@ function ExpandedDetailGroup({
     );
 }
 
-function GeneratedImageView({ image }: { image: NonNullable<FeedItem["image"]> }): ReactElement {
+function GeneratedImageView({ image }: { image: NonNullable<ChatThreadItem["image"]> }): ReactElement {
     const completedImages = image.images?.filter((entry) => entry.uri?.trim()) ?? [];
     if (completedImages.length > 0) {
         return (
@@ -1830,15 +853,13 @@ function ThreadMessageView({
     forceHideHeader = false,
 }: {
     room: RoomClient;
-    message: FeedItem;
-    previous: FeedItem | null;
+    message: ChatThreadItem;
+    previous: ChatThreadItem | null;
     localParticipantName: string;
     agentName?: string;
     chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
     forceHideHeader?: boolean;
 }): ReactElement | null {
-    console.log(message.kind);
-
     if (message.kind === "error") {
         return (
             <div className="px-6 py-1 text-center text-sm text-destructive">
@@ -1856,6 +877,7 @@ function ThreadMessageView({
     }
 
     if (message.kind === "tool_call") {
+
         if (isShellTool(message)) {
             return (
                 <ShellLine
@@ -2031,13 +1053,9 @@ function processChatFeedWidgetRequests({
         return;
     }
 
-    const requests = session.messages
-        .map((event) => event.message)
-        .filter((message): message is InstanceType<typeof AgentClientToolCallRequested> => (
-            message instanceof AgentClientToolCallRequested &&
-            message.toolkit === "client" &&
-            widgetsByName.has(message.tool)
-        ));
+    const requests = session.clientToolCallRequests.filter((message) => (
+        message.toolkit === "client" && widgetsByName.has(message.tool)
+    ));
 
     const handledRequests = handledRequestsForSession(session);
     if (!initializedChatFeedWidgetSessions.has(session)) {
@@ -2048,13 +1066,18 @@ function processChatFeedWidgetRequests({
     }
 
     if (replayingChatFeedWidgetSessions.has(session)) {
+        if (session.isLoading) {
+            return;
+        }
+
+        replayingChatFeedWidgetSessions.delete(session);
+        const completedItemIds = session.completedClientToolCallItemIds;
+
         for (const request of requests) {
-            handledRequests.add(request.requestId);
+            if (completedItemIds.has(request.itemId)) {
+                handledRequests.add(request.requestId);
+            }
         }
-        if (!session.isLoading) {
-            replayingChatFeedWidgetSessions.delete(session);
-        }
-        return;
     }
 
     for (const request of requests) {
@@ -2196,8 +1219,9 @@ export function AgentThread({
 
     const normalizedPath = path.trim();
     const session = sessionRef.current?.threadPath === normalizedPath ? sessionRef.current : null;
+    const timeline = useMemo(() => session?.timeline ?? null, [session, version]);
 
-    const feedItems = useMemo(() => feedFromSession(session).map((item) => {
+    const timelineItems = useMemo(() => (timeline?.items ?? []).map((item) => {
         const override = session == null
             ? undefined
             : chatFeedWidgetCallOverrides.get(chatFeedWidgetCallKey(session.threadPath, item.id));
@@ -2210,28 +1234,28 @@ export function AgentThread({
             failed: override.status === "failed",
             output: override.output ?? item.output,
         };
-    }), [chatFeedWidgetCallOverrides, session, version]);
-    const showThreadLoading = (session === null || session.isLoading) && feedItems.length === 0;
-    const renderedFeedItems = useMemo(() => (
+    }), [chatFeedWidgetCallOverrides, session, timeline]);
+    const showThreadLoading = (session === null || session.isLoading) && timelineItems.length === 0;
+    const renderedItems = useMemo(() => (
         collapseMessages
-            ? threadFeedItems(feedItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
-            : feedItems
-    ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, feedItems, localParticipantName]);
-    const status = useMemo(() => latestThreadStatus(session), [session, version]);
-    const usage = useMemo(() => latestUsageSnapshot(session), [session, version]);
+            ? groupThreadItems(timelineItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
+            : timelineItems
+    ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, timelineItems, localParticipantName]);
+    const status = session?.threadStatus ?? null;
+    const usage = timeline?.usage ?? null;
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
     const canInterruptActiveTurn = turnId != null && (agentParticipant != null || chatClient != null);
-    const renderedFeedItemsNewestFirst = useMemo(() => [...renderedFeedItems].reverse(), [renderedFeedItems]);
-    const firstRenderedItemId = renderedFeedItems[0]?.id;
-    const lastRenderedItemId = renderedFeedItems[renderedFeedItems.length - 1]?.id;
-    const previousFeedItemById = useMemo(() => {
-        const previousById = new Map<string, FeedItem | null>();
-        renderedFeedItems.forEach((item, index) => {
-            previousById.set(item.id, previousMessageFeedItem(renderedFeedItems, index));
+    const renderedItemsNewestFirst = useMemo(() => [...renderedItems].reverse(), [renderedItems]);
+    const firstRenderedItemId = renderedItems[0]?.id;
+    const lastRenderedItemId = renderedItems[renderedItems.length - 1]?.id;
+    const previousItemById = useMemo(() => {
+        const previousById = new Map<string, ChatThreadItem | null>();
+        renderedItems.forEach((item, index) => {
+            previousById.set(item.id, previousMessageItem(renderedItems, index));
         });
         return previousById;
-    }, [renderedFeedItems]);
+    }, [renderedItems]);
 
     const selectAttachments = useCallback((files: File[]) => {
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
@@ -2305,7 +1329,7 @@ export function AgentThread({
                     <div className="min-h-0 flex-1 overflow-hidden">
                         <LoadingState />
                     </div>
-                ) : feedItems.length === 0 ? (
+                ) : timelineItems.length === 0 ? (
                     <div className="min-h-0 flex-1 overflow-hidden">
                         <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
                     </div>
@@ -2315,7 +1339,7 @@ export function AgentThread({
                         className="flex-1 overflow-x-hidden"
                         currentUserId="user"
                         getMessageAuthorId={(item) => item.kind === "detail_group" ? "agent" : item.role}
-                        messages={renderedFeedItemsNewestFirst}
+                        messages={renderedItemsNewestFirst}
                         renderMessage={(item) => {
                           return (
                             <div className={cn(
@@ -2338,7 +1362,7 @@ export function AgentThread({
                                     <ThreadMessageView
                                         room={room}
                                         message={item}
-                                        previous={previousFeedItemById.get(item.id) ?? null}
+                                        previous={previousItemById.get(item.id) ?? null}
                                         localParticipantName={localParticipantName}
                                         agentName={agentName}
                                         chatFeedWidgetsByName={chatFeedWidgetsByName}
