@@ -210,10 +210,8 @@ export function ChatInput({
 
     const trailingButton = showCancelButton ? (
         <ComposerActionButton onClick={onCancelRequest} showCancelButton />
-    ) : hasDraft ? (
-        <ComposerActionButton onClick={handleSend} disabled={!canSend} />
     ) : (
-        <div className="h-9 w-9 shrink-0" />
+        <ComposerActionButton onClick={handleSend} disabled={!canSend} />
     );
 
     return (
