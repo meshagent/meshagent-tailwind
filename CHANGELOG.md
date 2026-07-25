@@ -1,4 +1,5 @@
 ## [0.47.0]
+- Aligned dataset-backed React chat with Flutter by keeping the real live thread subscription open and reconciling ordered dataset history with live feed state.
 - Moved dataset-thread hydration and chat timeline reduction into the Tailwind UI package so `meshagent-agents-ts` can match the Dart agents API.
 - Improved TypeScript messaging clients so room delivery order and startup/presence behavior stay consistent.
 - Moved managed-agent client routing onto the Rust tunnel path and hardened agent chat-client event handling.

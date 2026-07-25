@@ -382,7 +382,6 @@ describe("ChatBotView multi-thread composer", () => {
         );
 
         await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
-
         fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
             target: { value: "first pending message" },
         });
@@ -527,6 +526,7 @@ describe("ChatBotView multi-thread composer", () => {
                 chatClient={chatClient}
                 agentName="codex"
                 threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                enableFileUpload
                 onSelectedThreadPathChanged={(path) => {
                     selectedPaths.push(path);
                 }}
@@ -614,6 +614,75 @@ describe("AgentUsageSnapshot", () => {
 });
 
 describe("AgentThread", () => {
+    it("passes the file upload option through ChatBotView", () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const { rerender } = render(
+            <ChatBotView
+                room={room}
+                path="thread-file-upload"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        expect(screen.queryByRole("button", { name: "Attach file" })).to.equal(null);
+
+        rerender(
+            <ChatBotView
+                room={room}
+                path="thread-file-upload"
+                chatClient={chatClient}
+                agentName="codex"
+                enableFileUpload
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "Attach file" })).toBeTruthy();
+    });
+
+    it("renders follow-up suggestion pills and sends their prompts", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        const { rerender } = render(
+            <ThreadView
+                room={room}
+                path="thread-suggestions"
+                chatClient={chatClient}
+                agentName="codex"
+            />,
+        );
+
+        expect(screen.queryByRole("list", { name: "Follow-up suggestions" })).to.equal(null);
+
+        rerender(
+            <ThreadView
+                room={room}
+                path="thread-suggestions"
+                chatClient={chatClient}
+                agentName="codex"
+                suggestions={[
+                    { label: "Use the label" },
+                    { label: "Show a short label", prompt: "Send this longer follow-up question" },
+                ]}
+            />,
+        );
+
+        expect(screen.getByRole("list", { name: "Follow-up suggestions" })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Use the label" }));
+        fireEvent.click(screen.getByRole("button", { name: "Show a short label" }));
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(2);
+            expect(turnStarts[0].toJson().content).to.deep.equal([{ type: "text", text: "Use the label" }]);
+            expect(turnStarts[1].toJson().content).to.deep.equal([{ type: "text", text: "Send this longer follow-up question" }]);
+        });
+    });
+
     it("shows a spinner for an empty thread until replay loading completes", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();

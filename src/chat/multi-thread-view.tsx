@@ -27,6 +27,7 @@ export interface MultiThreadViewProps {
     clientToolkits?: ClientToolkitDescription[];
     chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
+    enableFileUpload?: boolean;
 }
 
 function normalizeSelectedThreadPath(path?: string | null): string | null {
@@ -53,6 +54,7 @@ export function MultiThreadView({
     clientToolkits,
     chatFeedWidgets,
     toolChoice,
+    enableFileUpload = false,
 }: MultiThreadViewProps): ReactElement {
     const controlledSelectedThreadPath = selectedThreadPath !== undefined
         ? normalizeSelectedThreadPath(selectedThreadPath)
@@ -117,6 +119,7 @@ export function MultiThreadView({
             clientToolkits={clientToolkits}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
+            enableFileUpload={enableFileUpload}
         />
     );
 }

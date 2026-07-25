@@ -55,6 +55,7 @@ export interface ChatBotViewProps {
     chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
+    enableFileUpload?: boolean;
     threadSource?: "session" | "dataset";
     rowsLoader?: DatasetThreadRowsLoader;
 }
@@ -117,6 +118,7 @@ export function ChatBotView({
     chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
+    enableFileUpload = false,
     threadSource = "session",
     rowsLoader,
 }: ChatBotViewProps): ReactElement {
@@ -237,6 +239,7 @@ export function ChatBotView({
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
             collapseMessages={collapseMessages}
+            enableFileUpload={enableFileUpload}
             threadSource={threadSource}
             rowsLoader={rowsLoader} />
     );

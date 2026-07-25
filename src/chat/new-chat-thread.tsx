@@ -31,6 +31,7 @@ export interface NewChatThreadProps {
     clientToolkits?: ClientToolkitDescription[];
     chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
+    enableFileUpload?: boolean;
 }
 
 class NewThreadCancelledError extends Error {
@@ -140,6 +141,7 @@ export function NewChatThread({
     clientToolkits,
     chatFeedWidgets,
     toolChoice,
+    enableFileUpload = false,
 }: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
     const [newThreadDraft, setNewThreadDraft] = useState("");
@@ -321,6 +323,7 @@ export function NewChatThread({
             attachments={newThreadAttachments}
             onFilesSelected={selectNewThreadAttachments}
             setAttachments={setNewThreadAttachments}
+            enableFileUpload={enableFileUpload}
             value={newThreadDraft}
             onValueChange={setNewThreadDraft}
             clearOnSubmit={false}

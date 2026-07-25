@@ -13,11 +13,12 @@ import { cn } from "../lib/utils.js";
 const MIN_TEXTAREA_HEIGHT = 20;
 const MAX_TEXTAREA_HEIGHT = 160;
 
-interface ChatInputProps {
+export interface ChatInputProps {
     onSubmit: (message: ChatMessage) => void | Promise<void>;
     onFilesSelected: (files: File[]) => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
+    enableFileUpload?: boolean;
     onTextChange?: (text: string) => void;
     onCancelRequest?: () => void;
     showCancelButton?: boolean;
@@ -123,6 +124,7 @@ export function ChatInput({
     onFilesSelected,
     attachments,
     setAttachments,
+    enableFileUpload = false,
     onTextChange,
     onCancelRequest,
     showCancelButton = false,
@@ -228,8 +230,11 @@ export function ChatInput({
                         ))}
                     </div>
                 ) : null}
-                <div className="flex items-center gap-2">
-                    <FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />
+
+
+                <div className={cn("flex items-center gap-2", !enableFileUpload && "pl-1")}>
+                    {enableFileUpload ? (<FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />) : null}
+
                     <textarea
                         ref={textareaRef}
                         autoFocus={autoFocus}

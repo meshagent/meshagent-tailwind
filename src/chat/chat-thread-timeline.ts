@@ -430,23 +430,28 @@ export function buildChatThreadTimeline(
 ): ChatThreadTimeline {
   const items = new Map<string, ChatThreadItem>();
   let usage: AgentUsageSnapshot | null = null;
+
   for (const event of events) {
     const message = event.message;
     const createdAt = event.createdAt;
     const nextUsage = AgentUsageSnapshot.fromMessage(message);
+
     if (nextUsage != null && shouldReplaceAgentUsageSnapshot(usage, nextUsage)) {
       usage = nextUsage;
     }
+
     const inputItem = inputItemFromMessage(message, createdAt);
     if (inputItem != null && !items.has(inputItem.id)) {
       upsertItem(items, inputItem);
       continue;
     }
+
     const lifecycleItem = lifecycleEventItem(message as TurnLifecycleMessage, createdAt);
     if (lifecycleItem != null) {
       upsertItem(items, lifecycleItem);
       continue;
     }
+
     if (isTypedMessage<ModelChangedMessage>(message, AgentModelChanged)) {
       const model = [message.provider, message.model].filter((part) => part.trim() !== "").join(" / ");
       const voice = message.voice?.trim();
@@ -547,10 +552,12 @@ export function buildChatThreadTimeline(
       if (errorItem != null) upsertItem(items, errorItem);
     }
   }
+
   for (const pending of pendingInputs) {
     const item = pendingItemFromInput(pending);
     if (item != null && !items.has(item.id)) upsertItem(items, item);
   }
+
   return {
     items: [...items.values()].filter((item) => (
       item.text.trim() !== "" || item.attachments.length > 0 || item.image != null ||
@@ -558,6 +565,104 @@ export function buildChatThreadTimeline(
     )),
     usage,
   };
+}
+
+export function buildMergedChatThreadTimeline(
+  persistedEvents: readonly AgentMessageEvent[],
+  liveEvents: readonly AgentMessageEvent[],
+  pendingInputs: readonly PendingAgentInput[] = [],
+): ChatThreadTimeline {
+  const persisted = buildChatThreadTimeline(persistedEvents);
+  const live = buildChatThreadTimeline(liveEvents, pendingInputs);
+  const items = persisted.items.map((item) => ({ ...item }));
+  const indexes = new Map(items.map((item, index) => [item.id, index]));
+
+  for (const liveItem of live.items) {
+    const existingIndex = indexes.get(liveItem.id);
+    if (existingIndex == null) {
+      indexes.set(liveItem.id, items.length);
+      items.push({ ...liveItem });
+      continue;
+    }
+    items[existingIndex] = mergeChatThreadItem(items[existingIndex], liveItem);
+  }
+
+  let usage = persisted.usage;
+  if (live.usage != null && shouldReplaceAgentUsageSnapshot(usage, live.usage)) {
+    usage = live.usage;
+  }
+  return { items, usage };
+}
+
+function mergeChatThreadItem(persisted: ChatThreadItem, live: ChatThreadItem): ChatThreadItem {
+  if (persisted.kind !== live.kind || persisted.role !== live.role) {
+    return live;
+  }
+  const persistedImage = persisted.image;
+  const liveImage = live.image;
+  return {
+    ...persisted,
+    ...live,
+    text: mergeTimelineText(persisted.text, live.text),
+    attachments: mergeUniqueStrings(persisted.attachments, live.attachments),
+    createdAt: persisted.createdAt <= live.createdAt ? persisted.createdAt : live.createdAt,
+    authorName: live.authorName ?? persisted.authorName,
+    phase: live.phase ?? persisted.phase,
+    turnId: live.turnId ?? persisted.turnId,
+    toolkit: live.toolkit ?? persisted.toolkit,
+    tool: live.tool ?? persisted.tool,
+    command: live.command ?? persisted.command,
+    argumentsText: live.argumentsText ?? persisted.argumentsText,
+    input: live.input ?? persisted.input,
+    output: live.output ?? persisted.output,
+    logs: mergeOptionalStrings(persisted.logs, live.logs),
+    result: live.result ?? persisted.result,
+    stdout: live.stdout ?? persisted.stdout,
+    stderr: live.stderr ?? persisted.stderr,
+    state: mergeTimelineState(persisted.state, live.state),
+    failed: live.failed ?? persisted.failed,
+    image: persistedImage == null && liveImage == null ? undefined : {
+      ...persistedImage,
+      ...liveImage,
+      images: mergeGeneratedImages(persistedImage?.images, liveImage?.images),
+    },
+  };
+}
+
+function mergeTimelineText(persisted: string, live: string): string {
+  if (persisted === live || live === "") return persisted;
+  if (persisted === "" || live.startsWith(persisted)) return live;
+  if (persisted.startsWith(live)) return persisted;
+  return live;
+}
+
+function mergeUniqueStrings(left: readonly string[], right: readonly string[]): string[] {
+  return [...new Set([...left, ...right])];
+}
+
+function mergeOptionalStrings(left?: readonly string[], right?: readonly string[]): string[] | undefined {
+  if (left == null && right == null) return undefined;
+  return mergeUniqueStrings(left ?? [], right ?? []);
+}
+
+function mergeGeneratedImages(
+  persisted?: readonly ChatThreadGeneratedImage[],
+  live?: readonly ChatThreadGeneratedImage[],
+): ChatThreadGeneratedImage[] | undefined {
+  if (persisted == null && live == null) return undefined;
+  const images = new Map<string, ChatThreadGeneratedImage>();
+  for (const image of [...(persisted ?? []), ...(live ?? [])]) {
+    const key = [image.uri ?? "", image.status ?? ""].join("\n");
+    images.set(key, image);
+  }
+  return [...images.values()];
+}
+
+function mergeTimelineState(persisted?: string, live?: string): string | undefined {
+  const terminalStates = new Set(["completed", "failed", "cancelled"]);
+  if (live != null && terminalStates.has(live)) return live;
+  if (persisted != null && terminalStates.has(persisted)) return persisted;
+  return live ?? persisted;
 }
 
 function finiteNumber(value: unknown): number | null {

@@ -20,6 +20,22 @@ afterEach(() => {
 });
 
 describe("ChatInput", () => {
+    it("shows file upload only when enabled", () => {
+        const props = {
+            attachments: [],
+            setAttachments: () => undefined,
+            onFilesSelected: () => undefined,
+            onSubmit: () => undefined,
+        };
+        const { rerender } = render(<ChatInput {...props} />);
+
+        expect(screen.queryByRole("button", { name: "Attach file" })).to.equal(null);
+
+        rerender(<ChatInput {...props} enableFileUpload />);
+
+        expect(screen.getByRole("button", { name: "Attach file" })).toBeTruthy();
+    });
+
     it("hides the inner scrollbar until the composer reaches its height cap", () => {
         render(
             <ChatInput

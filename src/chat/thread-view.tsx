@@ -6,7 +6,7 @@ import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshag
 import { AlertTriangle } from "lucide-react";
 
 import { AgentThread } from "./agent-thread.js";
-import type { AgentToolChoice } from "./agent-thread.js";
+import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
 import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor.js";
 import { DatasetAgentThread } from "./dataset-agent-thread.js";
 import type { DatasetThreadRowsLoader } from "./dataset-agent-thread.js";
@@ -36,6 +36,8 @@ export interface ThreadViewProps {
     chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
+    suggestions?: readonly AgentThreadSuggestion[];
+    enableFileUpload?: boolean;
     threadSource?: "session" | "dataset";
     rowsLoader?: DatasetThreadRowsLoader;
 }
@@ -89,6 +91,8 @@ export function ThreadView({
     chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
+    suggestions,
+    enableFileUpload = false,
     threadSource = "session",
     rowsLoader,
 }: ThreadViewProps): ReactElement {
@@ -111,7 +115,9 @@ export function ThreadView({
                     clientToolkits={clientToolkits}
                     chatFeedWidgets={chatFeedWidgets}
                     toolChoice={toolChoice}
-                    collapseMessages={collapseMessages} />
+                    collapseMessages={collapseMessages}
+                    suggestions={suggestions}
+                    enableFileUpload={enableFileUpload} />
             );
         }
 
@@ -127,7 +133,9 @@ export function ThreadView({
                 clientToolkits={clientToolkits}
                 chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
-                collapseMessages={collapseMessages} />
+                collapseMessages={collapseMessages}
+                suggestions={suggestions}
+                enableFileUpload={enableFileUpload} />
         );
     }
 
@@ -151,6 +159,7 @@ export function ThreadView({
             clientToolkits={clientToolkits}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
+            enableFileUpload={enableFileUpload}
             builder={(threadPath) => (
                 threadSource === "dataset" ? (
                     <DatasetAgentThread
@@ -165,7 +174,9 @@ export function ThreadView({
                         clientToolkits={clientToolkits}
                         chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
-                        collapseMessages={collapseMessages} />
+                        collapseMessages={collapseMessages}
+                        suggestions={suggestions}
+                        enableFileUpload={enableFileUpload} />
                 ) : (
                     <AgentThread
                         room={room}
@@ -178,7 +189,9 @@ export function ThreadView({
                         clientToolkits={clientToolkits}
                         chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
-                        collapseMessages={collapseMessages} />
+                        collapseMessages={collapseMessages}
+                        suggestions={suggestions}
+                        enableFileUpload={enableFileUpload} />
                 )
             )}
         />

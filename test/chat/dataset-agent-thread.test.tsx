@@ -9,11 +9,14 @@ import {
     AgentMessage,
     AgentTextContentDelta,
     BaseChatClient,
+    OpenThread,
+    ThreadLoaded,
     TurnStart,
     agentClientToolCallResponseType,
 } from "@meshagent/meshagent-agents";
 
 import { ChatBotView } from "../../src/chat/chat-bot-view";
+import { ThreadView } from "../../src/chat/thread-view";
 import { ChatFeedWidget } from "../../src/chat/chat-feed-widget";
 import type { ToolCall } from "../../src/chat/chat-feed-widget";
 import { DatasetAgentThread, parseDatasetThreadRef } from "../../src/chat/dataset-agent-thread";
@@ -167,7 +170,137 @@ describe("DatasetAgentThread", () => {
         });
     });
 
-    it("forwards targeted live client-tool requests through the replay client", async () => {
+    it("opens the live thread while loading history, then drains live messages in canonical order", async () => {
+        const chatClient = new FakeChatClient();
+        let resolveRows!: (rows: DatasetThreadRow[]) => void;
+        const rows = new Promise<DatasetThreadRow[]>((resolve) => {
+            resolveRows = resolve;
+        });
+
+        render(
+            <DatasetAgentThread
+                room={fakeRoom()}
+                path="dataset://threads/main"
+                chatClient={chatClient}
+                rowsLoader={() => rows}
+                collapseMessages={false}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(chatClient.sent.some((message) => message instanceof OpenThread)).to.equal(true);
+        });
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "dataset://threads/main",
+                turnId: "turn-live",
+                itemId: "item-live",
+                text: "live before history",
+            }), { createdAt: new Date("2026-06-02T12:00:03.000Z") });
+        });
+        expect(screen.queryByText("live before history")).to.equal(null);
+
+        await act(async () => {
+            resolveRows([
+                row(new AgentTextContentDelta({
+                    threadId: "dataset://threads/main",
+                    turnId: "turn-history",
+                    itemId: "item-history-2",
+                    text: "history two",
+                }).toJson(), { item_id: "item-history-2", sequence: 2, timestamp: "2026-06-02T12:00:02.000Z" }),
+                row(new AgentTextContentDelta({
+                    threadId: "dataset://threads/main",
+                    turnId: "turn-history",
+                    itemId: "item-history-1",
+                    text: "history one",
+                }).toJson(), { item_id: "item-history-1", sequence: 1, timestamp: "2026-06-02T12:00:01.000Z" }),
+            ]);
+            await rows;
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("live before history")).toBeTruthy();
+            const ids = [...document.querySelectorAll<HTMLElement>("[data-message-id]")].map((element) => element.dataset.messageId);
+            expect(ids).to.deep.equal(["item-history-1", "item-history-2", "item-live"]);
+        });
+    });
+
+    it("reconciles persisted and live versions of the same feed item", async () => {
+        const chatClient = new FakeChatClient();
+        render(
+            <DatasetAgentThread
+                room={fakeRoom()}
+                path="dataset://threads/main"
+                chatClient={chatClient}
+                rowsLoader={() => [row(new AgentTextContentDelta({
+                    threadId: "dataset://threads/main",
+                    turnId: "turn-shared",
+                    itemId: "item-shared",
+                    text: "persisted text",
+                }).toJson(), { item_id: "item-shared" })]}
+            />,
+        );
+
+        expect(await screen.findByText("persisted text")).toBeTruthy();
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "dataset://threads/main",
+                turnId: "turn-shared",
+                itemId: "item-shared",
+                text: "persisted text with live continuation",
+            }));
+        });
+
+        expect(await screen.findByText("persisted text with live continuation")).toBeTruthy();
+        expect(document.querySelectorAll('[data-message-id="item-shared"]')).to.have.length(1);
+    });
+
+    it("retries a missing dataset table without blocking the live session", async () => {
+        const chatClient = new FakeChatClient();
+        let attempts = 0;
+        render(
+            <DatasetAgentThread
+                room={fakeRoom()}
+                path="dataset://threads/main"
+                chatClient={chatClient}
+                retryMissingTableMs={1}
+                rowsLoader={() => {
+                    attempts += 1;
+                    if (attempts === 1) throw new Error("dataset table not found");
+                    return [];
+                }}
+            />,
+        );
+
+        await waitFor(() => expect(attempts).to.equal(2));
+        expect(chatClient.sent.some((message) => message instanceof OpenThread)).to.equal(true);
+    });
+
+    it("forwards suggestion sends through the provided chat client", async () => {
+        const chatClient = new FakeChatClient();
+        render(
+            <ThreadView
+                room={fakeRoom()}
+                path="dataset://threads/main"
+                chatClient={chatClient}
+                threadSource="dataset"
+                rowsLoader={() => []}
+                suggestions={[{ label: "Visible question", prompt: "Dataset follow-up prompt" }]}
+            />,
+        );
+
+        fireEvent.click(await screen.findByRole("button", { name: "Visible question" }));
+
+        await waitFor(() => {
+            const turnStart = chatClient.sent.find((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStart?.toJson().content).to.deep.equal([{ type: "text", text: "Dataset follow-up prompt" }]);
+        });
+    });
+
+    it("forwards targeted live client-tool requests through the live client", async () => {
         const chatClient = new FakeChatClient();
         const widget = new TestChatFeedWidget();
         render(
@@ -182,6 +315,7 @@ describe("DatasetAgentThread", () => {
 
         await screen.findByPlaceholderText("Type a message");
         await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "dataset://threads/main" }));
             chatClient.handleAgentMessage(new AgentClientToolCallRequested({
                 threadId: "dataset://threads/main",
                 turnId: "turn-weather",

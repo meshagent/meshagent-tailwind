@@ -15,11 +15,12 @@ import {
 } from "@meshagent/meshagent-agents";
 
 import type {
+    AgentMessageEvent,
     BaseChatClient,
     ChatThreadSession,
     ClientToolkitDescription,
 } from "@meshagent/meshagent-agents";
-import { buildChatThreadTimeline } from "./chat-thread-timeline.js";
+import { buildChatThreadTimeline, buildMergedChatThreadTimeline } from "./chat-thread-timeline.js";
 import type { AgentUsageSnapshot, ChatThreadItem } from "./chat-thread-timeline.js";
 export { AgentUsageSnapshot, shouldReplaceAgentUsageSnapshot } from "./chat-thread-timeline.js";
 
@@ -28,11 +29,13 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import { v4 as uuidV4 } from "uuid";
 
+import { Button } from "../components/ui/button.js";
 import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
 import { ChatInput } from "./chat-input.js";
-import type { ChatMessage } from "./chat-message.js";
+import { ChatMessage } from "./chat-message.js";
 import { ChatScroller } from "./chat-scroller.js";
 import { ChatTypingIndicator } from "./chat-typing-indicator.js";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
@@ -67,6 +70,11 @@ export class AgentToolChoice {
     }
 }
 
+export interface AgentThreadSuggestion {
+    label: string;
+    prompt?: string;
+}
+
 export interface AgentThreadProps {
     room: RoomClient;
     path: string;
@@ -79,6 +87,10 @@ export interface AgentThreadProps {
     chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
+    suggestions?: readonly AgentThreadSuggestion[];
+    enableFileUpload?: boolean;
+    persistedEvents?: readonly AgentMessageEvent[];
+    deferLiveEvents?: boolean;
 }
 
 
@@ -1048,10 +1060,12 @@ function processChatFeedWidgetRequests({
     session,
     widgetsByName,
     updateCall,
+    executeRequests,
 }: {
     session: ChatThreadSession;
     widgetsByName: ReadonlyMap<string, ChatFeedWidget>;
     updateCall: (callKey: string, override: ChatFeedWidgetCallOverride) => void;
+    executeRequests: boolean;
 }): void {
 
     if (widgetsByName.size === 0) {
@@ -1071,6 +1085,10 @@ function processChatFeedWidgetRequests({
         if (session.isLoading || session.loadState.requestMessageId != null) {
             replayingChatFeedWidgetSessions.add(session);
         }
+    }
+
+    if (!executeRequests) {
+        return;
     }
 
     if (replayingChatFeedWidgetSessions.has(session)) {
@@ -1159,12 +1177,17 @@ export function AgentThread({
     clientToolkits,
     chatFeedWidgets,
     collapseMessages = true,
+    suggestions,
+    enableFileUpload = false,
+    persistedEvents,
+    deferLiveEvents = false,
 }: AgentThreadProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
     const [sendError, setSendError] = useState<string | null>(null);
     const [version, setVersion] = useState(0);
     const [expandedDetailGroupIds, setExpandedDetailGroupIds] = useState<Set<string>>(() => new Set<string>());
     const [chatFeedWidgetCallOverrides, setChatFeedWidgetCallOverrides] = useState<Map<string, ChatFeedWidgetCallOverride>>(() => new Map());
+
     const sessionRef = useRef<ChatThreadSession | null>(null);
     const mountedRef = useRef(true);
     const ownsChatClient = chatClient == null;
@@ -1172,14 +1195,17 @@ export function AgentThread({
         () => chatClient ?? new MessagingChatClient({ room, agentName }),
         [agentName, chatClient, room],
     );
+
     const resolvedClientToolkits = useMemo(
         () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets),
         [chatFeedWidgets, clientToolkits],
     );
+
     const chatFeedWidgetsByName = useMemo(
         () => new Map((chatFeedWidgets ?? []).map((widget) => [widget.name, widget])),
         [chatFeedWidgets],
     );
+
     const updateChatFeedWidgetCall = useCallback((callKey: string, override: ChatFeedWidgetCallOverride) => {
         if (!mountedRef.current) {
             return;
@@ -1190,6 +1216,7 @@ export function AgentThread({
             return next;
         });
     }, []);
+
     const localParticipantName = getParticipantName(room.localParticipant);
     const agentParticipant = activeChatClient.agentParticipant() ?? findAgentParticipant(room, agentName);
 
@@ -1222,6 +1249,7 @@ export function AgentThread({
                 session,
                 widgetsByName: chatFeedWidgetsByName,
                 updateCall: updateChatFeedWidgetCall,
+                executeRequests: !deferLiveEvents,
             });
             setVersion((current) => current + 1);
         };
@@ -1233,21 +1261,32 @@ export function AgentThread({
                 sessionRef.current = null;
             }
         };
-    }, [activeChatClient, chatFeedWidgetsByName, path, updateChatFeedWidgetCall]);
+    }, [activeChatClient, chatFeedWidgetsByName, deferLiveEvents, path, updateChatFeedWidgetCall]);
 
     const normalizedPath = path.trim();
     const session = sessionRef.current?.threadPath === normalizedPath ? sessionRef.current : null;
-    const timeline = useMemo(() => (
-        session == null ? null : buildChatThreadTimeline(session.messages, session.pendingInputs)
-    ), [session, version]);
+
+    const timeline = useMemo(() => {
+        if (session == null) {
+            return null;
+        }
+        if (deferLiveEvents) {
+            return buildChatThreadTimeline(persistedEvents ?? []);
+        }
+        return persistedEvents == null
+            ? buildChatThreadTimeline(session.messages, session.pendingInputs)
+            : buildMergedChatThreadTimeline(persistedEvents, session.messages, session.pendingInputs);
+    }, [deferLiveEvents, persistedEvents, session, version]);
 
     const timelineItems = useMemo(() => (timeline?.items ?? []).map((item) => {
         const override = session == null
             ? undefined
             : chatFeedWidgetCallOverrides.get(chatFeedWidgetCallKey(session.threadPath, item.id));
+
         if (override == null || item.kind !== "tool_call" || (item.state === "completed" || item.state === "failed")) {
             return item;
         }
+
         return {
             ...item,
             state: override.status,
@@ -1255,12 +1294,14 @@ export function AgentThread({
             output: override.output ?? item.output,
         };
     }), [chatFeedWidgetCallOverrides, session, timeline]);
-    const showThreadLoading = (session === null || session.isLoading) && timelineItems.length === 0;
+
+    const showThreadLoading = (deferLiveEvents || session === null || session.isLoading) && timelineItems.length === 0;
     const renderedItems = useMemo(() => (
         collapseMessages
             ? groupThreadItems(timelineItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
             : timelineItems
     ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, timelineItems, localParticipantName]);
+
     const status = useMemo(() => {
         if (session == null) return null;
         let current: InstanceType<typeof AgentThreadStatus> | null = null;
@@ -1278,6 +1319,7 @@ export function AgentThread({
         }
         return current;
     }, [session, version]);
+
     const usage = timeline?.usage ?? null;
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
@@ -1320,6 +1362,7 @@ export function AgentThread({
         const normalizedAttachments = message.attachments
             .map(normalizeAgentAttachmentUrl)
             .filter((attachment): attachment is string => attachment !== null);
+
         try {
             await openSession.sendText({
                 messageId: message.id,
@@ -1330,12 +1373,31 @@ export function AgentThread({
                 senderName: localParticipantName.trim() || undefined,
                 clientToolkits: resolvedClientToolkits,
             });
+
             setSendError(null);
             setVersion((current) => current + 1);
         } catch (error) {
             setSendError(describeError(error));
         }
     }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, turnId]);
+
+    const visibleSuggestions = useMemo(
+        () => (suggestions ?? []).filter((suggestion) => suggestion.label.trim() !== ""),
+        [suggestions],
+    );
+
+    const composerDisabled = agentParticipant == null && chatClient == null;
+    const handleSuggestionClick = useCallback((suggestion: AgentThreadSuggestion) => {
+        const text = suggestion.prompt?.trim() || suggestion.label.trim();
+        if (text === "") {
+            return;
+        }
+
+        void handleSend(new ChatMessage({
+            id: uuidV4(),
+            text,
+        }));
+    }, [handleSend]);
 
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;
@@ -1435,14 +1497,34 @@ export function AgentThread({
             ) : null}
 
             <div className="flex flex-col gap-1">
+                {visibleSuggestions.length > 0 ? (
+                    <ul
+                        aria-label="Follow-up suggestions"
+                        className="mx-auto flex flex-wrap w-full max-w-[912px] gap-2 overflow-x-auto px-4 pt-2 pb-1">
+                        {visibleSuggestions.map((suggestion, index) => (
+                            <li key={index} className="shrink-0">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-auto min-h-8 rounded-full px-3 py-1.5"
+                                    disabled={composerDisabled}
+                                    onClick={() => handleSuggestionClick(suggestion)}>
+                                    {suggestion.label}
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : null}
+
                 <ChatInput
                     onSubmit={handleSend}
                     attachments={attachments}
                     onFilesSelected={selectAttachments}
                     setAttachments={setAttachments}
-                    disabled={agentParticipant == null && chatClient == null}
-                    placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`}
-                />
+                    enableFileUpload={enableFileUpload}
+                    disabled={composerDisabled}
+                    placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
+
                 <AgentUsageFooter usage={usage} className="mx-auto w-full max-w-[912px]" />
             </div>
         </div>
