@@ -1,3 +1,8 @@
+## [0.47.1]
+- Added duplex messaging stream subscriptions and replay-state alignment in the TypeScript chat clients, bringing the NodeJS SDK in line with the new streaming model.
+- Reworked messaging and room client flow control so dispatch ordering, close behavior, and presence updates stay consistent under streaming loads.
+- Expanded stream and presence test coverage for the new messaging behavior.
+
 ## [0.47.0]
 - Improved TypeScript messaging clients so room delivery order and startup/presence behavior stay consistent.
 - Moved managed-agent client routing onto the Rust tunnel path and hardened agent chat-client event handling.
