@@ -1,3 +1,8 @@
+## [0.47.1]
+- Added duplex messaging stream subscriptions and replay-state alignment in the TypeScript chat clients, bringing the NodeJS SDK in line with the new streaming model.
+- Reworked messaging and room client flow control so dispatch ordering, close behavior, and presence updates stay consistent under streaming loads.
+- Expanded stream and presence test coverage for the new messaging behavior.
+
 ## [0.47.0]
 - Aligned dataset-backed React chat with Flutter by keeping the real live thread subscription open and reconciling ordered dataset history with live feed state.
 - Moved dataset-thread hydration and chat timeline reduction into the Tailwind UI package so `meshagent-agents-ts` can match the Dart agents API.
