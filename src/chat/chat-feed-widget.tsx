@@ -3,6 +3,8 @@ import { Tool } from "@meshagent/meshagent";
 import type { Content } from "@meshagent/meshagent";
 import { ClientToolkitDescription } from "@meshagent/meshagent-agents";
 
+import type { AgentThreadSuggestion } from "./agent-thread.js";
+
 export type ToolCallStatus = "queued" | "in_progress" | "completed" | "failed";
 
 export interface ToolCall {
@@ -13,6 +15,8 @@ export interface ToolCall {
 
 export abstract class ChatFeedWidget extends Tool {
     abstract render(toolCall: ToolCall): ReactElement;
+
+    getFollowUpSuggestions?(toolCall: ToolCall): readonly AgentThreadSuggestion[];
 }
 
 export function resolveClientToolkitDescriptions(

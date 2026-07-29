@@ -641,7 +641,7 @@ describe("AgentThread", () => {
         expect(screen.getByRole("button", { name: "Attach file" })).toBeTruthy();
     });
 
-    it("renders follow-up suggestion pills and sends their prompts", async () => {
+    it("renders follow-up suggestion pills and clears them after sending", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
 
@@ -671,15 +671,14 @@ describe("AgentThread", () => {
 
         expect(screen.getByRole("list", { name: "Follow-up suggestions" })).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Use the label" }));
-        fireEvent.click(screen.getByRole("button", { name: "Show a short label" }));
 
         await waitFor(() => {
             const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
                 message instanceof TurnStart
             ));
-            expect(turnStarts).toHaveLength(2);
+            expect(turnStarts).toHaveLength(1);
             expect(turnStarts[0].toJson().content).to.deep.equal([{ type: "text", text: "Use the label" }]);
-            expect(turnStarts[1].toJson().content).to.deep.equal([{ type: "text", text: "Send this longer follow-up question" }]);
+            expect(screen.queryByRole("list", { name: "Follow-up suggestions" })).to.equal(null);
         });
     });
 

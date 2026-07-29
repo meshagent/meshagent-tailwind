@@ -3,12 +3,13 @@ import type { ReactElement, RefObject } from "react";
 import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 import { AgentFileContent, MessagingChatClient } from "@meshagent/meshagent-agents";
 import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
-import type { AgentToolChoice } from "./agent-thread.js";
+import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
 import { defaultThreadDisplayNameFromPath } from "./conversation-descriptor.js";
 
 import { ChatInput } from "./chat-input.js";
+import { Button } from "../components/ui/button.js";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
 import { Toaster } from "../components/ui/sonner.js";
 
@@ -31,6 +32,7 @@ export interface NewChatThreadProps {
     clientToolkits?: ClientToolkitDescription[];
     chatFeedWidgets?: ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
+    suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
 }
 
@@ -141,6 +143,7 @@ export function NewChatThread({
     clientToolkits,
     chatFeedWidgets,
     toolChoice,
+    suggestions,
     enableFileUpload = false,
 }: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
@@ -223,8 +226,8 @@ export function NewChatThread({
         setNewThreadError(null);
     }, []);
 
-    const handleCreateThread = useCallback(async () => {
-        const text = newThreadDraft.trim();
+    const handleCreateThread = useCallback(async (message?: { text: string }) => {
+        const text = (message?.text ?? newThreadDraft).trim();
         const hasDraft = text !== "" || newThreadAttachments.length > 0;
         if (!hasDraft || creatingNewThread || waitingForAgent) {
             return;
@@ -312,26 +315,54 @@ export function NewChatThread({
         : creatingNewThread
             ? `Starting a thread with ${targetAgentLabel}.`
             : null;
+    const visibleSuggestions = useMemo(
+        () => (suggestions ?? []).filter((suggestion) => suggestion.label.trim() !== ""),
+        [suggestions],
+    );
 
     if (activePath !== null) {
         return builder(activePath);
     }
 
     const composer = (
-        <ChatInput
-            onSubmit={handleCreateThread}
-            attachments={newThreadAttachments}
-            onFilesSelected={selectNewThreadAttachments}
-            setAttachments={setNewThreadAttachments}
-            enableFileUpload={enableFileUpload}
-            value={newThreadDraft}
-            onValueChange={setNewThreadDraft}
-            clearOnSubmit={false}
-            showCancelButton={creatingNewThread || waitingForAgent}
-            onCancelRequest={cancelPendingNewThread}
-            disabled={creatingNewThread || waitingForAgent}
-            placeholder={agentName.trim() ? `Type a message or @${displayParticipantName(agentName)}` : "Type a message"}
-        />
+        <div className="flex flex-col gap-1">
+            {visibleSuggestions.length > 0 ? (
+                <ul
+                    aria-label="Starter suggestions"
+                    className="mx-auto flex flex-wrap w-full max-w-[912px] gap-2 overflow-x-auto px-4 pt-2 pb-1">
+                    {visibleSuggestions.map((suggestion, index) => {
+                        const text = suggestion.prompt?.trim() || suggestion.label.trim();
+                        return (
+                            <li key={index} className="shrink-0">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-auto min-h-8 rounded-full px-3 py-1.5"
+                                    disabled={creatingNewThread || waitingForAgent}
+                                    onClick={() => void handleCreateThread({ text })}>
+                                    {suggestion.label}
+                                </Button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            ) : null}
+
+            <ChatInput
+                onSubmit={handleCreateThread}
+                attachments={newThreadAttachments}
+                onFilesSelected={selectNewThreadAttachments}
+                setAttachments={setNewThreadAttachments}
+                enableFileUpload={enableFileUpload}
+                value={newThreadDraft}
+                onValueChange={setNewThreadDraft}
+                clearOnSubmit={false}
+                showCancelButton={creatingNewThread || waitingForAgent}
+                onCancelRequest={cancelPendingNewThread}
+                disabled={creatingNewThread || waitingForAgent}
+                placeholder={agentName.trim() ? `Type a message or @${displayParticipantName(agentName)}` : "Type a message"}
+            />
+        </div>
     );
 
     return (

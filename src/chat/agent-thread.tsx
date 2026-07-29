@@ -185,6 +185,65 @@ function isChatFeedWidgetCall(message: ChatThreadItem, chatFeedWidgetsByName: Re
         chatFeedWidgetsByName.has(message.tool);
 }
 
+function isFollowUpSuggestionCall(
+    message: ChatThreadItem,
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
+): boolean {
+    if (!isChatFeedWidgetCall(message, chatFeedWidgetsByName) || message.tool == null) {
+        return false;
+    }
+    return chatFeedWidgetsByName.get(message.tool)?.getFollowUpSuggestions != null;
+}
+
+function latestTurnFollowUpSuggestions(
+    messages: readonly ChatThreadItem[],
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
+): readonly AgentThreadSuggestion[] | null {
+    let latestUserIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message.kind === "message" && message.role === "user") {
+            latestUserIndex = index;
+            break;
+        }
+    }
+
+    if (latestUserIndex === -1) {
+        return null;
+    }
+
+    const latestTurnMessages = messages.slice(latestUserIndex + 1);
+    if (!latestTurnMessages.some(canRenderAsFinalAnswer)) {
+        return [];
+    }
+
+    for (let index = latestTurnMessages.length - 1; index >= 0; index -= 1) {
+        const message = latestTurnMessages[index];
+        if (
+            message.kind !== "tool_call" ||
+            message.state !== "completed" ||
+            message.tool == null ||
+            !isFollowUpSuggestionCall(message, chatFeedWidgetsByName)
+        ) {
+            continue;
+        }
+
+        const widget = chatFeedWidgetsByName.get(message.tool);
+        try {
+            return widget?.getFollowUpSuggestions?.({
+                status: "completed",
+                input: message.input ?? {},
+                output: message.output,
+            }) ?? [];
+        } catch (error) {
+            console.error("ChatFeedWidget follow-up suggestion extraction failed", error);
+            return [];
+        }
+    }
+
+    return [];
+}
+
 function isIntrinsicDetail(message: ChatThreadItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
     return message.kind === "reasoning" ||
         message.kind === "event" ||
@@ -1296,11 +1355,19 @@ export function AgentThread({
     }), [chatFeedWidgetCallOverrides, session, timeline]);
 
     const showThreadLoading = (deferLiveEvents || session === null || session.isLoading) && timelineItems.length === 0;
+    const followUpSuggestions = useMemo(
+        () => latestTurnFollowUpSuggestions(timelineItems, chatFeedWidgetsByName),
+        [chatFeedWidgetsByName, timelineItems],
+    );
+    const feedTimelineItems = useMemo(
+        () => timelineItems.filter((item) => !isFollowUpSuggestionCall(item, chatFeedWidgetsByName)),
+        [chatFeedWidgetsByName, timelineItems],
+    );
     const renderedItems = useMemo(() => (
         collapseMessages
-            ? groupThreadItems(timelineItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
-            : timelineItems
-    ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, timelineItems, localParticipantName]);
+            ? groupThreadItems(feedTimelineItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
+            : feedTimelineItems
+    ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, feedTimelineItems, localParticipantName]);
 
     const status = useMemo(() => {
         if (session == null) return null;
@@ -1382,8 +1449,8 @@ export function AgentThread({
     }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, turnId]);
 
     const visibleSuggestions = useMemo(
-        () => (suggestions ?? []).filter((suggestion) => suggestion.label.trim() !== ""),
-        [suggestions],
+        () => (followUpSuggestions ?? suggestions ?? []).filter((suggestion) => suggestion.label.trim() !== ""),
+        [followUpSuggestions, suggestions],
     );
 
     const composerDisabled = agentParticipant == null && chatClient == null;

@@ -159,6 +159,7 @@ export function ThreadView({
             clientToolkits={clientToolkits}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
+            suggestions={suggestions}
             enableFileUpload={enableFileUpload}
             builder={(threadPath) => (
                 threadSource === "dataset" ? (
