@@ -341,18 +341,19 @@ export function NewChatThread({
             {visibleSuggestions.length > 0 ? (
                 <ul
                     aria-label="Starter suggestions"
-                    className="mx-auto flex flex-wrap w-full max-w-[912px] gap-2 overflow-x-auto px-4 pt-2 pb-1">
+                    className="mx-auto flex w-full max-w-[912px] flex-wrap gap-2 px-4 pt-2 pb-1">
                     {visibleSuggestions.map((suggestion, index) => {
                         const text = suggestion.prompt?.trim() || suggestion.label.trim();
                         return (
-                            <li key={index} className="shrink-0">
+                            <li key={index} className="min-w-0 max-w-full">
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-auto min-h-8 rounded-full px-3 py-1.5"
+                                    className="h-auto min-h-8 max-w-full overflow-hidden rounded-full px-3 py-1.5 text-left text-sm leading-snug"
+                                    title={suggestion.label}
                                     disabled={creatingNewThread || waitingForAgent}
                                     onClick={() => void handleCreateThread({ text })}>
-                                    {suggestion.label}
+                                    <span className="min-w-0 truncate">{suggestion.label}</span>
                                 </Button>
                             </li>
                         );

@@ -1095,7 +1095,17 @@ describe("AgentThread", () => {
             />,
         );
 
-        expect(screen.getByRole("list", { name: "Follow-up suggestions" })).toBeTruthy();
+        const suggestionList = screen.getByRole("list", { name: "Follow-up suggestions" });
+        const suggestionButton = screen.getByRole("button", { name: "Use the label" });
+        const suggestionItem = suggestionButton.parentElement;
+        const suggestionLabel = suggestionButton.querySelector("span");
+        expect(suggestionList.className).not.to.contain("overflow-x-auto");
+        expect(suggestionItem?.className).to.contain("min-w-0");
+        expect(suggestionItem?.className).to.contain("max-w-full");
+        expect(suggestionButton.className).to.contain("max-w-full");
+        expect(suggestionButton.getAttribute("title")).to.equal("Use the label");
+        expect(suggestionLabel?.className).to.contain("min-w-0");
+        expect(suggestionLabel?.className).to.contain("truncate");
         fireEvent.click(screen.getByRole("button", { name: "Use the label" }));
 
         await waitFor(() => {
