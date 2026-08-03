@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
 import { AgentFileContent, MessagingChatClient } from "@meshagent/meshagent-agents";
-import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import type {
+    AgentMessageEvent,
+    BaseChatClient,
+    ClientToolkitDescription,
+} from "@meshagent/meshagent-agents";
 import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
@@ -34,6 +38,10 @@ export interface NewChatThreadProps {
     toolChoice?: AgentToolChoice;
     suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
+    onThreadStarted?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+    ) => Promise<void> | void;
 }
 
 class NewThreadCancelledError extends Error {
@@ -145,6 +153,7 @@ export function NewChatThread({
     toolChoice,
     suggestions,
     enableFileUpload = false,
+    onThreadStarted,
 }: NewChatThreadProps): ReactElement {
     const [internalThreadPath, setInternalThreadPath] = useState<string | null>(null);
     const [newThreadDraft, setNewThreadDraft] = useState("");
@@ -263,6 +272,8 @@ export function NewChatThread({
             });
 
             ensureOperationActive(operationId, activeOperationRef);
+            await onThreadStarted?.(result.threadPath, result.session.messages);
+            ensureOperationActive(operationId, activeOperationRef);
             const threadPath = result.threadPath;
             const normalizedPath = normalizeThreadPath(threadPath);
             const displayName = normalizedPath === null ? null : defaultThreadDisplayNameFromPath(normalizedPath);
@@ -294,8 +305,9 @@ export function NewChatThread({
         newThreadAttachments,
         newThreadDraft,
         resolvedClientToolkits,
-                onThreadPathChanged,
+        onThreadPathChanged,
         onThreadResolved,
+        onThreadStarted,
         room,
         waitingForAgent,
     ]);

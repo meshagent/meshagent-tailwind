@@ -1,6 +1,5 @@
-import React from "react";
-import { StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import React, { StrictMode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { RoomClient } from "@meshagent/meshagent";
@@ -18,10 +17,13 @@ import {
     AgentSecretRequested,
     AgentModelChanged,
     AgentThreadListEntry,
+    AgentMessageEvent,
     BaseChatClient,
     ClientToolkitDescription,
     CloseThread,
+    InjectMessages,
     ListThreads,
+    OpenThread,
     StartThread,
     ThreadCreated,
     ThreadStarted,
@@ -29,6 +31,7 @@ import {
     ThreadsListed,
     TurnStart,
     TurnEnded,
+    agentInputContent,
 } from "@meshagent/meshagent-agents";
 
 import type { AgentThreadMessage } from "@meshagent/meshagent-agents";
@@ -221,12 +224,14 @@ class FakeChatClient extends BaseChatClient {
 class DelayedParticipantChatClient extends FakeChatClient {
     private ready = false;
     private readonly waiters: Array<() => void> = [];
+    public participantWaitCount = 0;
 
     public override agentParticipant() {
         return this.ready ? ({ id: "agent-codex" } as never) : null;
     }
 
     public override async waitForAgentParticipant(): Promise<never> {
+        this.participantWaitCount += 1;
         if (!this.ready) {
             await new Promise<void>((resolve) => {
                 this.waiters.push(resolve);
@@ -250,8 +255,426 @@ class DelayedParticipantChatClient extends FakeChatClient {
     }
 }
 
+class RetryOnceInjectionChatClient extends FakeChatClient {
+    public injectionAttempts = 0;
+
+    public override async sendAgentMessage(message: AgentMessage): Promise<void> {
+        if (message instanceof InjectMessages) {
+            this.sent.push(message);
+            this.injectionAttempts += 1;
+            if (this.injectionAttempts === 1) {
+                throw new Error("transient injection failure");
+            }
+            return;
+        }
+        await super.sendAgentMessage(message);
+    }
+}
+
+class RejectingInjectionChatClient extends FakeChatClient {
+    public override async sendAgentMessage(message: AgentMessage): Promise<void> {
+        if (message instanceof InjectMessages) {
+            this.sent.push(message);
+            throw new Error("injection rejected");
+        }
+        await super.sendAgentMessage(message);
+    }
+}
+
+class RetryOnceThreadLoadChatClient extends FakeChatClient {
+    public loadAttempts = 0;
+
+    public override async sendAgentMessage(message: AgentMessage): Promise<void> {
+        if (message instanceof OpenThread && message.load) {
+            this.sent.push(message);
+            this.loadAttempts += 1;
+            if (this.loadAttempts === 1) {
+                throw new Error("transient thread load failure");
+            }
+            return;
+        }
+        await super.sendAgentMessage(message);
+    }
+}
+
+function restoredUserEvent(threadId: string, text: string): AgentMessageEvent {
+    return new AgentMessageEvent({
+        message: new TurnStart({
+            threadId,
+            messageId: `stored-${text}`,
+            content: agentInputContent({ text, attachments: [] }),
+        }),
+        createdAt: new Date("2026-07-29T12:00:00.000Z"),
+    });
+}
+
 afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+});
+
+describe("persisted thread hooks", () => {
+    it("reports a merged persisted and live typed event timeline", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const threadId = "thread-event-callback";
+        const restoredEvent = restoredUserEvent(threadId, "persisted timeline entry");
+        const snapshots: Array<readonly AgentMessageEvent[]> = [];
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread
+                onEventsChanged={(_threadId, events) => {
+                    snapshots.push([...events]);
+                }}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId,
+                turnId: "turn-live",
+                itemId: "live-response",
+                messageId: "live-response",
+                text: "live timeline entry",
+            }));
+        });
+
+        await waitFor(() => {
+            expect(snapshots.at(-1)?.map((event) => event.message.messageId)).to.deep.equal([
+                restoredEvent.message.messageId,
+                "live-response",
+            ]);
+        });
+    });
+
+    it("hydrates locally, loads authoritative context, and enables the composer only after ThreadLoaded", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const threadId = "thread-restored";
+        const restoredEvent = restoredUserEvent(threadId, "restored browser message");
+
+        render(
+            <StrictMode>
+                <ThreadView
+                    room={room}
+                    chatClient={chatClient}
+                    agentName="codex"
+                    threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                    selectedThreadPath={threadId}
+                    persistedEvents={[restoredEvent]}
+                    loadThread
+                />
+            </StrictMode>,
+        );
+
+        expect(await screen.findByText("restored browser message")).toBeTruthy();
+        await waitFor(() => {
+            expect(chatClient.sent.some((message) => (
+                message instanceof OpenThread &&
+                message.threadId === threadId &&
+                message.load === true
+            ))).to.equal(true);
+            expect(chatClient.sent.some((message) => message instanceof InjectMessages)).to.equal(false);
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+        });
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", false);
+        });
+        expect(chatClient.startThreadMessages()).toHaveLength(0);
+    });
+
+    it("waits for the agent participant and automatically retries authoritative loading", async () => {
+        const room = fakeRoom();
+        const chatClient = new DelayedParticipantChatClient();
+        const threadId = "thread-delayed-authoritative-load";
+        const restoredEvent = restoredUserEvent(threadId, "cached history while agent joins");
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread
+            />,
+        );
+
+        expect(await screen.findByText("cached history while agent joins")).toBeTruthy();
+        await waitFor(() => expect(chatClient.participantWaitCount).to.equal(1));
+        expect(screen.queryByText(/Agent messaging participant is not available/)).to.equal(null);
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        act(() => {
+            chatClient.makeParticipantAvailable();
+        });
+
+        await waitFor(() => {
+            expect(chatClient.sent.some((message) => (
+                message instanceof OpenThread &&
+                message.threadId === threadId &&
+                message.load === true
+            ))).to.equal(true);
+        });
+        expect(screen.queryByText(/Agent messaging participant is not available/)).to.equal(null);
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", false);
+        });
+        expect(chatClient.sent.some((message) => message instanceof InjectMessages)).to.equal(false);
+    });
+
+    it("retries a failed authoritative thread load without losing cached history", async () => {
+        const room = fakeRoom();
+        const chatClient = new RetryOnceThreadLoadChatClient();
+        const threadId = "thread-load-retry";
+        const restoredEvent = restoredUserEvent(threadId, "cached history survives load failure");
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread
+            />,
+        );
+
+        expect(await screen.findByText("cached history survives load failure")).toBeTruthy();
+        expect(await screen.findByText(/transient thread load failure/)).toBeTruthy();
+        expect(chatClient.loadAttempts).to.equal(1);
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        fireEvent.click(screen.getByRole("button", { name: "Retry restore" }));
+        await waitFor(() => expect(chatClient.loadAttempts).to.equal(2));
+        expect(screen.queryByText(/transient thread load failure/)).to.equal(null);
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", false);
+        });
+        expect(chatClient.sent.filter((message) => message instanceof InjectMessages)).toHaveLength(0);
+    });
+
+    it("keeps cached history visible and offers retry when authoritative loading times out", async () => {
+        vi.useFakeTimers();
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const threadId = "thread-load-timeout";
+        const restoredEvent = restoredUserEvent(threadId, "cached history remains visible");
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread
+            />,
+        );
+
+        expect(screen.getByText("cached history remains visible")).toBeTruthy();
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(30_000);
+        });
+
+        expect(screen.getByText(/did not finish loading within 30 seconds/)).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Retry restore" })).toBeTruthy();
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+    });
+
+    it("keeps the composer disabled and waits for the agent participant before injecting restored context", async () => {
+        const room = fakeRoom();
+        const chatClient = new DelayedParticipantChatClient();
+        const threadId = "thread-delayed-restore";
+        const restoredEvent = restoredUserEvent(threadId, "waiting for agent restore");
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread={false}
+                injectPersistedEvents
+            />,
+        );
+
+        expect(await screen.findByText("waiting for agent restore")).toBeTruthy();
+        await waitFor(() => expect(chatClient.participantWaitCount).to.equal(1));
+        expect(chatClient.sent.some((message) => message instanceof InjectMessages)).to.equal(false);
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        act(() => {
+            chatClient.makeParticipantAvailable();
+        });
+
+        await waitFor(() => {
+            expect(chatClient.sent.some((message) => message instanceof InjectMessages)).to.equal(true);
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", false);
+        });
+    });
+
+    it("allows a failed context injection to be retried without enabling the composer early", async () => {
+        const room = fakeRoom();
+        const chatClient = new RetryOnceInjectionChatClient();
+        const threadId = "thread-retry-restore";
+        const restoredEvent = restoredUserEvent(threadId, "retry this restore");
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread={false}
+                injectPersistedEvents
+            />,
+        );
+
+        expect(await screen.findByText(/Unable to restore conversation context/)).toBeTruthy();
+        expect(chatClient.injectionAttempts).to.equal(1);
+        expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+
+        fireEvent.click(screen.getByRole("button", { name: "Retry restore" }));
+
+        await waitFor(() => {
+            expect(chatClient.injectionAttempts).to.equal(2);
+            expect(screen.queryByText(/Unable to restore conversation context/)).to.equal(null);
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", false);
+        });
+    });
+
+    it("leaves restored history visible and keeps the composer disabled when injection fails", async () => {
+        const room = fakeRoom();
+        const chatClient = new RejectingInjectionChatClient();
+        const threadId = "thread-injection-failure";
+        const restoredEvent = restoredUserEvent(threadId, "history remains visible");
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={threadId}
+                persistedEvents={[restoredEvent]}
+                loadThread={false}
+                injectPersistedEvents
+                composerDisabled
+            />,
+        );
+
+        expect(await screen.findByText("history remains visible")).toBeTruthy();
+        expect(await screen.findByText(/Unable to restore conversation context/)).toBeTruthy();
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText("Type a message")).toHaveProperty("readOnly", true);
+            expect(screen.getByTitle("Send")).toHaveProperty("disabled", true);
+        });
+    });
+
+    it("does not create a thread before submission and saves the initial typed event", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const started: Array<{ threadId: string; events: readonly AgentMessageEvent[] }> = [];
+
+        render(
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                onThreadStarted={(threadId, events) => {
+                    started.push({ threadId, events: [...events] });
+                }}
+            />,
+        );
+
+        await screen.findByText("Start a new thread");
+        expect(chatClient.startThreadMessages()).toHaveLength(0);
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
+            target: { value: "first browser-only message" },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+        await waitFor(() => expect(chatClient.startThreadMessages()).toHaveLength(1));
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadStarted({
+                sourceMessageId: chatClient.startThreadMessages()[0].messageId,
+                threadId: "thread-created-on-submit",
+            }));
+        });
+
+        await waitFor(() => expect(started.length).toBeGreaterThan(0));
+        expect(started[0].threadId).to.equal("thread-created-on-submit");
+        expect(started[0].events[0].message).toBeInstanceOf(TurnStart);
+        expect(await screen.findByText("first browser-only message")).toBeTruthy();
+    });
+
+    it("closes the session when a caller removes a persisted thread", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const threadId = "thread-to-clear";
+        const restoredEvent = restoredUserEvent(threadId, "old local history");
+        const view = (selectedThreadPath: string | null) => (
+            <ThreadView
+                room={room}
+                chatClient={chatClient}
+                agentName="codex"
+                threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
+                selectedThreadPath={selectedThreadPath}
+                persistedEvents={selectedThreadPath == null ? undefined : [restoredEvent]}
+                loadThread={false}
+                injectPersistedEvents={selectedThreadPath != null}
+                closeThreadOnUnmount
+            />
+        );
+        const { rerender } = render(view(threadId));
+
+        expect(await screen.findByText("old local history")).toBeTruthy();
+        await waitFor(() => expect(chatClient.sent.some((message) => message instanceof InjectMessages)).to.equal(true));
+
+        rerender(view(null));
+
+        expect(await screen.findByText("Start a new thread")).toBeTruthy();
+        expect(screen.queryByText("old local history")).to.equal(null);
+        await waitFor(() => expect(chatClient.sent.some((message) => (
+            message instanceof CloseThread && message.threadId === threadId
+        ))).to.equal(true));
+    });
 });
 
 describe("ChatBotView multi-thread composer", () => {
@@ -655,6 +1078,9 @@ describe("AgentThread", () => {
         );
 
         expect(screen.queryByRole("list", { name: "Follow-up suggestions" })).to.equal(null);
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-suggestions" }));
+        });
 
         rerender(
             <ThreadView
@@ -1011,6 +1437,10 @@ describe("AgentThread", () => {
                 clientToolkits={clientToolkits}
             />,
         );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-existing" }));
+        });
 
         fireEvent.change(screen.getByPlaceholderText("Type a message"), {
             target: { value: "turn start with a client toolkit" },

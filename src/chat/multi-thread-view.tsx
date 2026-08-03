@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { RoomClient } from "@meshagent/meshagent";
-import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import type {
+    AgentMessageEvent,
+    BaseChatClient,
+    ClientToolkitDescription,
+} from "@meshagent/meshagent-agents";
 
 import { NewChatThread } from "./new-chat-thread.js";
 import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
@@ -29,6 +33,10 @@ export interface MultiThreadViewProps {
     toolChoice?: AgentToolChoice;
     suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
+    onThreadStarted?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+    ) => Promise<void> | void;
 }
 
 function normalizeSelectedThreadPath(path?: string | null): string | null {
@@ -57,6 +65,7 @@ export function MultiThreadView({
     toolChoice,
     suggestions,
     enableFileUpload = false,
+    onThreadStarted,
 }: MultiThreadViewProps): ReactElement {
     const controlledSelectedThreadPath = selectedThreadPath !== undefined
         ? normalizeSelectedThreadPath(selectedThreadPath)
@@ -123,6 +132,7 @@ export function MultiThreadView({
             toolChoice={toolChoice}
             suggestions={suggestions}
             enableFileUpload={enableFileUpload}
+            onThreadStarted={onThreadStarted}
         />
     );
 }

@@ -8,7 +8,11 @@ import {
     BaseChatClient,
     MessagingChatClient,
 } from "@meshagent/meshagent-agents";
-import type { ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import type {
+    AgentMessage as AgentMessageType,
+    AgentMessageEvent as AgentMessageEventType,
+    ClientToolkitDescription,
+} from "@meshagent/meshagent-agents";
 
 import { AgentThread, type AgentThreadSuggestion, type AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
@@ -46,6 +50,17 @@ export interface DatasetAgentThreadProps {
     suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
     retryMissingTableMs?: number;
+    loadThread?: boolean;
+    injectPersistedEvents?: boolean;
+    composerDisabled?: boolean;
+    closeThreadOnUnmount?: boolean;
+    onPersistedEventsInjectionStarted?: () => void;
+    onPersistedEventsInjected?: (error: unknown | null) => void;
+    onEventsChanged?: (
+        threadId: string,
+        events: readonly AgentMessageEventType[],
+        latestMessage: AgentMessageType | null,
+    ) => void;
 }
 
 export type RoomDatasetAgentThreadProps = Omit<DatasetAgentThreadProps, "rowsLoader">;
@@ -66,6 +81,13 @@ export function DatasetAgentThread({
     suggestions,
     enableFileUpload = false,
     retryMissingTableMs = 500,
+    loadThread = true,
+    injectPersistedEvents = false,
+    composerDisabled = false,
+    closeThreadOnUnmount = false,
+    onPersistedEventsInjectionStarted,
+    onPersistedEventsInjected,
+    onEventsChanged,
 }: DatasetAgentThreadProps): ReactElement {
     const normalizedPath = path.trim();
     const activeRowsLoader = useMemo(() => rowsLoader ?? defaultRowsLoader(room), [room, rowsLoader]);
@@ -148,6 +170,13 @@ export function DatasetAgentThread({
                 enableFileUpload={enableFileUpload}
                 persistedEvents={persistedEvents ?? []}
                 deferLiveEvents={persistedEvents == null}
+                loadThread={loadThread}
+                injectPersistedEvents={injectPersistedEvents}
+                composerDisabled={composerDisabled}
+                closeThreadOnUnmount={closeThreadOnUnmount}
+                onPersistedEventsInjectionStarted={onPersistedEventsInjectionStarted}
+                onPersistedEventsInjected={onPersistedEventsInjected}
+                onEventsChanged={onEventsChanged}
             />
         </div>
     );

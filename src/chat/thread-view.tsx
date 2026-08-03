@@ -1,7 +1,12 @@
 import type { ReactElement } from "react";
 
 import type { RoomClient } from "@meshagent/meshagent";
-import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import type {
+    AgentMessage,
+    AgentMessageEvent,
+    BaseChatClient,
+    ClientToolkitDescription,
+} from "@meshagent/meshagent-agents";
 
 import { AlertTriangle } from "lucide-react";
 
@@ -40,6 +45,22 @@ export interface ThreadViewProps {
     enableFileUpload?: boolean;
     threadSource?: "session" | "dataset";
     rowsLoader?: DatasetThreadRowsLoader;
+    persistedEvents?: readonly AgentMessageEvent[];
+    loadThread?: boolean;
+    injectPersistedEvents?: boolean;
+    composerDisabled?: boolean;
+    closeThreadOnUnmount?: boolean;
+    onPersistedEventsInjectionStarted?: () => void;
+    onPersistedEventsInjected?: (error: unknown | null) => void;
+    onEventsChanged?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+        latestMessage: AgentMessage | null,
+    ) => void;
+    onThreadStarted?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+    ) => Promise<void> | void;
 }
 
 function normalizePath(path?: string | null): string | null {
@@ -95,6 +116,15 @@ export function ThreadView({
     enableFileUpload = false,
     threadSource = "session",
     rowsLoader,
+    persistedEvents,
+    loadThread = true,
+    injectPersistedEvents = false,
+    composerDisabled = false,
+    closeThreadOnUnmount = false,
+    onPersistedEventsInjectionStarted,
+    onPersistedEventsInjected,
+    onEventsChanged,
+    onThreadStarted,
 }: ThreadViewProps): ReactElement {
     const resolvedDocumentPath = normalizePath(documentPath ?? path);
     const resolvedSingleThreadPath = resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir });
@@ -117,7 +147,14 @@ export function ThreadView({
                     toolChoice={toolChoice}
                     collapseMessages={collapseMessages}
                     suggestions={suggestions}
-                    enableFileUpload={enableFileUpload} />
+                    enableFileUpload={enableFileUpload}
+                    loadThread={loadThread}
+                    injectPersistedEvents={injectPersistedEvents}
+                    composerDisabled={composerDisabled}
+                    closeThreadOnUnmount={closeThreadOnUnmount}
+                    onPersistedEventsInjectionStarted={onPersistedEventsInjectionStarted}
+                    onPersistedEventsInjected={onPersistedEventsInjected}
+                    onEventsChanged={onEventsChanged} />
             );
         }
 
@@ -135,7 +172,15 @@ export function ThreadView({
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}
                 suggestions={suggestions}
-                enableFileUpload={enableFileUpload} />
+                enableFileUpload={enableFileUpload}
+                persistedEvents={persistedEvents}
+                loadThread={loadThread}
+                injectPersistedEvents={injectPersistedEvents}
+                composerDisabled={composerDisabled}
+                closeThreadOnUnmount={closeThreadOnUnmount}
+                onPersistedEventsInjectionStarted={onPersistedEventsInjectionStarted}
+                onPersistedEventsInjected={onPersistedEventsInjected}
+                onEventsChanged={onEventsChanged} />
         );
     }
 
@@ -161,6 +206,7 @@ export function ThreadView({
             toolChoice={toolChoice}
             suggestions={suggestions}
             enableFileUpload={enableFileUpload}
+            onThreadStarted={onThreadStarted}
             builder={(threadPath) => (
                 threadSource === "dataset" ? (
                     <DatasetAgentThread
@@ -177,7 +223,14 @@ export function ThreadView({
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages}
                         suggestions={suggestions}
-                        enableFileUpload={enableFileUpload} />
+                        enableFileUpload={enableFileUpload}
+                        loadThread={loadThread}
+                        injectPersistedEvents={injectPersistedEvents}
+                        composerDisabled={composerDisabled}
+                        closeThreadOnUnmount={closeThreadOnUnmount}
+                        onPersistedEventsInjectionStarted={onPersistedEventsInjectionStarted}
+                        onPersistedEventsInjected={onPersistedEventsInjected}
+                        onEventsChanged={onEventsChanged} />
                 ) : (
                     <AgentThread
                         room={room}
@@ -192,7 +245,15 @@ export function ThreadView({
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages}
                         suggestions={suggestions}
-                        enableFileUpload={enableFileUpload} />
+                        enableFileUpload={enableFileUpload}
+                        persistedEvents={persistedEvents}
+                        loadThread={loadThread}
+                        injectPersistedEvents={injectPersistedEvents}
+                        composerDisabled={composerDisabled}
+                        closeThreadOnUnmount={closeThreadOnUnmount}
+                        onPersistedEventsInjectionStarted={onPersistedEventsInjectionStarted}
+                        onPersistedEventsInjected={onPersistedEventsInjected}
+                        onEventsChanged={onEventsChanged} />
                 )
             )}
         />

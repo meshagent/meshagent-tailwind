@@ -281,6 +281,10 @@ describe("DatasetAgentThread", () => {
             />,
         );
 
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "dataset://threads/main" }));
+        });
+
         fireEvent.change(await screen.findByPlaceholderText("Type a message"), {
             target: { value: "new dataset turn" },
         });
@@ -411,6 +415,10 @@ describe("DatasetAgentThread", () => {
             />,
         );
 
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "dataset://threads/main" }));
+        });
+
         fireEvent.click(await screen.findByRole("button", { name: "Visible question" }));
 
         await waitFor(() => {
@@ -419,6 +427,47 @@ describe("DatasetAgentThread", () => {
             ));
             expect(turnStart?.toJson().content).to.deep.equal([{ type: "text", text: "Dataset follow-up prompt" }]);
         });
+    });
+
+    it("renders completed replayed client tools without executing them again", async () => {
+        const chatClient = new FakeChatClient();
+        const widget = new TestChatFeedWidget();
+        const threadId = "dataset://threads/replayed-client-tool";
+        render(
+            <DatasetAgentThread
+                room={fakeRoom()}
+                path={threadId}
+                chatClient={chatClient}
+                rowsLoader={() => []}
+                chatFeedWidgets={[widget]}
+            />,
+        );
+
+        await screen.findByPlaceholderText("Type a message");
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId,
+                turnId: "turn-weather-replay",
+                requestId: "request-weather-replay",
+                targetParticipantId: "local-user",
+                toolkit: "client",
+                tool: "weather",
+                arguments: { city: "Seattle" },
+            }));
+            chatClient.handleAgentMessage(new AgentToolCallEnded({
+                threadId,
+                turnId: "turn-weather-replay",
+                itemId: "request-weather-replay",
+                toolkit: "client",
+                tool: "weather",
+                result: new JsonContent({ json: { forecast: "sunny" } }),
+            }));
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId }));
+        });
+
+        expect(await screen.findByText("weather-widget:completed:Seattle")).toBeTruthy();
+        expect(widget.calls).to.have.length(0);
+        expect(chatClient.sent.filter((message) => message.type === agentClientToolCallResponseType)).to.have.length(0);
     });
 
     it("forwards targeted live client-tool requests through the live client", async () => {

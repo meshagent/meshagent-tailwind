@@ -5,7 +5,12 @@ import type { Participant, RoomClient } from "@meshagent/meshagent";
 
 import { MessagingChatClient } from "@meshagent/meshagent-agents";
 
-import type { BaseChatClient, ClientToolkitDescription } from "@meshagent/meshagent-agents";
+import type {
+    AgentMessage,
+    AgentMessageEvent,
+    BaseChatClient,
+    ClientToolkitDescription,
+} from "@meshagent/meshagent-agents";
 
 import type { AgentToolChoice } from "./agent-thread.js";
 import type { DatasetThreadRowsLoader } from "./dataset-agent-thread.js";
@@ -58,6 +63,22 @@ export interface ChatBotViewProps {
     enableFileUpload?: boolean;
     threadSource?: "session" | "dataset";
     rowsLoader?: DatasetThreadRowsLoader;
+    persistedEvents?: readonly AgentMessageEvent[];
+    loadThread?: boolean;
+    injectPersistedEvents?: boolean;
+    composerDisabled?: boolean;
+    closeThreadOnUnmount?: boolean;
+    onPersistedEventsInjectionStarted?: () => void;
+    onPersistedEventsInjected?: (error: unknown | null) => void;
+    onEventsChanged?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+        latestMessage: AgentMessage | null,
+    ) => void;
+    onThreadStarted?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+    ) => Promise<void> | void;
 }
 
 function normalizePath(path?: string | null): string | null {
@@ -121,6 +142,15 @@ export function ChatBotView({
     enableFileUpload = false,
     threadSource = "session",
     rowsLoader,
+    persistedEvents,
+    loadThread = true,
+    injectPersistedEvents = false,
+    composerDisabled = false,
+    closeThreadOnUnmount = false,
+    onPersistedEventsInjectionStarted,
+    onPersistedEventsInjected,
+    onEventsChanged,
+    onThreadStarted,
 }: ChatBotViewProps): ReactElement {
     const isWideLayout = useIsWideLayout(multiThreadLayoutBreakpointPx);
     const resolvedDocumentPath = useMemo(() => normalizePath(documentPath ?? path), [documentPath, path]);
@@ -241,10 +271,21 @@ export function ChatBotView({
             collapseMessages={collapseMessages}
             enableFileUpload={enableFileUpload}
             threadSource={threadSource}
-            rowsLoader={rowsLoader} />
+            rowsLoader={rowsLoader}
+            persistedEvents={persistedEvents}
+            loadThread={loadThread}
+            injectPersistedEvents={injectPersistedEvents}
+            composerDisabled={composerDisabled}
+            closeThreadOnUnmount={closeThreadOnUnmount}
+            onPersistedEventsInjectionStarted={onPersistedEventsInjectionStarted}
+            onPersistedEventsInjected={onPersistedEventsInjected}
+            onEventsChanged={onEventsChanged}
+            onThreadStarted={onThreadStarted} />
     );
 
-    if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
+    if (
+        threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer
+    ) {
         return content;
     }
 

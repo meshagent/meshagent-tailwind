@@ -15,6 +15,7 @@ import {
 } from "@meshagent/meshagent-agents";
 
 import type {
+    AgentMessage,
     AgentMessageEvent,
     BaseChatClient,
     ChatThreadSession,
@@ -91,11 +92,46 @@ export interface AgentThreadProps {
     enableFileUpload?: boolean;
     persistedEvents?: readonly AgentMessageEvent[];
     deferLiveEvents?: boolean;
+    loadThread?: boolean;
+    /**
+     * Delivers messages to the live agent session. This is not local UI hydration;
+     * callers must not use it to replay stored turn lifecycle commands.
+     */
+    injectPersistedEvents?: boolean;
+    composerDisabled?: boolean;
+    closeThreadOnUnmount?: boolean;
+    onPersistedEventsInjectionStarted?: () => void;
+    onPersistedEventsInjected?: (error: unknown | null) => void;
+    onEventsChanged?: (
+        threadId: string,
+        events: readonly AgentMessageEvent[],
+        latestMessage: AgentMessage | null,
+    ) => void;
 }
 
 
 function stringValue(value: unknown): string | undefined {
     return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function mergeAgentMessageEvents(
+    persistedEvents: readonly AgentMessageEvent[],
+    liveEvents: readonly AgentMessageEvent[],
+): AgentMessageEvent[] {
+    const merged = [...persistedEvents];
+    const indexByMessageId = new Map(
+        merged.map((event, index) => [event.message.messageId, index]),
+    );
+    for (const event of liveEvents) {
+        const existingIndex = indexByMessageId.get(event.message.messageId);
+        if (existingIndex === undefined) {
+            indexByMessageId.set(event.message.messageId, merged.length);
+            merged.push(event);
+        } else {
+            merged[existingIndex] = event;
+        }
+    }
+    return merged;
 }
 
 function displayParticipantName(name?: string | null): string {
@@ -1060,10 +1096,21 @@ function LoadingState(): ReactElement {
     );
 }
 
-function ErrorBanner({ message }: { message: string }): ReactElement {
+function ErrorBanner({
+    message,
+    onRetry,
+}: {
+    message: string;
+    onRetry?: () => void;
+}): ReactElement {
     return (
-        <div className="mx-auto w-full max-w-[912px] whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {message}
+        <div className="mx-auto flex w-full max-w-[912px] items-center justify-between gap-3 whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <span>{message}</span>
+            {onRetry ? (
+                <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+                    Retry restore
+                </Button>
+            ) : null}
         </div>
     );
 }
@@ -1074,6 +1121,24 @@ function describeError(error: unknown): string {
     }
     return String(error);
 }
+
+interface ParticipantAwareChatClient extends BaseChatClient {
+    waitForAgentParticipant(options?: {
+        waitKey?: string;
+        signal?: AbortSignal;
+        timeoutMs?: number;
+    }): Promise<unknown>;
+}
+
+function hasAgentParticipantWaiter(chatClient: BaseChatClient): chatClient is ParticipantAwareChatClient {
+    return (
+        "waitForAgentParticipant" in chatClient &&
+        typeof chatClient.waitForAgentParticipant === "function"
+    );
+}
+
+const persistedEventsParticipantWaitTimeoutMs = 30_000;
+const threadLoadTimeoutMs = 30_000;
 
 function normalizeAgentAttachmentUrl(path: string): string | null {
     const trimmedPath = path.trim();
@@ -1240,15 +1305,32 @@ export function AgentThread({
     enableFileUpload = false,
     persistedEvents,
     deferLiveEvents = false,
+    loadThread = true,
+    injectPersistedEvents = false,
+    composerDisabled: composerDisabledProp = false,
+    closeThreadOnUnmount = false,
+    onPersistedEventsInjectionStarted,
+    onPersistedEventsInjected,
+    onEventsChanged,
 }: AgentThreadProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
     const [sendError, setSendError] = useState<string | null>(null);
+    const [restorationError, setRestorationError] = useState<string | null>(null);
+    const [restorationAttempt, setRestorationAttempt] = useState(0);
     const [version, setVersion] = useState(0);
     const [expandedDetailGroupIds, setExpandedDetailGroupIds] = useState<Set<string>>(() => new Set<string>());
     const [chatFeedWidgetCallOverrides, setChatFeedWidgetCallOverrides] = useState<Map<string, ChatFeedWidgetCallOverride>>(() => new Map());
 
     const sessionRef = useRef<ChatThreadSession | null>(null);
     const mountedRef = useRef(true);
+    const persistedEventsRef = useRef(persistedEvents);
+    persistedEventsRef.current = persistedEvents;
+    const restoredPathRef = useRef<string | null>(null);
+    const restorationReadyRef = useRef(!injectPersistedEvents);
+    const pendingCloseRef = useRef<{
+        session: ChatThreadSession;
+        timer: ReturnType<typeof setTimeout>;
+    } | null>(null);
     const ownsChatClient = chatClient == null;
     const activeChatClient = useMemo<BaseChatClient>(
         () => chatClient ?? new MessagingChatClient({ room, agentName }),
@@ -1301,26 +1383,224 @@ export function AgentThread({
     }, [activeChatClient, disposeChatClient, ownsChatClient]);
 
     useEffect(() => {
-        const session = activeChatClient.openThread(path);
+        restorationReadyRef.current = (
+            !loadThread && (
+                !injectPersistedEvents ||
+                restoredPathRef.current === path
+            )
+        );
+        const session = activeChatClient.openThread(path, {
+            load: loadThread,
+            reloadIfOpen: loadThread && restorationAttempt > 0,
+        });
+        if (pendingCloseRef.current?.session === session) {
+            clearTimeout(pendingCloseRef.current.timer);
+            pendingCloseRef.current = null;
+        }
         sessionRef.current = session;
+        let threadLoadTimeout: ReturnType<typeof setTimeout> | null = null;
+        let loadParticipantAbortController: AbortController | null = null;
+        const clearThreadLoadTimeout = () => {
+            if (threadLoadTimeout != null) {
+                clearTimeout(threadLoadTimeout);
+                threadLoadTimeout = null;
+            }
+        };
+        const synchronizeThreadLoadState = () => {
+            if (!loadThread) {
+                return;
+            }
+            if (session.isLoading) {
+                restorationReadyRef.current = false;
+                if (
+                    activeChatClient.agentParticipant() == null &&
+                    hasAgentParticipantWaiter(activeChatClient)
+                ) {
+                    clearThreadLoadTimeout();
+                    return;
+                }
+                if (threadLoadTimeout == null) {
+                    threadLoadTimeout = setTimeout(() => {
+                        threadLoadTimeout = null;
+                        if (sessionRef.current !== session || !session.isLoading) {
+                            return;
+                        }
+                        restorationReadyRef.current = false;
+                        setRestorationError("Unable to restore conversation context: the server thread did not finish loading within 30 seconds.");
+                        setVersion((current) => current + 1);
+                    }, threadLoadTimeoutMs);
+                }
+                return;
+            }
+
+            clearThreadLoadTimeout();
+            const loadError = session.loadState.error;
+            if (loadError != null) {
+                restorationReadyRef.current = false;
+                if (
+                    activeChatClient.agentParticipant() == null &&
+                    hasAgentParticipantWaiter(activeChatClient)
+                ) {
+                    setRestorationError(null);
+                    return;
+                }
+                setRestorationError(`Unable to restore conversation context: ${loadError}`);
+                return;
+            }
+            restorationReadyRef.current = (
+                !injectPersistedEvents ||
+                restoredPathRef.current === path
+            );
+            setRestorationError(null);
+        };
         const handleChange = () => {
+            synchronizeThreadLoadState();
             processChatFeedWidgetRequests({
                 session,
                 widgetsByName: chatFeedWidgetsByName,
                 updateCall: updateChatFeedWidgetCall,
-                executeRequests: !deferLiveEvents,
+                executeRequests: !deferLiveEvents && restorationReadyRef.current,
             });
+            const latestMessage = session.messages[session.messages.length - 1]?.message;
+            onEventsChanged?.(
+                session.threadPath,
+                mergeAgentMessageEvents(persistedEventsRef.current ?? [], session.messages),
+                latestMessage ?? null,
+            );
             setVersion((current) => current + 1);
         };
         session.addListener(handleChange);
         handleChange();
+
+        if (
+            loadThread &&
+            activeChatClient.agentParticipant() == null &&
+            hasAgentParticipantWaiter(activeChatClient)
+        ) {
+            loadParticipantAbortController = new AbortController();
+            const { signal } = loadParticipantAbortController;
+            void (async () => {
+                try {
+                    await activeChatClient.waitForAgentParticipant({
+                        waitKey: `thread-load:${path}:${restorationAttempt}:${uuidV4()}`,
+                        signal,
+                        timeoutMs: persistedEventsParticipantWaitTimeoutMs,
+                    });
+                    if (signal.aborted || sessionRef.current !== session) {
+                        return;
+                    }
+                    if (session.loadState.error != null) {
+                        setRestorationError(null);
+                        activeChatClient.openThread(path, {
+                            load: true,
+                            reloadIfOpen: true,
+                        });
+                    }
+                    handleChange();
+                } catch (error) {
+                    if (signal.aborted || sessionRef.current !== session) {
+                        return;
+                    }
+                    restorationReadyRef.current = false;
+                    setRestorationError(`Unable to restore conversation context: ${describeError(error)}`);
+                    setVersion((current) => current + 1);
+                }
+            })();
+        }
+
+        let restorationAbortController: AbortController | null = null;
+        const eventsToInject = persistedEventsRef.current;
+        if (injectPersistedEvents && eventsToInject != null && restoredPathRef.current !== path) {
+            restorationAbortController = new AbortController();
+            const { signal } = restorationAbortController;
+            setRestorationError(null);
+            onPersistedEventsInjectionStarted?.();
+            void (async () => {
+                try {
+                    await Promise.resolve();
+                    if (signal.aborted || sessionRef.current !== session) {
+                        return;
+                    }
+                    if (
+                        activeChatClient.agentParticipant() == null &&
+                        hasAgentParticipantWaiter(activeChatClient)
+                    ) {
+                        await activeChatClient.waitForAgentParticipant({
+                            waitKey: `persisted-events:${path}:${restorationAttempt}:${uuidV4()}`,
+                            signal,
+                            timeoutMs: persistedEventsParticipantWaitTimeoutMs,
+                        });
+                    }
+                    if (signal.aborted || sessionRef.current !== session) {
+                        return;
+                    }
+                    await session.injectMessages(eventsToInject.map((event) => event.message));
+                    if (signal.aborted || sessionRef.current !== session) {
+                        return;
+                    }
+                    restoredPathRef.current = path;
+                    restorationReadyRef.current = true;
+                    setRestorationError(null);
+                    onPersistedEventsInjected?.(null);
+                    handleChange();
+                } catch (error) {
+                    if (signal.aborted || sessionRef.current !== session) {
+                        return;
+                    }
+                    if (restoredPathRef.current === path) {
+                        restoredPathRef.current = null;
+                    }
+                    restorationReadyRef.current = false;
+                    setRestorationError(`Unable to restore conversation context: ${describeError(error)}`);
+                    onPersistedEventsInjected?.(error);
+                    setVersion((current) => current + 1);
+                }
+            })();
+        } else if (!injectPersistedEvents && !loadThread) {
+            setRestorationError(null);
+        }
+
         return () => {
+            clearThreadLoadTimeout();
+            loadParticipantAbortController?.abort();
+            restorationAbortController?.abort();
             session.removeListener(handleChange);
             if (sessionRef.current === session) {
                 sessionRef.current = null;
             }
+            if (closeThreadOnUnmount) {
+                const timer = setTimeout(() => {
+                    if (pendingCloseRef.current?.timer === timer) {
+                        pendingCloseRef.current = null;
+                    }
+                    if (sessionRef.current !== session) {
+                        void session.close();
+                    }
+                }, 0);
+                pendingCloseRef.current = { session, timer };
+            }
         };
-    }, [activeChatClient, chatFeedWidgetsByName, deferLiveEvents, path, updateChatFeedWidgetCall]);
+    }, [
+        activeChatClient,
+        chatFeedWidgetsByName,
+        closeThreadOnUnmount,
+        deferLiveEvents,
+        injectPersistedEvents,
+        loadThread,
+        onEventsChanged,
+        onPersistedEventsInjectionStarted,
+        onPersistedEventsInjected,
+        path,
+        restorationAttempt,
+        updateChatFeedWidgetCall,
+    ]);
+
+    const retryRestoration = useCallback(() => {
+        restoredPathRef.current = null;
+        restorationReadyRef.current = false;
+        setRestorationError(null);
+        setRestorationAttempt((current) => current + 1);
+    }, []);
 
     const normalizedPath = path.trim();
     const session = sessionRef.current?.threadPath === normalizedPath ? sessionRef.current : null;
@@ -1453,7 +1733,12 @@ export function AgentThread({
         [followUpSuggestions, suggestions],
     );
 
-    const composerDisabled = agentParticipant == null && chatClient == null;
+    const composerDisabled = (
+        composerDisabledProp ||
+        (loadThread && !restorationReadyRef.current) ||
+        (injectPersistedEvents && restoredPathRef.current !== path) ||
+        (agentParticipant == null && chatClient == null)
+    );
     const handleSuggestionClick = useCallback((suggestion: AgentThreadSuggestion) => {
         const text = suggestion.prompt?.trim() || suggestion.label.trim();
         if (text === "") {
@@ -1556,6 +1841,15 @@ export function AgentThread({
                     </div>
                 ) : null}
             </div>
+
+            {restorationError ? (
+                <div className="px-4 pb-2">
+                    <ErrorBanner
+                        message={restorationError}
+                        onRetry={retryRestoration}
+                    />
+                </div>
+            ) : null}
 
             {sendError ? (
                 <div className="px-4 pb-2">
