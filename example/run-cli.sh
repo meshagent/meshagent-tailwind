@@ -12,4 +12,5 @@ export MESHAGENT_SERVER_CLI_FILES_STORAGE_PATH="$PWD/data"
 export VIRTUAL_ENV="$PWD/venv"
 source $VIRTUAL_ENV/bin/activate
 
-python3 ../../../meshagent-server/meshagent/server/cli/cli.py
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cargo run --manifest-path "$REPO_ROOT/rust/Cargo.toml" -p room-server-cli

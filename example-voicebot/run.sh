@@ -14,7 +14,8 @@ VIRTUAL_ENV="$PWD/venv"
 python3 -m venv $VIRTUAL_ENV
 source $VIRTUAL_ENV/bin/activate
 
-python3 ../../../meshagent-server/meshagent/server/cli/cli.py &
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cargo run --manifest-path "$REPO_ROOT/rust/Cargo.toml" -p room-server-cli &
 CLI_PID=$!
 
 npm i
@@ -34,4 +35,3 @@ echo "Starting MeshAgent CLI server..."
 # When this script exits (for any reason), kill the background job
 trap cleanup EXIT
 # npm run build && npx mocha dist/node/test/*.js
-

@@ -24,11 +24,11 @@ uv pip install --no-cache-dir \
     ../../meshagent-anthropic \
     ../../meshagent-llm-proxy \
     ../../meshagent-otel \
-    ../../../meshagent-cloud \
-    ../../../meshagent-server 
+    ../../../meshagent-cloud
 
 
-python3 ../../../meshagent-server/meshagent/server/cli/cli.py &
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cargo run --manifest-path "$REPO_ROOT/rust/Cargo.toml" -p room-server-cli &
 CLI_PID=$!
 
 npm i
