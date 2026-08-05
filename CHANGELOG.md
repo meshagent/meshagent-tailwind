@@ -1,3 +1,6 @@
+## [0.48.1]
+- Stability
+
 ## [0.48.0]
 - Reworked the TS/JS agent chat stack to preserve ordered threaded messages and support injected-message threads across chat clients and process handling.
 - Added chat feed widgets and virtual scrolling to the React/Tailwind UI, improving large-thread performance.
