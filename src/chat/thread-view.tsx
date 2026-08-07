@@ -19,7 +19,7 @@ import type { ChatFeedWidget } from "./chat-feed-widget.js";
 import { MultiThreadView } from "./multi-thread-view.js";
 
 export interface ThreadViewProps {
-    room: RoomClient;
+    room?: RoomClient;
     chatClient?: BaseChatClient | null;
     path?: string;
     documentPath?: string;
@@ -89,6 +89,22 @@ function MultiThreadUnavailable(): ReactElement {
     );
 }
 
+function RoomUnavailable({ message }: { message: string }): ReactElement {
+    return (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-8">
+            <div className="w-full max-w-[912px] rounded-3xl border border-destructive/30 bg-destructive/5 p-6 text-destructive">
+                <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                        <h2 className="text-lg font-semibold">Unable to open chat</h2>
+                        <p className="mt-1 text-sm text-destructive/80">{message}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function ThreadView({
     room,
     chatClient = null,
@@ -129,6 +145,14 @@ export function ThreadView({
     const resolvedDocumentPath = normalizePath(documentPath ?? path);
     const resolvedSingleThreadPath = resolvedDocumentPath ?? chatDocumentPath(agentName, { threadDir });
     const activeChatClient = chatClient ?? undefined;
+
+    if (room == null && activeChatClient == null) {
+        return <RoomUnavailable message="ThreadView requires either a room or a chat client." />;
+    }
+
+    if (threadSource === "dataset" && room == null && rowsLoader == null) {
+        return <RoomUnavailable message="Dataset-backed threads require a room connection or rows loader." />;
+    }
 
     if (threadDisplayMode !== ChatThreadDisplayMode.MultiThreadComposer) {
         if (threadSource === "dataset") {

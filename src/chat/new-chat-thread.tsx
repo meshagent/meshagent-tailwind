@@ -20,7 +20,7 @@ import { Toaster } from "../components/ui/sonner.js";
 export type NewChatThreadBuilder = (threadPath: string) => ReactElement;
 
 export interface NewChatThreadProps {
-    room: RoomClient;
+    room?: RoomClient;
     chatClient?: BaseChatClient;
     disposeChatClient?: boolean;
     agentName: string;
@@ -166,7 +166,11 @@ export function NewChatThread({
     const activePath = controlledThreadPath ?? internalThreadPath;
     const ownsChatClient = chatClient == null;
     const activeChatClient = useMemo<BaseChatClient>(
-        () => chatClient ?? new MessagingChatClient({ room, agentName }),
+        () => {
+            if (chatClient != null) return chatClient;
+            if (room != null) return new MessagingChatClient({ room, agentName });
+            throw new Error("NewChatThread requires either a room or a chat client.");
+        },
         [agentName, chatClient, room],
     );
     const [clientVersion, setClientVersion] = useState(0);
@@ -218,6 +222,7 @@ export function NewChatThread({
     }, [agentName, controlledThreadPath, room]);
 
     const selectNewThreadAttachments = useCallback((files: File[]) => {
+        if (room == null) return;
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
             room,
             `uploaded-files/${file.name}`,
@@ -245,7 +250,7 @@ export function NewChatThread({
         const operationId = activeOperationRef.current + 1;
         activeOperationRef.current = operationId;
 
-        const initialTargetAgent = activeChatClient.agentParticipant() ?? findTargetAgent(room, agentName);
+        const initialTargetAgent = activeChatClient.agentParticipant() ?? (room == null ? null : findTargetAgent(room, agentName));
         setWaitingForAgent(initialTargetAgent === null && chatClient == null);
         setCreatingNewThread(initialTargetAgent !== null || chatClient != null);
         setNewThreadError(null);
@@ -267,7 +272,9 @@ export function NewChatThread({
             const result = await activeChatClient.startThread({
                 message: text,
                 attachments: newThreadAttachments.map((attachment) => new AgentFileContent({ url: attachment.path })),
-                senderName: getParticipantName(room.localParticipant) || undefined,
+                senderName: room == null
+                    ? activeChatClient.localParticipantName()
+                    : getParticipantName(room.localParticipant) || undefined,
                 clientToolkits: resolvedClientToolkits,
             });
 
@@ -318,7 +325,7 @@ export function NewChatThread({
             return displayParticipantName(knownAgentName);
         }
 
-        const targetAgent = activeChatClient.agentParticipant() ?? findTargetAgent(room);
+        const targetAgent = activeChatClient.agentParticipant() ?? (room == null ? null : findTargetAgent(room));
         return displayParticipantName(targetAgent ? getParticipantName(targetAgent) : null);
     }, [activeChatClient, agentName, clientVersion, room]);
 
@@ -366,7 +373,7 @@ export function NewChatThread({
                 attachments={newThreadAttachments}
                 onFilesSelected={selectNewThreadAttachments}
                 setAttachments={setNewThreadAttachments}
-                enableFileUpload={enableFileUpload}
+                enableFileUpload={enableFileUpload && room != null}
                 value={newThreadDraft}
                 onValueChange={setNewThreadDraft}
                 clearOnSubmit={false}

@@ -77,7 +77,7 @@ export interface AgentThreadSuggestion {
 }
 
 export interface AgentThreadProps {
-    room: RoomClient;
+    room?: RoomClient;
     path: string;
     chatClient?: BaseChatClient;
     disposeChatClient?: boolean;
@@ -756,11 +756,11 @@ function ToolCallLine({ message }: { message: ChatThreadItem }): ReactElement | 
     );
 }
 
-function AttachmentView({ room, path }: { room: RoomClient; path: string }): ReactElement {
+function AttachmentView({ room, path }: { room?: RoomClient; path: string }): ReactElement {
     return attachmentImagePath(path) == null ? <AttachmentDownloadButton room={room} path={path} /> : <ChatImageAttachment room={room} path={path} />;
 }
 
-function ChatImageAttachment({ room, path }: { room: RoomClient; path: string }): ReactElement {
+function ChatImageAttachment({ room, path }: { room?: RoomClient; path: string }): ReactElement {
     const imagePath = attachmentImagePath(path) ?? path;
     const [url, setUrl] = useState<string | null>(() => (isInlineImageUrl(imagePath) || isHttpUrl(imagePath) ? imagePath : null));
     const [error, setError] = useState<unknown>(null);
@@ -775,6 +775,11 @@ function ChatImageAttachment({ room, path }: { room: RoomClient; path: string })
         }
 
         setUrl(null);
+        if (room == null) {
+            setError(new Error("This attachment requires a room connection."));
+            return;
+        }
+
         void room.storage.downloadUrl(imagePath)
             .then((nextUrl) => {
                 if (!cancelled) {
@@ -815,7 +820,7 @@ function ChatImageAttachment({ room, path }: { room: RoomClient; path: string })
     );
 }
 
-function AttachmentDownloadButton({ room, path, className }: { room: RoomClient; path: string; className?: string }): ReactElement {
+function AttachmentDownloadButton({ room, path, className }: { room?: RoomClient; path: string; className?: string }): ReactElement {
     const preview = normalizeAttachmentPath(path);
     const filename = filePreviewName(preview);
     return (
@@ -827,13 +832,16 @@ function AttachmentDownloadButton({ room, path, className }: { room: RoomClient;
                     window.open(path, "_blank", "noopener,noreferrer");
                     return;
                 }
+                if (room == null) return;
                 void room.storage.downloadUrl(preview).then((nextUrl) => {
                     window.open(nextUrl, "_blank", "noopener,noreferrer");
                 });
             }}>
             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate text-sm font-medium">{filename}</span>
-            <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {room != null || isInlineImageUrl(path) || isHttpUrl(path)
+                ? <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                : <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>}
         </button>
     );
 }
@@ -842,7 +850,7 @@ function AttachmentDownloadButton({ room, path, className }: { room: RoomClient;
 
 
 export interface ChatThreadPreviewProps {
-    room: RoomClient;
+    room?: RoomClient;
     path: string;
     className?: string;
 }
@@ -882,7 +890,7 @@ function ExpandedDetailGroup({
     agentName,
     chatFeedWidgetsByName,
 }: {
-    room: RoomClient;
+    room?: RoomClient;
     item: DetailGroupItem;
     localParticipantName: string;
     agentName?: string;
@@ -964,7 +972,7 @@ function ThreadMessageView({
     chatFeedWidgetsByName,
     forceHideHeader = false,
 }: {
-    room: RoomClient;
+    room?: RoomClient;
     message: ChatThreadItem;
     previous: ChatThreadItem | null;
     localParticipantName: string;
@@ -1333,7 +1341,11 @@ export function AgentThread({
     } | null>(null);
     const ownsChatClient = chatClient == null;
     const activeChatClient = useMemo<BaseChatClient>(
-        () => chatClient ?? new MessagingChatClient({ room, agentName }),
+        () => {
+            if (chatClient != null) return chatClient;
+            if (room != null) return new MessagingChatClient({ room, agentName });
+            throw new Error("AgentThread requires either a room or a chat client.");
+        },
         [agentName, chatClient, room],
     );
 
@@ -1358,8 +1370,10 @@ export function AgentThread({
         });
     }, []);
 
-    const localParticipantName = getParticipantName(room.localParticipant);
-    const agentParticipant = activeChatClient.agentParticipant() ?? findAgentParticipant(room, agentName);
+    const localParticipantName = room == null
+        ? activeChatClient.localParticipantName() ?? ""
+        : getParticipantName(room.localParticipant);
+    const agentParticipant = activeChatClient.agentParticipant() ?? (room == null ? null : findAgentParticipant(room, agentName));
 
     useEffect(() => {
         mountedRef.current = true;
@@ -1683,6 +1697,7 @@ export function AgentThread({
     }, [renderedItems]);
 
     const selectAttachments = useCallback((files: File[]) => {
+        if (room == null) return;
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
             room,
             `uploaded-files/${file.name}`,
@@ -1883,7 +1898,7 @@ export function AgentThread({
                     attachments={attachments}
                     onFilesSelected={selectAttachments}
                     setAttachments={setAttachments}
-                    enableFileUpload={enableFileUpload}
+                    enableFileUpload={enableFileUpload && room != null}
                     disabled={composerDisabled}
                     placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
 

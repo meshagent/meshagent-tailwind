@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import { RoomClient } from "@meshagent/meshagent";
+import type { RoomClient } from "@meshagent/meshagent";
 import type {
     AgentMessageEvent,
     BaseChatClient,
@@ -14,7 +14,7 @@ import type { ChatFeedWidget } from "./chat-feed-widget.js";
 export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
 
 export interface MultiThreadViewProps {
-    room: RoomClient;
+    room?: RoomClient;
     chatClient?: BaseChatClient;
     disposeChatClient?: boolean;
     agentName: string;

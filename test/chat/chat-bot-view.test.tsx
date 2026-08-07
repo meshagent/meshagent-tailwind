@@ -938,14 +938,12 @@ describe("ChatBotView multi-thread composer", () => {
     });
 
     it("renders the multi-thread composer as a standalone ThreadView", async () => {
-        const room = fakeRoom();
         const chatClient = new FakeChatClient();
         const selectedPaths: Array<string | null> = [];
         const resolvedThreads: Array<{ path: string | null; displayName: string | null }> = [];
 
         render(
             <ThreadView
-                room={room}
                 chatClient={chatClient}
                 agentName="codex"
                 threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
@@ -960,6 +958,7 @@ describe("ChatBotView multi-thread composer", () => {
         );
 
         await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
+        expect(screen.queryByLabelText("Attach file")).to.equal(null);
 
         fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
             target: { value: "standalone pending message" },
