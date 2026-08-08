@@ -13,7 +13,6 @@ export interface ChatTypingIndicatorProps {
     thinking?: boolean;
     statusText?: string | null;
     startedAt?: Date | null;
-    totalBytes?: number | null;
     linesAdded?: number | null;
     linesRemoved?: number | null;
     onCancel?: () => void;
@@ -24,7 +23,6 @@ export interface ChatTypingIndicatorProps {
 function useStatusLabel(
     text: string | null | undefined,
     startedAt?: Date | null,
-    totalBytes?: number | null,
     linesAdded?: number | null,
     linesRemoved?: number | null,
 ): string | null {
@@ -43,20 +41,20 @@ function useStatusLabel(
         return () => {
             window.clearInterval(timer);
         };
-    }, [normalizedText, startedAt, totalBytes, linesAdded, linesRemoved]);
+    }, [normalizedText, startedAt, linesAdded, linesRemoved]);
 
     if (normalizedText === "") {
         return null;
     }
 
     void tick;
-    return formatThreadStatusText(normalizedText, startedAt, totalBytes, linesAdded, linesRemoved);
+
+    return formatThreadStatusText(normalizedText, startedAt, linesAdded, linesRemoved);
 }
 
 export interface ChatThreadStatusIndicatorProps {
     statusText?: string | null;
     startedAt?: Date | null;
-    totalBytes?: number | null;
     linesAdded?: number | null;
     linesRemoved?: number | null;
     reserveSpace?: boolean;
@@ -67,14 +65,13 @@ export interface ChatThreadStatusIndicatorProps {
 export function ChatThreadStatusIndicator({
     statusText,
     startedAt,
-    totalBytes,
     linesAdded,
     linesRemoved,
     reserveSpace = false,
     size = 16,
     className,
 }: ChatThreadStatusIndicatorProps): React.ReactElement | null {
-    const label = useStatusLabel(statusText, startedAt, totalBytes, linesAdded, linesRemoved);
+    const label = useStatusLabel(statusText, startedAt, linesAdded, linesRemoved);
 
     if (label == null) {
         return reserveSpace ? <span aria-hidden="true" style={{ width: size, height: size }} className={cn("inline-block shrink-0", className)} /> : null;
@@ -103,7 +100,6 @@ function ProcessingStatusRow({
     cancelEnabled?: boolean;
     statusText?: string | null;
     startedAt?: Date | null;
-    totalBytes?: number | null;
     linesAdded?: number | null;
     linesRemoved?: number | null;
 }): React.ReactElement {
@@ -140,7 +136,6 @@ export function ChatTypingIndicator({
     thinking,
     statusText,
     startedAt,
-    totalBytes,
     linesAdded,
     linesRemoved,
     onCancel,
@@ -153,7 +148,6 @@ export function ChatTypingIndicator({
     const resolvedStatusText = useStatusLabel(
         statusText?.trim() ? statusText : (resolvedThinking ? "Thinking" : null),
         startedAt,
-        totalBytes,
         linesAdded,
         linesRemoved,
     );

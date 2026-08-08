@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type { RoomClient } from "@meshagent/meshagent";
+import type { RoomClient, Tool } from "@meshagent/meshagent";
 import type {
     AgentMessageEvent,
     BaseChatClient,
@@ -28,8 +28,9 @@ export interface MultiThreadViewProps {
     centerComposer?: boolean;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    clientToolkits?: readonly ClientToolkitDescription[];
+    clientTools?: readonly Tool[];
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
@@ -61,6 +62,7 @@ export function MultiThreadView({
     emptyStateTitle = "Start a new thread",
     emptyStateDescription = "Connect with this agent and your team",
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     toolChoice,
     suggestions,
@@ -128,6 +130,7 @@ export function MultiThreadView({
             emptyStateTitle={emptyStateTitle}
             emptyStateDescription={emptyStateDescription}
             clientToolkits={clientToolkits}
+            clientTools={clientTools}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
             suggestions={suggestions}

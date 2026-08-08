@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-import type { RoomClient } from "@meshagent/meshagent";
+import type { RoomClient, Tool } from "@meshagent/meshagent";
 import type {
     AgentMessage,
     AgentMessageEvent,
@@ -37,8 +37,9 @@ export interface ThreadViewProps {
     onSelectedThreadPathChanged?: (path: string | null) => void;
     onSelectedThreadResolved?: (path: string | null, displayName: string | null) => void;
     newThreadResetVersion?: number;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    clientToolkits?: readonly ClientToolkitDescription[];
+    clientTools?: readonly Tool[];
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     suggestions?: readonly AgentThreadSuggestion[];
@@ -125,6 +126,7 @@ export function ThreadView({
     onSelectedThreadResolved,
     newThreadResetVersion = 0,
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
@@ -167,6 +169,7 @@ export function ThreadView({
                     emptyStateTitle={emptyStateTitle}
                     emptyStateDescription={emptyStateDescription}
                     clientToolkits={clientToolkits}
+                    clientTools={clientTools}
                     chatFeedWidgets={chatFeedWidgets}
                     toolChoice={toolChoice}
                     collapseMessages={collapseMessages}
@@ -192,6 +195,7 @@ export function ThreadView({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                clientTools={clientTools}
                 chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}
@@ -226,6 +230,7 @@ export function ThreadView({
             newThreadResetVersion={newThreadResetVersion}
             centerComposer={centerComposer}
             clientToolkits={clientToolkits}
+            clientTools={clientTools}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
             suggestions={suggestions}
@@ -243,6 +248,7 @@ export function ThreadView({
                         emptyStateTitle={startNewThreadTitle}
                         emptyStateDescription={startNewThreadDescription}
                         clientToolkits={clientToolkits}
+                        clientTools={clientTools}
                         chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages}
@@ -265,6 +271,7 @@ export function ThreadView({
                         emptyStateTitle={startNewThreadTitle}
                         emptyStateDescription={startNewThreadDescription}
                         clientToolkits={clientToolkits}
+                        clientTools={clientTools}
                         chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages}

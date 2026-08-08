@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
-import type { RoomClient } from "@meshagent/meshagent";
+import type { RoomClient, Tool } from "@meshagent/meshagent";
 import {
     AgentMessage,
     AgentMessageEvent,
@@ -43,8 +43,9 @@ export interface DatasetAgentThreadProps {
     rowsLoader?: DatasetThreadRowsLoader;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    clientToolkits?: readonly ClientToolkitDescription[];
+    clientTools?: readonly Tool[];
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     suggestions?: readonly AgentThreadSuggestion[];
@@ -77,6 +78,7 @@ export function DatasetAgentThread({
     emptyStateTitle,
     emptyStateDescription,
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     toolChoice,
     collapseMessages,
@@ -173,6 +175,7 @@ export function DatasetAgentThread({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                clientTools={clientTools}
                 chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}

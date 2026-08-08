@@ -1,8 +1,8 @@
 import React, { StrictMode } from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ErrorContent, JsonContent } from "@meshagent/meshagent";
+import { ErrorContent, JsonContent, Tool } from "@meshagent/meshagent";
 import type { Content, RoomClient } from "@meshagent/meshagent";
 import {
     AgentClientToolCallRequested,
@@ -101,13 +101,57 @@ class TestChatFeedWidget extends ChatFeedWidget {
     }
 }
 
+class TestClientTool extends Tool {
+    public readonly calls: Record<string, unknown>[] = [];
+
+    constructor(name = "lookup") {
+        super({
+            name,
+            title: "Lookup",
+            description: "Look up structured data without rendering a feed row.",
+            inputSchema: {
+                type: "object",
+                additionalProperties: false,
+            },
+        });
+    }
+
+    public async execute(arguments_: Record<string, unknown>): Promise<Content> {
+        this.calls.push(arguments_);
+        return new JsonContent({ json: { found: true } });
+    }
+}
+
+class MessageSendingWidget extends ChatFeedWidget {
+    constructor() {
+        super({ name: "questions", inputSchema: { type: "object" } });
+    }
+
+    public async execute(): Promise<Content> {
+        return new JsonContent({ json: { displayed: true } });
+    }
+
+    public render(toolCall: ToolCall): React.ReactElement {
+        return (
+            <button
+                type="button"
+                disabled={toolCall.sendMessage == null}
+                onClick={() => toolCall.sendMessage?.("Tell me more")}
+            >
+                Tell me more
+            </button>
+        );
+    }
+}
+
 describe("ChatFeedWidget", () => {
     it("derives client-tool metadata and rejects duplicate names", () => {
         const widget = new TestChatFeedWidget();
-        const descriptions = resolveClientToolkitDescriptions(undefined, [widget]);
+        const tool = new TestClientTool();
+        const descriptions = resolveClientToolkitDescriptions(undefined, [widget], [tool]);
 
-        expect(descriptions).to.have.length(1);
-        expect(descriptions?.[0].toJson()).to.deep.equal({
+        expect(descriptions).to.have.length(2);
+        expect(descriptions?.find((description) => description.name === "weather")?.toJson()).to.deep.equal({
             name: "weather",
             title: "Weather card",
             description: "Show the weather in chat.",
@@ -117,6 +161,82 @@ describe("ChatFeedWidget", () => {
         expect(() => resolveClientToolkitDescriptions([
             new ClientToolkitDescription({ name: "weather", inputSchema: {} }),
         ], [widget])).to.throw("client tool 'weather' has already been registered");
+        expect(() => resolveClientToolkitDescriptions(undefined, [widget], [
+            new TestClientTool("weather"),
+        ])).to.throw("client tool 'weather' has already been registered");
+    });
+
+    it("executes a plain client tool without adding a feed row", async () => {
+        const chatClient = new FakeChatClient();
+        const tool = new TestClientTool();
+        const { container } = render(
+            <AgentThread
+                room={fakeRoom()}
+                path="thread-live-tool"
+                chatClient={chatClient}
+                agentName="codex"
+                clientTools={[tool]}
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-live-tool" }));
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId: "thread-live-tool",
+                turnId: "turn-live-tool",
+                requestId: "request-live-tool",
+                toolkit: "client",
+                tool: "lookup",
+                arguments: { sku: "HALO" },
+            }));
+        });
+
+        await waitFor(() => {
+            expect(chatClient.sent.some((message) => message.type === agentClientToolCallResponseType)).to.equal(true);
+        });
+        expect(tool.calls).to.deep.equal([{ sku: "HALO" }]);
+        expect(container.textContent).not.to.contain("Ran client.lookup");
+        expect(container.textContent).not.to.contain("Lookup");
+    });
+
+    it("does not re-execute or render a restored plain client tool", async () => {
+        const chatClient = new FakeChatClient();
+        const tool = new TestClientTool();
+        const { container } = render(
+            <AgentThread
+                room={fakeRoom()}
+                path="thread-restored-tool"
+                chatClient={chatClient}
+                agentName="codex"
+                clientTools={[tool]}
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId: "thread-restored-tool",
+                turnId: "turn-restored-tool",
+                requestId: "request-restored-tool",
+                toolkit: "client",
+                tool: "lookup",
+                arguments: { sku: "AURA" },
+            }));
+            chatClient.handleAgentMessage(new AgentToolCallEnded({
+                threadId: "thread-restored-tool",
+                turnId: "turn-restored-tool",
+                itemId: "request-restored-tool",
+                toolkit: "client",
+                tool: "lookup",
+                result: new JsonContent({ json: { found: true } }),
+            }));
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-restored-tool" }));
+        });
+
+        expect(tool.calls).to.deep.equal([]);
+        expect(chatClient.sent.some((message) => message.type === agentClientToolCallResponseType)).to.equal(false);
+        expect(container.textContent).not.to.contain("Ran client.lookup");
     });
 
     it("executes a live request once, responds, and renders its structured lifecycle", async () => {
@@ -152,6 +272,43 @@ describe("ChatFeedWidget", () => {
         await waitFor(() => {
             expect(chatClient.sent.some((message) => message.type === agentClientToolCallResponseType)).to.equal(true);
         });
+    });
+
+    it("lets a feed widget send a selected message", async () => {
+        const chatClient = new FakeChatClient();
+        const widget = new MessageSendingWidget();
+
+        render(
+            <AgentThread
+                room={fakeRoom()}
+                path="thread-message-widget"
+                chatClient={chatClient}
+                agentName="codex"
+                chatFeedWidgets={[widget]}
+                collapseMessages={false}
+            />,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-message-widget" }));
+            chatClient.handleAgentMessage(new AgentClientToolCallRequested({
+                threadId: "thread-message-widget",
+                turnId: "turn-message-widget",
+                requestId: "request-message-widget",
+                toolkit: "client",
+                tool: "questions",
+                arguments: {},
+            }));
+        });
+
+        const button = await screen.findByRole("button", { name: "Tell me more" });
+        await waitFor(() => {
+            expect(chatClient.sent.filter((message) => message.type === agentClientToolCallResponseType)).to.have.length(1);
+        });
+        const sentBeforeClick = chatClient.sent.length;
+        fireEvent.click(button);
+        await waitFor(() => expect(chatClient.sent).to.have.length(sentBeforeClick + 1));
+        expect(chatClient.sent.filter((message) => message.type === agentClientToolCallResponseType)).to.have.length(1);
     });
 
     it("executes a request received while replay is loading after replay completes", async () => {

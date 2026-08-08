@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import { RemoteParticipant, RoomClient } from "@meshagent/meshagent";
+import type { Tool } from "@meshagent/meshagent";
 import { AgentFileContent, MessagingChatClient } from "@meshagent/meshagent-agents";
 import type {
     AgentMessageEvent,
@@ -33,8 +34,9 @@ export interface NewChatThreadProps {
     centerComposer?: boolean;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    clientToolkits?: readonly ClientToolkitDescription[];
+    clientTools?: readonly Tool[];
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
@@ -149,6 +151,7 @@ export function NewChatThread({
     emptyStateTitle,
     emptyStateDescription,
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     toolChoice,
     suggestions,
@@ -175,8 +178,8 @@ export function NewChatThread({
     );
     const [clientVersion, setClientVersion] = useState(0);
     const resolvedClientToolkits = useMemo(
-        () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets),
-        [chatFeedWidgets, clientToolkits],
+        () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets, clientTools),
+        [chatFeedWidgets, clientToolkits, clientTools],
     );
 
     useEffect(() => {

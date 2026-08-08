@@ -447,7 +447,6 @@ function formatStatusSecondUnit(value: number): string {
 export function formatThreadStatusText(
     text: string,
     startedAt?: Date | null,
-    totalBytes?: number | null,
     linesAdded?: number | null,
     linesRemoved?: number | null,
 ): string {
@@ -455,10 +454,6 @@ export function formatThreadStatusText(
         const added = linesAdded != null ? "+" + formatGroupedStatusDigits(linesAdded) : null;
         const removed = linesRemoved != null ? "-" + formatGroupedStatusDigits(linesRemoved) : null;
         return [text, added, removed].filter((part): part is string => part != null).join(" ");
-    }
-
-    if (totalBytes != null && totalBytes > 100) {
-        return text + " " + formatGroupedStatusDigits(totalBytes) + " bytes";
     }
 
     if (!(startedAt instanceof Date) || Number.isNaN(startedAt.getTime())) {

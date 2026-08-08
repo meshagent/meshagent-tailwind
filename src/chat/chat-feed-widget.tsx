@@ -11,35 +11,39 @@ export interface ToolCall {
     status: ToolCallStatus;
     input: Record<string, unknown>;
     output?: Content;
+    sendMessage?: (message: string) => void;
 }
 
 export abstract class ChatFeedWidget extends Tool {
-    abstract render(toolCall: ToolCall): ReactElement;
+    abstract render(toolCall: ToolCall): ReactElement | null;
 
     getFollowUpSuggestions?(toolCall: ToolCall): readonly AgentThreadSuggestion[];
 }
 
 export function resolveClientToolkitDescriptions(
-    clientToolkits: ClientToolkitDescription[] | undefined,
-    chatFeedWidgets: ChatFeedWidget[] | undefined,
+    clientToolkits: readonly ClientToolkitDescription[] | undefined,
+    chatFeedWidgets: readonly ChatFeedWidget[] | undefined,
+    clientTools?: readonly Tool[],
 ): ClientToolkitDescription[] | undefined {
-    if ((clientToolkits?.length ?? 0) === 0 && (chatFeedWidgets?.length ?? 0) === 0) {
+    if ((clientToolkits?.length ?? 0) === 0
+        && (chatFeedWidgets?.length ?? 0) === 0
+        && (clientTools?.length ?? 0) === 0) {
         return undefined;
     }
 
     const descriptions = [...(clientToolkits ?? [])];
     const names = new Set(descriptions.map((description) => description.name));
 
-    for (const widget of chatFeedWidgets ?? []) {
-        if (names.has(widget.name)) {
-            throw new Error(`client tool '${widget.name}' has already been registered`);
+    for (const tool of [...(clientTools ?? []), ...(chatFeedWidgets ?? [])]) {
+        if (names.has(tool.name)) {
+            throw new Error(`client tool '${tool.name}' has already been registered`);
         }
-        names.add(widget.name);
+        names.add(tool.name);
         descriptions.push(new ClientToolkitDescription({
-            name: widget.name,
-            title: widget.title,
-            description: widget.description,
-            inputSchema: widget.inputSchema ?? {
+            name: tool.name,
+            title: tool.title,
+            description: tool.description,
+            inputSchema: tool.inputSchema ?? {
                 type: "object",
                 additionalProperties: true,
             },

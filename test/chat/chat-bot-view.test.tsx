@@ -1171,7 +1171,7 @@ describe("AgentThread", () => {
         expect(container.querySelector(".chat-scroll")).toBeTruthy();
     });
 
-    it("collapses assistant detail messages before the final response", async () => {
+    it("hides assistant detail messages without inserting a collapsed feed row", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
 
@@ -1202,9 +1202,7 @@ describe("AgentThread", () => {
 
         expect(await screen.findByText("The fix is ready.")).toBeTruthy();
         expect(screen.queryByText(/I checked the logs/)).to.equal(null);
-
-        fireEvent.click(screen.getByText("Worked for 4s"));
-        expect(await screen.findByText(/I checked the logs/)).toBeTruthy();
+        expect(screen.queryByText("Worked for 4s")).to.equal(null);
     });
 
     it("renders usage updates below the composer", async () => {
