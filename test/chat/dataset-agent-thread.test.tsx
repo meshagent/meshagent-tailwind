@@ -406,7 +406,6 @@ describe("DatasetAgentThread", () => {
         const chatClient = new FakeChatClient();
         render(
             <ThreadView
-                room={fakeRoom()}
                 path="dataset://threads/main"
                 chatClient={chatClient}
                 threadSource="dataset"

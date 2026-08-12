@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
-import type { RoomClient } from "@meshagent/meshagent";
+import type { RoomClient, Tool } from "@meshagent/meshagent";
 import {
     AgentMessage,
     AgentMessageEvent,
@@ -35,7 +35,7 @@ export interface DatasetThreadRef {
 }
 
 export interface DatasetAgentThreadProps {
-    room: RoomClient;
+    room?: RoomClient;
     path: string;
     chatClient?: BaseChatClient;
     disposeChatClient?: boolean;
@@ -43,8 +43,9 @@ export interface DatasetAgentThreadProps {
     rowsLoader?: DatasetThreadRowsLoader;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    clientToolkits?: readonly ClientToolkitDescription[];
+    clientTools?: readonly Tool[];
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     suggestions?: readonly AgentThreadSuggestion[];
@@ -63,7 +64,9 @@ export interface DatasetAgentThreadProps {
     ) => void;
 }
 
-export type RoomDatasetAgentThreadProps = Omit<DatasetAgentThreadProps, "rowsLoader">;
+export type RoomDatasetAgentThreadProps = Omit<DatasetAgentThreadProps, "room" | "rowsLoader"> & {
+    room: RoomClient;
+};
 
 export function DatasetAgentThread({
     room,
@@ -75,6 +78,7 @@ export function DatasetAgentThread({
     emptyStateTitle,
     emptyStateDescription,
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     toolChoice,
     collapseMessages,
@@ -90,9 +94,17 @@ export function DatasetAgentThread({
     onEventsChanged,
 }: DatasetAgentThreadProps): ReactElement {
     const normalizedPath = path.trim();
-    const activeRowsLoader = useMemo(() => rowsLoader ?? defaultRowsLoader(room), [room, rowsLoader]);
+    const activeRowsLoader = useMemo(() => {
+        if (rowsLoader != null) return rowsLoader;
+        if (room != null) return defaultRowsLoader(room);
+        throw new Error("DatasetAgentThread requires either a room or a rows loader.");
+    }, [room, rowsLoader]);
     const activeChatClient = useMemo<BaseChatClient>(
-        () => chatClient ?? new MessagingChatClient({ room, agentName }),
+        () => {
+            if (chatClient != null) return chatClient;
+            if (room != null) return new MessagingChatClient({ room, agentName });
+            throw new Error("DatasetAgentThread requires either a room or a chat client.");
+        },
         [agentName, chatClient, room],
     );
     const [persistedEvents, setPersistedEvents] = useState<readonly AgentMessageEvent[] | null>(null);
@@ -163,11 +175,12 @@ export function DatasetAgentThread({
                 emptyStateTitle={emptyStateTitle}
                 emptyStateDescription={emptyStateDescription}
                 clientToolkits={clientToolkits}
+                clientTools={clientTools}
                 chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}
                 suggestions={suggestions}
-                enableFileUpload={enableFileUpload}
+                enableFileUpload={enableFileUpload && room != null}
                 persistedEvents={persistedEvents ?? []}
                 deferLiveEvents={persistedEvents == null}
                 loadThread={loadThread}

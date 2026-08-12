@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
 import { ErrorContent } from "@meshagent/meshagent";
-import type { Content, RemoteParticipant, RoomClient } from "@meshagent/meshagent";
+import type { Content, RemoteParticipant, RoomClient, Tool } from "@meshagent/meshagent";
 
 import {
     AgentClientToolCallRequested,
@@ -45,18 +45,6 @@ import type { ChatFeedWidget, ToolCallStatus } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
 import { ChatFeedWidgetView } from "./chat-feed-widget-view.js";
 
-interface DetailGroupItem {
-    id: string;
-    kind: "detail_group";
-    messages: ChatThreadItem[];
-    collapsedText: string;
-    authorName: string;
-    createdAt: Date;
-    expanded: boolean;
-}
-
-type RenderedThreadItem = ChatThreadItem | DetailGroupItem;
-
 export class AgentToolChoice {
     readonly toolkitName: string;
     readonly toolName: string;
@@ -77,15 +65,19 @@ export interface AgentThreadSuggestion {
 }
 
 export interface AgentThreadProps {
-    room: RoomClient;
+    room?: RoomClient;
     path: string;
     chatClient?: BaseChatClient;
     disposeChatClient?: boolean;
     agentName?: string;
     emptyStateTitle?: string;
     emptyStateDescription?: string;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    /** Description-only client tools whose execution is owned outside this component. */
+    clientToolkits?: readonly ClientToolkitDescription[];
+    /** Client tools executed locally without rendering conversation-feed rows. */
+    clientTools?: readonly Tool[];
+    /** Client tools executed locally with custom feed rendering or feed behavior. */
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     suggestions?: readonly AgentThreadSuggestion[];
@@ -174,25 +166,6 @@ function isShellTool(message: Pick<ChatThreadItem, "toolkit" | "tool" | "command
         .filter((value): value is string => typeof value === "string")
         .map((value) => value.trim().toLowerCase());
     return values.some((value) => value === "shell" || value === "exec" || value === "local_shell" || value === "local_shell_call" || value.includes("shell") || value.includes("exec"));
-}
-
-function firstNonEmptyLine(text: string): string | null {
-    for (const line of text.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (trimmed !== "") {
-            return trimmed;
-        }
-    }
-    return null;
-}
-
-function detailGroupId(messages: ChatThreadItem[]): string {
-    const first = messages[0];
-    return ["details", first?.turnId ?? "", first?.id ?? "", first?.createdAt.getTime() ?? 0].join(":");
-}
-
-function messagesShareTurn(left: ChatThreadItem, right: ChatThreadItem): boolean {
-    return left.turnId != null && left.turnId.trim() !== "" && left.turnId === right.turnId;
 }
 
 function canCollapseAsCommentary(message: ChatThreadItem): boolean {
@@ -338,106 +311,21 @@ function addDetailIndexesForSegment(
     }
 }
 
-function nextNonDetailMessage(messages: ChatThreadItem[], detailIndexes: Set<number>, start: number, end: number): ChatThreadItem | null {
-    for (let index = start; index < end; index += 1) {
-        if (!detailIndexes.has(index)) {
-            return messages[index];
-        }
-    }
-    return null;
-}
-
-function detailGroupCollapsedMessage(messages: ChatThreadItem[]): ChatThreadItem | null {
-    for (const message of [...messages].reverse()) {
-        if (canCollapseAsCommentary(message) && message.text.trim() !== "") {
-            return message;
-        }
-    }
-    for (const message of [...messages].reverse()) {
-        if (message.kind === "reasoning" && message.text.trim() !== "") {
-            return message;
-        }
-    }
-    return null;
-}
-
-function formatDetailGroupDuration(milliseconds: number): string {
-    const seconds = Math.max(0, Math.round(milliseconds / 1000));
-    if (seconds < 60) {
-        return `${seconds}s`;
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
-}
-
-function detailGroupCollapsedText(messages: ChatThreadItem[], nextMessage: ChatThreadItem | null): string {
-    const first = messages[0];
-    if (first && nextMessage != null && canRenderAsFinalAnswer(nextMessage) && messagesShareTurn(first, nextMessage)) {
-        return `Worked for ${formatDetailGroupDuration(nextMessage.createdAt.getTime() - first.createdAt.getTime())}`;
-    }
-    return firstNonEmptyLine(detailGroupCollapsedMessage(messages)?.text ?? "") ?? "Working";
-}
-
-function detailGroupAuthorName(message: ChatThreadItem, localParticipantName: string, agentName?: string): string {
-    const authorName = message.authorName?.trim();
-    if (authorName) {
-        return authorName;
-    }
-    if (message.role === "user") {
-        return localParticipantName;
-    }
-    return displayParticipantName(agentName);
-}
-
-function detailGroupForMessages(messages: ChatThreadItem[], nextMessage: ChatThreadItem | null, expandedIds: Set<string>, localParticipantName: string, agentName?: string): DetailGroupItem {
-    const collapsedMessage = detailGroupCollapsedMessage(messages) ?? messages[0];
-    const id = detailGroupId(messages);
-    return {
-        id,
-        kind: "detail_group",
-        messages,
-        collapsedText: detailGroupCollapsedText(messages, nextMessage),
-        authorName: detailGroupAuthorName(collapsedMessage, localParticipantName, agentName),
-        createdAt: collapsedMessage.createdAt,
-        expanded: expandedIds.has(id),
-    };
-}
-
 function groupThreadItems(
     messages: ChatThreadItem[],
-    expandedIds: Set<string>,
-    localParticipantName: string,
-    agentName: string | undefined,
     chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
-): RenderedThreadItem[] {
-    const items: RenderedThreadItem[] = [];
+): ChatThreadItem[] {
+    const items: ChatThreadItem[] = [];
     let index = 0;
     while (index < messages.length) {
         const segmentEnd = nextUserMessageIndex(messages, index + 1) ?? messages.length;
         const detailIndexes = new Set<number>();
         addDetailIndexesForSegment(messages, index, segmentEnd, detailIndexes, chatFeedWidgetsByName);
-        const groupedMessages = [...detailIndexes]
-            .sort((left, right) => left - right)
-            .map((detailIndex) => messages[detailIndex]);
-        let insertedDetailGroup = false;
 
         for (let segmentIndex = index; segmentIndex < segmentEnd; segmentIndex += 1) {
             if (!detailIndexes.has(segmentIndex)) {
                 items.push(messages[segmentIndex]);
-                continue;
             }
-            if (insertedDetailGroup || groupedMessages.length === 0) {
-                continue;
-            }
-            items.push(detailGroupForMessages(
-                groupedMessages,
-                nextNonDetailMessage(messages, detailIndexes, segmentIndex + 1, segmentEnd),
-                expandedIds,
-                localParticipantName,
-                agentName,
-            ));
-            insertedDetailGroup = true;
         }
 
         index = segmentEnd;
@@ -446,14 +334,8 @@ function groupThreadItems(
 }
 
 
-function previousMessageItem(items: RenderedThreadItem[], index: number): ChatThreadItem | null {
-    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-        const item = items[cursor];
-        if (item.kind !== "detail_group") {
-            return item;
-        }
-    }
-    return null;
+function previousMessageItem(items: ChatThreadItem[], index: number): ChatThreadItem | null {
+    return index > 0 ? items[index - 1] : null;
 }
 
 export function formatAgentUsageTokenCount(value: number): string {
@@ -756,11 +638,11 @@ function ToolCallLine({ message }: { message: ChatThreadItem }): ReactElement | 
     );
 }
 
-function AttachmentView({ room, path }: { room: RoomClient; path: string }): ReactElement {
+function AttachmentView({ room, path }: { room?: RoomClient; path: string }): ReactElement {
     return attachmentImagePath(path) == null ? <AttachmentDownloadButton room={room} path={path} /> : <ChatImageAttachment room={room} path={path} />;
 }
 
-function ChatImageAttachment({ room, path }: { room: RoomClient; path: string }): ReactElement {
+function ChatImageAttachment({ room, path }: { room?: RoomClient; path: string }): ReactElement {
     const imagePath = attachmentImagePath(path) ?? path;
     const [url, setUrl] = useState<string | null>(() => (isInlineImageUrl(imagePath) || isHttpUrl(imagePath) ? imagePath : null));
     const [error, setError] = useState<unknown>(null);
@@ -775,6 +657,11 @@ function ChatImageAttachment({ room, path }: { room: RoomClient; path: string })
         }
 
         setUrl(null);
+        if (room == null) {
+            setError(new Error("This attachment requires a room connection."));
+            return;
+        }
+
         void room.storage.downloadUrl(imagePath)
             .then((nextUrl) => {
                 if (!cancelled) {
@@ -815,7 +702,7 @@ function ChatImageAttachment({ room, path }: { room: RoomClient; path: string })
     );
 }
 
-function AttachmentDownloadButton({ room, path, className }: { room: RoomClient; path: string; className?: string }): ReactElement {
+function AttachmentDownloadButton({ room, path, className }: { room?: RoomClient; path: string; className?: string }): ReactElement {
     const preview = normalizeAttachmentPath(path);
     const filename = filePreviewName(preview);
     return (
@@ -827,13 +714,16 @@ function AttachmentDownloadButton({ room, path, className }: { room: RoomClient;
                     window.open(path, "_blank", "noopener,noreferrer");
                     return;
                 }
+                if (room == null) return;
                 void room.storage.downloadUrl(preview).then((nextUrl) => {
                     window.open(nextUrl, "_blank", "noopener,noreferrer");
                 });
             }}>
             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate text-sm font-medium">{filename}</span>
-            <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {room != null || isInlineImageUrl(path) || isHttpUrl(path)
+                ? <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                : <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>}
         </button>
     );
 }
@@ -842,7 +732,7 @@ function AttachmentDownloadButton({ room, path, className }: { room: RoomClient;
 
 
 export interface ChatThreadPreviewProps {
-    room: RoomClient;
+    room?: RoomClient;
     path: string;
     className?: string;
 }
@@ -858,60 +748,6 @@ export function ChatThreadPreview({ room, path, className }: ChatThreadPreviewPr
     }
 
     return <AttachmentDownloadButton room={room} path={normalizedPath} className={className} />;
-}
-
-function DetailGroupLine({ item, onToggle }: { item: DetailGroupItem; onToggle: () => void }): ReactElement {
-    return (
-        <button
-            type="button"
-            className="mx-auto flex max-w-[85%] items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground sm:max-w-2xl"
-            onClick={onToggle}
-            aria-expanded={item.expanded}
-            title={item.expanded ? "Collapse details" : "Expand details"}>
-            {item.expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-            <span className="min-w-0 truncate">{item.collapsedText}</span>
-            <span className="shrink-0">{timeAgo(item.createdAt)}</span>
-        </button>
-    );
-}
-
-function ExpandedDetailGroup({
-    room,
-    item,
-    localParticipantName,
-    agentName,
-    chatFeedWidgetsByName,
-}: {
-    room: RoomClient;
-    item: DetailGroupItem;
-    localParticipantName: string;
-    agentName?: string;
-    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
-}): ReactElement {
-    return (
-        <div className="flex flex-col gap-3">
-            <div className="flex w-full justify-start">
-                <div className="max-w-[85%] px-1 text-left sm:max-w-2xl">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {item.authorName.trim() !== "" ? <span className="font-semibold text-foreground">{displayParticipantName(item.authorName)}</span> : null}
-                        <span>{timeAgo(item.createdAt)}</span>
-                    </div>
-                </div>
-            </div>
-            {item.messages.map((message, index) => (
-                <ThreadMessageView
-                    key={message.id}
-                    room={room}
-                    message={message}
-                    previous={index > 0 ? item.messages[index - 1] : null}
-                    localParticipantName={localParticipantName}
-                    agentName={agentName}
-                    chatFeedWidgetsByName={chatFeedWidgetsByName}
-                    forceHideHeader
-                />
-            ))}
-        </div>
-    );
 }
 
 function GeneratedImageView({ image }: { image: NonNullable<ChatThreadItem["image"]> }): ReactElement {
@@ -962,14 +798,16 @@ function ThreadMessageView({
     localParticipantName,
     agentName,
     chatFeedWidgetsByName,
+    onSendMessage,
     forceHideHeader = false,
 }: {
-    room: RoomClient;
+    room?: RoomClient;
     message: ChatThreadItem;
     previous: ChatThreadItem | null;
     localParticipantName: string;
     agentName?: string;
     chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
+    onSendMessage?: (message: string) => void;
     forceHideHeader?: boolean;
 }): ReactElement | null {
     if (message.kind === "error") {
@@ -1023,6 +861,7 @@ function ThreadMessageView({
                         status,
                         input: message.input ?? {},
                         output: message.output,
+                        sendMessage: onSendMessage,
                     }}
                     fallback={<ToolCallLine message={message} />} />
             );
@@ -1157,42 +996,42 @@ function normalizeAgentAttachmentUrl(path: string): string | null {
     return roomPath === "" ? null : `room:///${roomPath}`;
 }
 
-interface ChatFeedWidgetCallOverride {
+interface ClientToolCallOverride {
     status: ToolCallStatus;
     output?: Content;
 }
 
-const handledChatFeedWidgetRequests = new WeakMap<ChatThreadSession, Set<string>>();
-const initializedChatFeedWidgetSessions = new WeakSet<ChatThreadSession>();
-const replayingChatFeedWidgetSessions = new WeakSet<ChatThreadSession>();
+const handledClientToolRequests = new WeakMap<ChatThreadSession, Set<string>>();
+const initializedClientToolSessions = new WeakSet<ChatThreadSession>();
+const replayingClientToolSessions = new WeakSet<ChatThreadSession>();
 
 function handledRequestsForSession(session: ChatThreadSession): Set<string> {
-    const existing = handledChatFeedWidgetRequests.get(session);
+    const existing = handledClientToolRequests.get(session);
     if (existing != null) {
         return existing;
     }
     const created = new Set<string>();
-    handledChatFeedWidgetRequests.set(session, created);
+    handledClientToolRequests.set(session, created);
     return created;
 }
 
-function chatFeedWidgetCallKey(threadPath: string, itemId: string): string {
+function clientToolCallKey(threadPath: string, itemId: string): string {
     return [threadPath, itemId].join("\u0000");
 }
 
-function processChatFeedWidgetRequests({
+function processClientToolRequests({
     session,
-    widgetsByName,
+    toolsByName,
     updateCall,
     executeRequests,
 }: {
     session: ChatThreadSession;
-    widgetsByName: ReadonlyMap<string, ChatFeedWidget>;
-    updateCall: (callKey: string, override: ChatFeedWidgetCallOverride) => void;
+    toolsByName: ReadonlyMap<string, Tool>;
+    updateCall: (callKey: string, override: ClientToolCallOverride) => void;
     executeRequests: boolean;
 }): void {
 
-    if (widgetsByName.size === 0) {
+    if (toolsByName.size === 0) {
         return;
     }
 
@@ -1200,14 +1039,14 @@ function processChatFeedWidgetRequests({
         .map((event) => event.message)
         .filter((message): message is InstanceType<typeof AgentClientToolCallRequested> => message instanceof AgentClientToolCallRequested)
         .filter((message) => (
-        message.toolkit === "client" && widgetsByName.has(message.tool)
+        message.toolkit === "client" && toolsByName.has(message.tool)
     ));
 
     const handledRequests = handledRequestsForSession(session);
-    if (!initializedChatFeedWidgetSessions.has(session)) {
-        initializedChatFeedWidgetSessions.add(session);
+    if (!initializedClientToolSessions.has(session)) {
+        initializedClientToolSessions.add(session);
         if (session.isLoading || session.loadState.requestMessageId != null) {
-            replayingChatFeedWidgetSessions.add(session);
+            replayingClientToolSessions.add(session);
         }
     }
 
@@ -1215,12 +1054,12 @@ function processChatFeedWidgetRequests({
         return;
     }
 
-    if (replayingChatFeedWidgetSessions.has(session)) {
+    if (replayingClientToolSessions.has(session)) {
         if (session.isLoading) {
             return;
         }
 
-        replayingChatFeedWidgetSessions.delete(session);
+        replayingClientToolSessions.delete(session);
         const completedItemIds = new Set(session.messages
             .map((event) => event.message)
             .filter((message): message is InstanceType<typeof AgentToolCallEnded> => (
@@ -1239,8 +1078,8 @@ function processChatFeedWidgetRequests({
         if (handledRequests.has(request.requestId)) {
             continue;
         }
-        const widget = widgetsByName.get(request.tool);
-        if (widget == null) {
+        const tool = toolsByName.get(request.tool);
+        if (tool == null) {
             continue;
         }
         if (!session.claimClientToolCall(request.requestId)) {
@@ -1249,7 +1088,7 @@ function processChatFeedWidgetRequests({
         }
         handledRequests.add(request.requestId);
 
-        updateCall(chatFeedWidgetCallKey(session.threadPath, request.requestId), {
+        updateCall(clientToolCallKey(session.threadPath, request.requestId), {
           status: "in_progress"
         });
 
@@ -1258,7 +1097,7 @@ function processChatFeedWidgetRequests({
             let status: ToolCallStatus;
 
             try {
-                response = await widget.execute(request.arguments);
+                response = await tool.execute(request.arguments);
                 status = response instanceof ErrorContent ? "failed" : "completed";
 
             } catch (error) {
@@ -1266,7 +1105,7 @@ function processChatFeedWidgetRequests({
                 status = "failed";
             }
 
-            updateCall(chatFeedWidgetCallKey(session.threadPath, request.requestId), {
+            updateCall(clientToolCallKey(session.threadPath, request.requestId), {
               status,
               output: response,
             });
@@ -1281,7 +1120,7 @@ function processChatFeedWidgetRequests({
 
             } catch (error) {
                 session.finishClientToolCall(request.requestId, { responseSent: false });
-                updateCall(chatFeedWidgetCallKey(session.threadPath, request.requestId), {
+                updateCall(clientToolCallKey(session.threadPath, request.requestId), {
                     status: "failed",
                     output: new ErrorContent({ text: describeError(error) }),
                 });
@@ -1299,6 +1138,7 @@ export function AgentThread({
     emptyStateTitle = "Chat to get started",
     emptyStateDescription,
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     collapseMessages = true,
     suggestions,
@@ -1318,8 +1158,7 @@ export function AgentThread({
     const [restorationError, setRestorationError] = useState<string | null>(null);
     const [restorationAttempt, setRestorationAttempt] = useState(0);
     const [version, setVersion] = useState(0);
-    const [expandedDetailGroupIds, setExpandedDetailGroupIds] = useState<Set<string>>(() => new Set<string>());
-    const [chatFeedWidgetCallOverrides, setChatFeedWidgetCallOverrides] = useState<Map<string, ChatFeedWidgetCallOverride>>(() => new Map());
+    const [clientToolCallOverrides, setClientToolCallOverrides] = useState<Map<string, ClientToolCallOverride>>(() => new Map());
 
     const sessionRef = useRef<ChatThreadSession | null>(null);
     const mountedRef = useRef(true);
@@ -1333,13 +1172,17 @@ export function AgentThread({
     } | null>(null);
     const ownsChatClient = chatClient == null;
     const activeChatClient = useMemo<BaseChatClient>(
-        () => chatClient ?? new MessagingChatClient({ room, agentName }),
+        () => {
+            if (chatClient != null) return chatClient;
+            if (room != null) return new MessagingChatClient({ room, agentName });
+            throw new Error("AgentThread requires either a room or a chat client.");
+        },
         [agentName, chatClient, room],
     );
 
     const resolvedClientToolkits = useMemo(
-        () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets),
-        [chatFeedWidgets, clientToolkits],
+        () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets, clientTools),
+        [chatFeedWidgets, clientToolkits, clientTools],
     );
 
     const chatFeedWidgetsByName = useMemo(
@@ -1347,19 +1190,34 @@ export function AgentThread({
         [chatFeedWidgets],
     );
 
-    const updateChatFeedWidgetCall = useCallback((callKey: string, override: ChatFeedWidgetCallOverride) => {
+    const clientToolsByName = useMemo(
+        () => new Map((clientTools ?? []).map((tool) => [tool.name, tool])),
+        [clientTools],
+    );
+
+    const clientToolExecutorsByName = useMemo<ReadonlyMap<string, Tool>>(
+        () => new Map([
+            ...(clientTools ?? []).map((tool) => [tool.name, tool] as const),
+            ...(chatFeedWidgets ?? []).map((widget) => [widget.name, widget] as const),
+        ]),
+        [chatFeedWidgets, clientTools],
+    );
+
+    const updateClientToolCall = useCallback((callKey: string, override: ClientToolCallOverride) => {
         if (!mountedRef.current) {
             return;
         }
-        setChatFeedWidgetCallOverrides((current) => {
+        setClientToolCallOverrides((current) => {
             const next = new Map(current);
             next.set(callKey, override);
             return next;
         });
     }, []);
 
-    const localParticipantName = getParticipantName(room.localParticipant);
-    const agentParticipant = activeChatClient.agentParticipant() ?? findAgentParticipant(room, agentName);
+    const localParticipantName = room == null
+        ? activeChatClient.localParticipantName() ?? ""
+        : getParticipantName(room.localParticipant);
+    const agentParticipant = activeChatClient.agentParticipant() ?? (room == null ? null : findAgentParticipant(room, agentName));
 
     useEffect(() => {
         mountedRef.current = true;
@@ -1455,10 +1313,10 @@ export function AgentThread({
         };
         const handleChange = () => {
             synchronizeThreadLoadState();
-            processChatFeedWidgetRequests({
+            processClientToolRequests({
                 session,
-                widgetsByName: chatFeedWidgetsByName,
-                updateCall: updateChatFeedWidgetCall,
+                toolsByName: clientToolExecutorsByName,
+                updateCall: updateClientToolCall,
                 executeRequests: !deferLiveEvents && restorationReadyRef.current,
             });
             const latestMessage = session.messages[session.messages.length - 1]?.message;
@@ -1582,7 +1440,7 @@ export function AgentThread({
         };
     }, [
         activeChatClient,
-        chatFeedWidgetsByName,
+        clientToolExecutorsByName,
         closeThreadOnUnmount,
         deferLiveEvents,
         injectPersistedEvents,
@@ -1592,7 +1450,7 @@ export function AgentThread({
         onPersistedEventsInjected,
         path,
         restorationAttempt,
-        updateChatFeedWidgetCall,
+        updateClientToolCall,
     ]);
 
     const retryRestoration = useCallback(() => {
@@ -1620,7 +1478,7 @@ export function AgentThread({
     const timelineItems = useMemo(() => (timeline?.items ?? []).map((item) => {
         const override = session == null
             ? undefined
-            : chatFeedWidgetCallOverrides.get(chatFeedWidgetCallKey(session.threadPath, item.id));
+            : clientToolCallOverrides.get(clientToolCallKey(session.threadPath, item.id));
 
         if (override == null || item.kind !== "tool_call" || (item.state === "completed" || item.state === "failed")) {
             return item;
@@ -1632,7 +1490,7 @@ export function AgentThread({
             failed: override.status === "failed",
             output: override.output ?? item.output,
         };
-    }), [chatFeedWidgetCallOverrides, session, timeline]);
+    }), [clientToolCallOverrides, session, timeline]);
 
     const showThreadLoading = (deferLiveEvents || session === null || session.isLoading) && timelineItems.length === 0;
     const followUpSuggestions = useMemo(
@@ -1640,14 +1498,20 @@ export function AgentThread({
         [chatFeedWidgetsByName, timelineItems],
     );
     const feedTimelineItems = useMemo(
-        () => timelineItems.filter((item) => !isFollowUpSuggestionCall(item, chatFeedWidgetsByName)),
-        [chatFeedWidgetsByName, timelineItems],
+        () => timelineItems.filter((item) => (
+            !isFollowUpSuggestionCall(item, chatFeedWidgetsByName)
+            && !(item.kind === "tool_call"
+                && item.toolkit === "client"
+                && item.tool != null
+                && clientToolsByName.has(item.tool))
+        )),
+        [chatFeedWidgetsByName, clientToolsByName, timelineItems],
     );
     const renderedItems = useMemo(() => (
         collapseMessages
-            ? groupThreadItems(feedTimelineItems, expandedDetailGroupIds, localParticipantName, agentName, chatFeedWidgetsByName)
+            ? groupThreadItems(feedTimelineItems, chatFeedWidgetsByName)
             : feedTimelineItems
-    ), [agentName, chatFeedWidgetsByName, collapseMessages, expandedDetailGroupIds, feedTimelineItems, localParticipantName]);
+    ), [chatFeedWidgetsByName, collapseMessages, feedTimelineItems]);
 
     const status = useMemo(() => {
         if (session == null) return null;
@@ -1683,6 +1547,7 @@ export function AgentThread({
     }, [renderedItems]);
 
     const selectAttachments = useCallback((files: File[]) => {
+        if (room == null) return;
         const nextAttachments = files.map((file) => new MeshagentFileUpload(
             room,
             `uploaded-files/${file.name}`,
@@ -1751,6 +1616,17 @@ export function AgentThread({
         }));
     }, [handleSend]);
 
+    const handleWidgetMessage = useCallback((message: string) => {
+        const text = message.trim();
+        if (text === "" || composerDisabled) {
+            return;
+        }
+        void handleSend(new ChatMessage({
+            id: uuidV4(),
+            text,
+        }));
+    }, [composerDisabled, handleSend]);
+
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;
         if (openSession === null || turnId == null) {
@@ -1758,18 +1634,6 @@ export function AgentThread({
         }
         await openSession.interruptTurn(turnId);
     }, [turnId]);
-
-    const toggleDetailGroup = useCallback((id: string) => {
-        setExpandedDetailGroupIds((current) => {
-            const next = new Set(current);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
-            return next;
-        });
-    }, []);
 
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col">
@@ -1787,7 +1651,7 @@ export function AgentThread({
                         bottomThresholdPx={24}
                         className="flex-1 overflow-x-hidden"
                         currentUserId="user"
-                        getMessageAuthorId={(item) => item.kind === "detail_group" ? "agent" : item.role}
+                        getMessageAuthorId={(item) => item.role}
                         messages={renderedItemsNewestFirst}
                         renderMessage={(item) => {
                           return (
@@ -1796,27 +1660,15 @@ export function AgentThread({
                                 item.id === firstRenderedItemId ? "pt-6" : null,
                                 item.id === lastRenderedItemId ? (statusText ? "pb-24" : "pb-6") : null)}>
 
-                                {item.kind === "detail_group" ? (
-                                    item.expanded ? (
-                                        <ExpandedDetailGroup
-                                            room={room}
-                                            item={item}
-                                            localParticipantName={localParticipantName}
-                                            agentName={agentName}
-                                            chatFeedWidgetsByName={chatFeedWidgetsByName} />
-                                    ) : (
-                                        <DetailGroupLine item={item} onToggle={() => toggleDetailGroup(item.id)} />
-                                    )
-                                ) : (
-                                    <ThreadMessageView
-                                        room={room}
-                                        message={item}
-                                        previous={previousItemById.get(item.id) ?? null}
-                                        localParticipantName={localParticipantName}
-                                        agentName={agentName}
-                                        chatFeedWidgetsByName={chatFeedWidgetsByName}
-                                    />
-                                )}
+                                <ThreadMessageView
+                                    room={room}
+                                    message={item}
+                                    previous={previousItemById.get(item.id) ?? null}
+                                    localParticipantName={localParticipantName}
+                                    agentName={agentName}
+                                    chatFeedWidgetsByName={chatFeedWidgetsByName}
+                                    onSendMessage={handleWidgetMessage}
+                                />
                             </div>
                           );
                         }} />
@@ -1830,7 +1682,6 @@ export function AgentThread({
                                 thinking={false}
                                 statusText={statusText}
                                 startedAt={dateFromString(status?.startedAt)}
-                                totalBytes={status?.totalBytes}
                                 linesAdded={status?.linesAdded}
                                 linesRemoved={status?.linesRemoved}
                                 onCancel={canInterruptActiveTurn ? cancelTurn : undefined}
@@ -1861,16 +1712,17 @@ export function AgentThread({
                 {visibleSuggestions.length > 0 ? (
                     <ul
                         aria-label="Follow-up suggestions"
-                        className="mx-auto flex flex-wrap w-full max-w-[912px] gap-2 overflow-x-auto px-4 pt-2 pb-1">
+                        className="mx-auto flex w-full max-w-[912px] flex-wrap gap-2 px-4 pt-2 pb-1">
                         {visibleSuggestions.map((suggestion, index) => (
-                            <li key={index} className="shrink-0">
+                            <li key={index} className="min-w-0 max-w-full">
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-auto min-h-8 rounded-full px-3 py-1.5"
+                                    className="h-auto min-h-8 max-w-full overflow-hidden rounded-full px-3 py-1.5 text-left text-sm leading-snug"
+                                    title={suggestion.label}
                                     disabled={composerDisabled}
                                     onClick={() => handleSuggestionClick(suggestion)}>
-                                    {suggestion.label}
+                                    <span className="min-w-0 truncate">{suggestion.label}</span>
                                 </Button>
                             </li>
                         ))}
@@ -1882,7 +1734,7 @@ export function AgentThread({
                     attachments={attachments}
                     onFilesSelected={selectAttachments}
                     setAttachments={setAttachments}
-                    enableFileUpload={enableFileUpload}
+                    enableFileUpload={enableFileUpload && room != null}
                     disabled={composerDisabled}
                     placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
 

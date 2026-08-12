@@ -94,7 +94,7 @@ function ComposerActionButton({
                 type="button"
                 size="icon"
                 variant="ghost"
-                className={cn("relative size-9 rounded-full", disabled && "opacity-55")}
+                className={cn("relative size-9 rounded-full", disabled ? "opacity-55" : "cursor-pointer")}
                 disabled={disabled}
                 onClick={onClick}
                 title={disabled ? "Cancelling" : "Stop"}>
@@ -110,7 +110,7 @@ function ComposerActionButton({
         <Button
             type="button"
             size="icon"
-            className="size-9 rounded-full shadow-xs"
+            className={cn("size-9 rounded-full shadow-xs", !disabled && "cursor-pointer")}
             disabled={disabled}
             onClick={onClick}
             title="Send">

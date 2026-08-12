@@ -37,7 +37,7 @@ function ChatFeedWidgetRenderer({
 }: {
     widget: ChatFeedWidget;
     toolCall: ToolCall;
-}): ReactElement {
+}): ReactElement | null {
     return widget.render(toolCall);
 }
 

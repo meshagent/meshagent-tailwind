@@ -938,14 +938,12 @@ describe("ChatBotView multi-thread composer", () => {
     });
 
     it("renders the multi-thread composer as a standalone ThreadView", async () => {
-        const room = fakeRoom();
         const chatClient = new FakeChatClient();
         const selectedPaths: Array<string | null> = [];
         const resolvedThreads: Array<{ path: string | null; displayName: string | null }> = [];
 
         render(
             <ThreadView
-                room={room}
                 chatClient={chatClient}
                 agentName="codex"
                 threadDisplayMode={ChatThreadDisplayMode.MultiThreadComposer}
@@ -960,6 +958,7 @@ describe("ChatBotView multi-thread composer", () => {
         );
 
         await waitFor(() => expect(screen.getByText("Start a new thread")).toBeTruthy());
+        expect(screen.queryByLabelText("Attach file")).to.equal(null);
 
         fireEvent.change(screen.getByPlaceholderText("Type a message or @codex"), {
             target: { value: "standalone pending message" },
@@ -1095,7 +1094,17 @@ describe("AgentThread", () => {
             />,
         );
 
-        expect(screen.getByRole("list", { name: "Follow-up suggestions" })).toBeTruthy();
+        const suggestionList = screen.getByRole("list", { name: "Follow-up suggestions" });
+        const suggestionButton = screen.getByRole("button", { name: "Use the label" });
+        const suggestionItem = suggestionButton.parentElement;
+        const suggestionLabel = suggestionButton.querySelector("span");
+        expect(suggestionList.className).not.to.contain("overflow-x-auto");
+        expect(suggestionItem?.className).to.contain("min-w-0");
+        expect(suggestionItem?.className).to.contain("max-w-full");
+        expect(suggestionButton.className).to.contain("max-w-full");
+        expect(suggestionButton.getAttribute("title")).to.equal("Use the label");
+        expect(suggestionLabel?.className).to.contain("min-w-0");
+        expect(suggestionLabel?.className).to.contain("truncate");
         fireEvent.click(screen.getByRole("button", { name: "Use the label" }));
 
         await waitFor(() => {
@@ -1162,7 +1171,7 @@ describe("AgentThread", () => {
         expect(container.querySelector(".chat-scroll")).toBeTruthy();
     });
 
-    it("collapses assistant detail messages before the final response", async () => {
+    it("hides assistant detail messages without inserting a collapsed feed row", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
 
@@ -1193,9 +1202,7 @@ describe("AgentThread", () => {
 
         expect(await screen.findByText("The fix is ready.")).toBeTruthy();
         expect(screen.queryByText(/I checked the logs/)).to.equal(null);
-
-        fireEvent.click(screen.getByText("Worked for 4s"));
-        expect(await screen.findByText(/I checked the logs/)).toBeTruthy();
+        expect(screen.queryByText("Worked for 4s")).to.equal(null);
     });
 
     it("renders usage updates below the composer", async () => {

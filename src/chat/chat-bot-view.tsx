@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
-import type { Participant, RoomClient } from "@meshagent/meshagent";
+import type { Participant, RoomClient, Tool } from "@meshagent/meshagent";
 
 import { MessagingChatClient } from "@meshagent/meshagent-agents";
 
@@ -56,8 +56,9 @@ export interface ChatBotViewProps {
     showThreadList?: boolean;
     threadListWidth?: number;
     threadListCollapsedHeight?: number;
-    clientToolkits?: ClientToolkitDescription[];
-    chatFeedWidgets?: ChatFeedWidget[];
+    clientToolkits?: readonly ClientToolkitDescription[];
+    clientTools?: readonly Tool[];
+    chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
     enableFileUpload?: boolean;
@@ -136,6 +137,7 @@ export function ChatBotView({
     threadListWidth = 280,
     threadListCollapsedHeight = 220,
     clientToolkits,
+    clientTools,
     chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
@@ -266,6 +268,7 @@ export function ChatBotView({
             onSelectedThreadResolved={emitResolvedThread}
             newThreadResetVersion={newThreadResetVersion}
             clientToolkits={clientToolkits}
+            clientTools={clientTools}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
             collapseMessages={collapseMessages}
