@@ -1,5 +1,6 @@
 ## [0.48.1]
 - Stability
+- Added composable `AgentThreadProvider`, `AgentThreadFeed`, and `AgentThreadInput` components for layouts that place the conversation feed and composer separately while sharing one thread session.
 
 ## [0.48.0]
 - Reworked the TS/JS agent chat stack to preserve ordered threaded messages and support injected-message threads across chat clients and process handling.

@@ -231,7 +231,6 @@ export function ChatInput({
                     </div>
                 ) : null}
 
-
                 <div className={cn("flex items-center gap-2", !enableFileUpload && "pl-1")}>
                     {enableFileUpload ? (<FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />) : null}
 

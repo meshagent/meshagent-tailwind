@@ -16,6 +16,7 @@ import {
     AgentClientToolCallRequested,
     AgentSecretRequested,
     AgentModelChanged,
+    AgentThreadStatus,
     AgentThreadListEntry,
     AgentMessageEvent,
     BaseChatClient,
@@ -38,6 +39,9 @@ import type { AgentThreadMessage } from "@meshagent/meshagent-agents";
 
 import {
     AgentThread,
+    AgentThreadFeed,
+    AgentThreadInput,
+    AgentThreadProvider,
     AgentUsageSnapshot,
     formatAgentUsageFooter,
     formatAgentUsageTooltip,
@@ -1036,6 +1040,82 @@ describe("AgentUsageSnapshot", () => {
 });
 
 describe("AgentThread", () => {
+    it("shares one thread session between separately placed feed and input components", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-separated-components"
+                chatClient={chatClient}
+                agentName="codex"
+                suggestions={[{ label: "Suggested from shared state" }]}
+            >
+                <section data-testid="separated-feed">
+                    <AgentThreadFeed />
+                </section>
+                <aside data-testid="separated-input">
+                    <AgentThreadInput />
+                </aside>
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-separated-components",
+            }));
+        });
+
+        expect(screen.getByTestId("separated-input").contains(screen.getByRole("button", { name: "Suggested from shared state" }))).to.equal(true);
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-separated-components",
+                turnId: "turn-separated-components",
+                itemId: "answer-separated-components",
+                phase: "final_answer",
+                text: "Rendered in the separated feed.",
+            }));
+            chatClient.handleAgentMessage(new AgentThreadStatus({
+                threadId: "thread-separated-components",
+                turnId: "turn-separated-components",
+                status: "Working in the separated feed",
+            }));
+            chatClient.handleAgentMessage(AgentMessage.fromJson({
+                type: "meshagent.agent.usage.updated",
+                thread_id: "thread-separated-components",
+                turn_id: "turn-separated-components",
+                usage: { input_tokens: 2000 },
+                context_window: { used_tokens: 2000, total_tokens: 8000 },
+            }));
+        });
+
+        expect(await screen.findByText("Rendered in the separated feed.")).toBeTruthy();
+        expect(screen.getByTestId("separated-feed").contains(screen.getByText("Rendered in the separated feed."))).to.equal(true);
+        expect(screen.getByTestId("separated-feed").contains(screen.getByText("Working in the separated feed"))).to.equal(true);
+        expect(screen.getByTestId("separated-input").contains(screen.getByPlaceholderText("Type a message"))).to.equal(true);
+        expect(screen.getByTestId("separated-input").contains(screen.getByText("context 2K/8K"))).to.equal(true);
+
+        fireEvent.change(screen.getByPlaceholderText("Type a message"), {
+            target: { value: "Sent from the separated input." },
+        });
+        fireEvent.click(screen.getByTitle("Send"));
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(1);
+            expect(turnStarts[0].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent from the separated input.",
+            }]);
+        });
+
+        expect(chatClient.sent.filter((message) => message instanceof OpenThread)).toHaveLength(1);
+    });
+
     it("passes the file upload option through ChatBotView", () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();

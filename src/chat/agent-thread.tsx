@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { ErrorContent } from "@meshagent/meshagent";
 import type { Content, RemoteParticipant, RoomClient, Tool } from "@meshagent/meshagent";
@@ -101,6 +101,44 @@ export interface AgentThreadProps {
     ) => void;
 }
 
+export interface AgentThreadProviderProps extends AgentThreadProps {
+    children: ReactNode;
+}
+
+interface AgentThreadContextValue {
+    room?: RoomClient;
+    agentName?: string;
+    emptyStateTitle: string;
+    emptyStateDescription?: string;
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>;
+    timelineItems: readonly ChatThreadItem[];
+    renderedItemsNewestFirst: readonly ChatThreadItem[];
+    firstRenderedItemId?: string;
+    lastRenderedItemId?: string;
+    previousItemById: ReadonlyMap<string, ChatThreadItem | null>;
+    showThreadLoading: boolean;
+    localParticipantName: string;
+    status: InstanceType<typeof AgentThreadStatus> | null;
+    statusText: string | null;
+    canInterruptActiveTurn: boolean;
+    restorationError: string | null;
+    retryRestoration: () => void;
+    handleWidgetMessage: (message: string) => void;
+    cancelTurn: () => Promise<void>;
+    sendError: string | null;
+    visibleSuggestions: readonly AgentThreadSuggestion[];
+    composerDisabled: boolean;
+    handleSuggestionClick: (suggestion: AgentThreadSuggestion) => void;
+    handleSend: (message: ChatMessage) => Promise<void>;
+    attachments: FileUpload[];
+    setAttachments: (attachments: FileUpload[]) => void;
+    selectAttachments: (files: File[]) => void;
+    enableFileUpload: boolean;
+    inputAvailable: boolean;
+    usage: AgentUsageSnapshot | null;
+}
+
+const AgentThreadContext = createContext<AgentThreadContextValue | null>(null);
 
 function stringValue(value: unknown): string | undefined {
     return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
@@ -1129,7 +1167,8 @@ function processClientToolRequests({
     }
 }
 
-export function AgentThread({
+export function AgentThreadProvider({
+    children,
     room,
     path,
     chatClient,
@@ -1152,7 +1191,7 @@ export function AgentThread({
     onPersistedEventsInjectionStarted,
     onPersistedEventsInjected,
     onEventsChanged,
-}: AgentThreadProps): ReactElement {
+}: AgentThreadProviderProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
     const [sendError, setSendError] = useState<string | null>(null);
     const [restorationError, setRestorationError] = useState<string | null>(null);
@@ -1636,7 +1675,76 @@ export function AgentThread({
     }, [turnId]);
 
     return (
-        <div className="flex h-full min-h-0 flex-1 flex-col">
+        <AgentThreadContext.Provider value={{
+            room,
+            agentName,
+            emptyStateTitle,
+            emptyStateDescription,
+            chatFeedWidgetsByName,
+            timelineItems,
+            renderedItemsNewestFirst,
+            firstRenderedItemId,
+            lastRenderedItemId,
+            previousItemById,
+            showThreadLoading,
+            localParticipantName,
+            status,
+            statusText,
+            canInterruptActiveTurn,
+            restorationError,
+            retryRestoration,
+            handleWidgetMessage,
+            cancelTurn,
+            sendError,
+            visibleSuggestions,
+            composerDisabled,
+            handleSuggestionClick,
+            handleSend,
+            attachments,
+            setAttachments,
+            selectAttachments,
+            enableFileUpload: enableFileUpload && room != null,
+            inputAvailable: agentParticipant != null || chatClient != null,
+            usage,
+        }}>
+            {children}
+        </AgentThreadContext.Provider>
+    );
+}
+
+function useAgentThreadContext(componentName: string): AgentThreadContextValue {
+    const context = useContext(AgentThreadContext);
+    if (context == null) {
+        throw new Error(`${componentName} must be rendered inside AgentThreadProvider.`);
+    }
+    return context;
+}
+
+export function AgentThreadFeed(): ReactElement {
+    const {
+        room,
+        agentName,
+        emptyStateTitle,
+        emptyStateDescription,
+        chatFeedWidgetsByName,
+        timelineItems,
+        renderedItemsNewestFirst,
+        firstRenderedItemId,
+        lastRenderedItemId,
+        previousItemById,
+        showThreadLoading,
+        localParticipantName,
+        status,
+        statusText,
+        canInterruptActiveTurn,
+        restorationError,
+        retryRestoration,
+        handleWidgetMessage,
+        cancelTurn,
+    } = useAgentThreadContext("AgentThreadFeed");
+
+    return (
+        <>
             <div className="relative flex h-full min-h-0 flex-1 flex-col">
                 {showThreadLoading ? (
                     <div className="min-h-0 flex-1 overflow-hidden">
@@ -1701,7 +1809,28 @@ export function AgentThread({
                     />
                 </div>
             ) : null}
+        </>
+    );
+}
 
+export function AgentThreadInput(): ReactElement {
+    const {
+        agentName,
+        sendError,
+        visibleSuggestions,
+        composerDisabled,
+        handleSuggestionClick,
+        handleSend,
+        attachments,
+        setAttachments,
+        selectAttachments,
+        enableFileUpload,
+        inputAvailable,
+        usage,
+    } = useAgentThreadContext("AgentThreadInput");
+
+    return (
+        <>
             {sendError ? (
                 <div className="px-4 pb-2">
                     <ErrorBanner message={sendError} />
@@ -1734,12 +1863,23 @@ export function AgentThread({
                     attachments={attachments}
                     onFilesSelected={selectAttachments}
                     setAttachments={setAttachments}
-                    enableFileUpload={enableFileUpload && room != null}
+                    enableFileUpload={enableFileUpload}
                     disabled={composerDisabled}
-                    placeholder={agentParticipant || chatClient ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
+                    placeholder={inputAvailable ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
 
                 <AgentUsageFooter usage={usage} className="mx-auto w-full max-w-[912px]" />
             </div>
-        </div>
+        </>
+    );
+}
+
+export function AgentThread(props: AgentThreadProps): ReactElement {
+    return (
+        <AgentThreadProvider {...props}>
+            <div className="flex h-full min-h-0 flex-1 flex-col">
+                <AgentThreadFeed />
+                <AgentThreadInput />
+            </div>
+        </AgentThreadProvider>
     );
 }

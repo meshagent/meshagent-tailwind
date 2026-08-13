@@ -85,6 +85,36 @@ export function AgentChat({
 
 `ThreadListView` loads and manages the available agent threads. `ThreadView` renders the active thread and can start a new thread when `threadDisplayMode` is `ChatThreadDisplayMode.MultiThreadComposer`.
 
+For a known thread, use `AgentThreadProvider` when the feed and composer need to live in separate parts of your layout. The provider owns one shared thread session; `AgentThreadFeed` and `AgentThreadInput` consume that session without opening their own connections:
+
+```tsx
+import {
+	AgentThreadFeed,
+	AgentThreadInput,
+	AgentThreadProvider,
+} from "@meshagent/meshagent-tailwind";
+
+export function SeparatedAgentThread({ roomClient, chatClient, threadPath }) {
+	return (
+		<AgentThreadProvider
+			room={roomClient}
+			chatClient={chatClient}
+			path={threadPath}
+			agentName="support-agent"
+		>
+			<main className="min-h-0 flex-1">
+				<AgentThreadFeed />
+			</main>
+			<footer>
+				<AgentThreadInput />
+			</footer>
+		</AgentThreadProvider>
+	);
+}
+```
+
+Keep both connected components beneath the same provider. Use `AgentThread` when the standard combined feed-and-composer layout is sufficient.
+
 ## Meetings
 
 The meeting components use a connected `RoomClient` to request LiveKit credentials before joining a meeting. Wrap `MeetingView` in `MeetingScope` and pass the same room client used by the rest of your app:
