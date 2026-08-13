@@ -1,3 +1,8 @@
+## [0.49.0]
+- Breaking: `createProject` no longer accepts inline settings; project settings are now document-based with `room_roles` support.
+- Route path models now use a service-port/content-target union and support CORS, compression, index, and IAP for room-content routes.
+- `RoomRole` now includes `guest`, and missing project-settings documents return `undefined`.
+
 ## [0.48.1]
 - Stability
 - Added composable `AgentThreadProvider`, `AgentThreadFeed`, and `AgentThreadInput` components for layouts that place the conversation feed and composer separately while sharing one thread session.
