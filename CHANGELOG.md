@@ -1,3 +1,9 @@
+## [0.50.0]
+- Chat clients now support per-turn LLM authorization providers, and websocket chat tokens are optional for `auth=none` deployments.
+- The typed client gained `connectLlm`, optional access-subject IDs, service-account principals, room and service enabled flags, `llm_quota_manager`, and the `router` project settings document.
+- Chat-thread constructors now take a chat client instead of requiring a room client, which is a breaking signature change for callers.
+- The Tailwind chat package was updated to `tailwindcss` 4.3.3, and the chat and thread UI was refactored for more reliable optimistic streaming plus richer attachment and thread handling.
+
 ## [0.49.1]
 - Stability
 
