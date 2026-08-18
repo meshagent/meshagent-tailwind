@@ -8,7 +8,7 @@ import type {
 } from "@meshagent/meshagent-agents";
 
 import { NewChatThread } from "./new-chat-thread.js";
-import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
+import type { AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
 
 export type MultiThreadContentBuilder = (threadPath: string) => ReactElement;
@@ -32,7 +32,6 @@ export interface MultiThreadViewProps {
     clientTools?: readonly Tool[];
     chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
-    suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
     onThreadStarted?: (
         threadId: string,
@@ -65,7 +64,6 @@ export function MultiThreadView({
     clientTools,
     chatFeedWidgets,
     toolChoice,
-    suggestions,
     enableFileUpload = false,
     onThreadStarted,
 }: MultiThreadViewProps): ReactElement {
@@ -133,7 +131,6 @@ export function MultiThreadView({
             clientTools={clientTools}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
-            suggestions={suggestions}
             enableFileUpload={enableFileUpload}
             onThreadStarted={onThreadStarted}
         />

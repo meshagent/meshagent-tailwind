@@ -14,7 +14,7 @@ import type {
     ClientToolkitDescription,
 } from "@meshagent/meshagent-agents";
 
-import { AgentThread, type AgentThreadSuggestion, type AgentToolChoice } from "./agent-thread.js";
+import { AgentThread, type AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
 
 export type DatasetThreadRow = Record<string, unknown>;
@@ -48,7 +48,6 @@ export interface DatasetAgentThreadProps {
     chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
-    suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
     retryMissingTableMs?: number;
     loadThread?: boolean;
@@ -82,7 +81,6 @@ export function DatasetAgentThread({
     chatFeedWidgets,
     toolChoice,
     collapseMessages,
-    suggestions,
     enableFileUpload = false,
     retryMissingTableMs = 500,
     loadThread = true,
@@ -179,7 +177,6 @@ export function DatasetAgentThread({
                 chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}
-                suggestions={suggestions}
                 enableFileUpload={enableFileUpload && room != null}
                 persistedEvents={persistedEvents ?? []}
                 deferLiveEvents={persistedEvents == null}

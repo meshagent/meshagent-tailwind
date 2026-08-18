@@ -9,7 +9,6 @@ import {
     AgentMessage,
     AgentTextContentDelta,
     AgentToolCallEnded,
-    AgentToolCallStarted,
     BaseChatClient,
     OpenThread,
     ThreadLoaded,
@@ -18,7 +17,6 @@ import {
 } from "@meshagent/meshagent-agents";
 
 import { ChatBotView } from "../../src/chat/chat-bot-view";
-import { ThreadView } from "../../src/chat/thread-view";
 import { ChatFeedWidget } from "../../src/chat/chat-feed-widget";
 import type { ToolCall } from "../../src/chat/chat-feed-widget";
 import { DatasetAgentThread, parseDatasetThreadRef } from "../../src/chat/dataset-agent-thread";
@@ -72,35 +70,6 @@ class TestChatFeedWidget extends ChatFeedWidget {
 
     public render(toolCall: ToolCall): React.ReactElement {
         return <div>{["weather-widget", toolCall.status, toolCall.input["city"]].join(":")}</div>;
-    }
-}
-
-class TestFollowUpSuggestionsWidget extends ChatFeedWidget {
-    public readonly calls: Record<string, unknown>[] = [];
-
-    constructor() {
-        super({
-            name: "display_follow_up_suggestions",
-            title: "Display follow-up suggestions",
-            description: "Display contextual follow-up suggestions.",
-            inputSchema: { type: "object" },
-        });
-    }
-
-    public async execute(arguments_: Record<string, unknown>): Promise<Content> {
-        this.calls.push(arguments_);
-        return new JsonContent({ json: { displayed_count: 3 } });
-    }
-
-    public getFollowUpSuggestions(toolCall: ToolCall) {
-        const questions = Array.isArray(toolCall.input["questions"])
-            ? toolCall.input["questions"].filter((question): question is string => typeof question === "string")
-            : [];
-        return questions.map((question) => ({ label: question, prompt: question }));
-    }
-
-    public render(): React.ReactElement {
-        return <div>follow-up-tool-row</div>;
     }
 }
 
@@ -178,96 +147,6 @@ describe("DatasetAgentThread", () => {
         const userMessage = await screen.findByText("hello dataset");
         const assistantMessage = await screen.findByText("hello from dataset");
         expect(userMessage.compareDocumentPosition(assistantMessage) & Node.DOCUMENT_POSITION_FOLLOWING).not.to.equal(0);
-    });
-
-    it("uses only the latest turn follow-ups without replaying or rendering the tool", async () => {
-        const widget = new TestFollowUpSuggestionsWidget();
-        const threadId = "dataset://threads/main";
-        const firstQuestions = [
-            "Does it work offline?",
-            "Can guests have unique codes?",
-            "Which finishes are available?",
-        ];
-        const secondQuestions = [
-            "How long do batteries last?",
-            "Can I manage it from my phone?",
-            "Does it work with Alexa?",
-        ];
-        const rows = [
-            row(new TurnStart({
-                threadId,
-                turnId: "turn-1",
-                messageId: "message-1",
-                content: [{ type: "text", text: "Tell me about this lock" }],
-            }).toJson(), { item_id: "message-1", sequence: 1 }),
-            row(new AgentToolCallStarted({
-                threadId,
-                turnId: "turn-1",
-                itemId: "follow-up-1",
-                toolkit: "client",
-                tool: "display_follow_up_suggestions",
-                arguments: { questions: firstQuestions },
-            }).toJson(), { item_id: "follow-up-1-started", sequence: 2 }),
-            row(new AgentToolCallEnded({
-                threadId,
-                turnId: "turn-1",
-                itemId: "follow-up-1",
-                toolkit: "client",
-                tool: "display_follow_up_suggestions",
-                result: new JsonContent({ json: { displayed_count: 3 } }),
-            }).toJson(), { item_id: "follow-up-1-ended", sequence: 3 }),
-            row(new AgentTextContentDelta({
-                threadId,
-                turnId: "turn-1",
-                itemId: "answer-1",
-                phase: "final_answer",
-                text: "Here are the lock details.",
-            }).toJson(), { item_id: "answer-1", sequence: 4 }),
-            row(new TurnStart({
-                threadId,
-                turnId: "turn-2",
-                messageId: "message-2",
-                content: [{ type: "text", text: "What about smart home support?" }],
-            }).toJson(), { item_id: "message-2", sequence: 5 }),
-            row(new AgentToolCallStarted({
-                threadId,
-                turnId: "turn-2",
-                itemId: "follow-up-2",
-                toolkit: "client",
-                tool: "display_follow_up_suggestions",
-                arguments: { questions: secondQuestions },
-            }).toJson(), { item_id: "follow-up-2-started", sequence: 6 }),
-            row(new AgentToolCallEnded({
-                threadId,
-                turnId: "turn-2",
-                itemId: "follow-up-2",
-                toolkit: "client",
-                tool: "display_follow_up_suggestions",
-                result: new JsonContent({ json: { displayed_count: 3 } }),
-            }).toJson(), { item_id: "follow-up-2-ended", sequence: 7 }),
-            row(new AgentTextContentDelta({
-                threadId,
-                turnId: "turn-2",
-                itemId: "answer-2",
-                phase: "final_answer",
-                text: "Here is the smart home compatibility.",
-            }).toJson(), { item_id: "answer-2", sequence: 8 }),
-        ];
-
-        render(
-            <DatasetAgentThread
-                room={fakeRoom()}
-                path={threadId}
-                chatClient={new FakeChatClient()}
-                rowsLoader={() => rows}
-                chatFeedWidgets={[widget]}
-            />,
-        );
-
-        expect(await screen.findByRole("button", { name: secondQuestions[0] })).toBeTruthy();
-        expect(screen.queryByRole("button", { name: firstQuestions[0] })).to.equal(null);
-        expect(screen.queryByText("follow-up-tool-row")).to.equal(null);
-        expect(widget.calls).to.have.length(0);
     });
 
     it("forwards composer sends through the provided chat client", async () => {
@@ -400,32 +279,6 @@ describe("DatasetAgentThread", () => {
 
         await waitFor(() => expect(attempts).to.equal(2));
         expect(chatClient.sent.some((message) => message instanceof OpenThread)).to.equal(true);
-    });
-
-    it("forwards suggestion sends through the provided chat client", async () => {
-        const chatClient = new FakeChatClient();
-        render(
-            <ThreadView
-                path="dataset://threads/main"
-                chatClient={chatClient}
-                threadSource="dataset"
-                rowsLoader={() => []}
-                suggestions={[{ label: "Visible question", prompt: "Dataset follow-up prompt" }]}
-            />,
-        );
-
-        await act(async () => {
-            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "dataset://threads/main" }));
-        });
-
-        fireEvent.click(await screen.findByRole("button", { name: "Visible question" }));
-
-        await waitFor(() => {
-            const turnStart = chatClient.sent.find((message): message is InstanceType<typeof TurnStart> => (
-                message instanceof TurnStart
-            ));
-            expect(turnStart?.toJson().content).to.deep.equal([{ type: "text", text: "Dataset follow-up prompt" }]);
-        });
     });
 
     it("renders completed replayed client tools without executing them again", async () => {

@@ -59,11 +59,6 @@ export class AgentToolChoice {
     }
 }
 
-export interface AgentThreadSuggestion {
-    label: string;
-    prompt?: string;
-}
-
 export interface AgentThreadProps {
     room?: RoomClient;
     path: string;
@@ -80,7 +75,6 @@ export interface AgentThreadProps {
     chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
-    suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
     persistedEvents?: readonly AgentMessageEvent[];
     deferLiveEvents?: boolean;
@@ -126,9 +120,7 @@ interface AgentThreadContextValue {
     handleWidgetMessage: (message: string) => void;
     cancelTurn: () => Promise<void>;
     sendError: string | null;
-    visibleSuggestions: readonly AgentThreadSuggestion[];
     composerDisabled: boolean;
-    handleSuggestionClick: (suggestion: AgentThreadSuggestion) => void;
     handleSend: (message: ChatMessage) => Promise<void>;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
@@ -230,65 +222,6 @@ function isChatFeedWidgetCall(message: ChatThreadItem, chatFeedWidgetsByName: Re
         message.toolkit === "client" &&
         message.tool != null &&
         chatFeedWidgetsByName.has(message.tool);
-}
-
-function isFollowUpSuggestionCall(
-    message: ChatThreadItem,
-    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
-): boolean {
-    if (!isChatFeedWidgetCall(message, chatFeedWidgetsByName) || message.tool == null) {
-        return false;
-    }
-    return chatFeedWidgetsByName.get(message.tool)?.getFollowUpSuggestions != null;
-}
-
-function latestTurnFollowUpSuggestions(
-    messages: readonly ChatThreadItem[],
-    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
-): readonly AgentThreadSuggestion[] | null {
-    let latestUserIndex = -1;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-        const message = messages[index];
-        if (message.kind === "message" && message.role === "user") {
-            latestUserIndex = index;
-            break;
-        }
-    }
-
-    if (latestUserIndex === -1) {
-        return null;
-    }
-
-    const latestTurnMessages = messages.slice(latestUserIndex + 1);
-    if (!latestTurnMessages.some(canRenderAsFinalAnswer)) {
-        return [];
-    }
-
-    for (let index = latestTurnMessages.length - 1; index >= 0; index -= 1) {
-        const message = latestTurnMessages[index];
-        if (
-            message.kind !== "tool_call" ||
-            message.state !== "completed" ||
-            message.tool == null ||
-            !isFollowUpSuggestionCall(message, chatFeedWidgetsByName)
-        ) {
-            continue;
-        }
-
-        const widget = chatFeedWidgetsByName.get(message.tool);
-        try {
-            return widget?.getFollowUpSuggestions?.({
-                status: "completed",
-                input: message.input ?? {},
-                output: message.output,
-            }) ?? [];
-        } catch (error) {
-            console.error("ChatFeedWidget follow-up suggestion extraction failed", error);
-            return [];
-        }
-    }
-
-    return [];
 }
 
 function isIntrinsicDetail(message: ChatThreadItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
@@ -1180,7 +1113,6 @@ export function AgentThreadProvider({
     clientTools,
     chatFeedWidgets,
     collapseMessages = true,
-    suggestions,
     enableFileUpload = false,
     persistedEvents,
     deferLiveEvents = false,
@@ -1532,19 +1464,14 @@ export function AgentThreadProvider({
     }), [clientToolCallOverrides, session, timeline]);
 
     const showThreadLoading = (deferLiveEvents || session === null || session.isLoading) && timelineItems.length === 0;
-    const followUpSuggestions = useMemo(
-        () => latestTurnFollowUpSuggestions(timelineItems, chatFeedWidgetsByName),
-        [chatFeedWidgetsByName, timelineItems],
-    );
     const feedTimelineItems = useMemo(
         () => timelineItems.filter((item) => (
-            !isFollowUpSuggestionCall(item, chatFeedWidgetsByName)
-            && !(item.kind === "tool_call"
+            !(item.kind === "tool_call"
                 && item.toolkit === "client"
                 && item.tool != null
                 && clientToolsByName.has(item.tool))
         )),
-        [chatFeedWidgetsByName, clientToolsByName, timelineItems],
+        [clientToolsByName, timelineItems],
     );
     const renderedItems = useMemo(() => (
         collapseMessages
@@ -1632,29 +1559,12 @@ export function AgentThreadProvider({
         }
     }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, turnId]);
 
-    const visibleSuggestions = useMemo(
-        () => (followUpSuggestions ?? suggestions ?? []).filter((suggestion) => suggestion.label.trim() !== ""),
-        [followUpSuggestions, suggestions],
-    );
-
     const composerDisabled = (
         composerDisabledProp ||
         (loadThread && !restorationReadyRef.current) ||
         (injectPersistedEvents && restoredPathRef.current !== path) ||
         (agentParticipant == null && chatClient == null)
     );
-    const handleSuggestionClick = useCallback((suggestion: AgentThreadSuggestion) => {
-        const text = suggestion.prompt?.trim() || suggestion.label.trim();
-        if (text === "") {
-            return;
-        }
-
-        void handleSend(new ChatMessage({
-            id: uuidV4(),
-            text,
-        }));
-    }, [handleSend]);
-
     const handleWidgetMessage = useCallback((message: string) => {
         const text = message.trim();
         if (text === "" || composerDisabled) {
@@ -1696,9 +1606,7 @@ export function AgentThreadProvider({
             handleWidgetMessage,
             cancelTurn,
             sendError,
-            visibleSuggestions,
             composerDisabled,
-            handleSuggestionClick,
             handleSend,
             attachments,
             setAttachments,
@@ -1817,9 +1725,7 @@ export function AgentThreadInput(): ReactElement {
     const {
         agentName,
         sendError,
-        visibleSuggestions,
         composerDisabled,
-        handleSuggestionClick,
         handleSend,
         attachments,
         setAttachments,
@@ -1838,26 +1744,6 @@ export function AgentThreadInput(): ReactElement {
             ) : null}
 
             <div className="flex flex-col gap-1">
-                {visibleSuggestions.length > 0 ? (
-                    <ul
-                        aria-label="Follow-up suggestions"
-                        className="mx-auto flex w-full max-w-[912px] flex-wrap gap-2 px-4 pt-2 pb-1">
-                        {visibleSuggestions.map((suggestion, index) => (
-                            <li key={index} className="min-w-0 max-w-full">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-auto min-h-8 max-w-full overflow-hidden rounded-full px-3 py-1.5 text-left text-sm leading-snug"
-                                    title={suggestion.label}
-                                    disabled={composerDisabled}
-                                    onClick={() => handleSuggestionClick(suggestion)}>
-                                    <span className="min-w-0 truncate">{suggestion.label}</span>
-                                </Button>
-                            </li>
-                        ))}
-                    </ul>
-                ) : null}
-
                 <ChatInput
                     onSubmit={handleSend}
                     attachments={attachments}

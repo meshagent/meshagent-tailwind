@@ -1050,7 +1050,6 @@ describe("AgentThread", () => {
                 path="thread-separated-components"
                 chatClient={chatClient}
                 agentName="codex"
-                suggestions={[{ label: "Suggested from shared state" }]}
             >
                 <section data-testid="separated-feed">
                     <AgentThreadFeed />
@@ -1066,8 +1065,6 @@ describe("AgentThread", () => {
                 threadId: "thread-separated-components",
             }));
         });
-
-        expect(screen.getByTestId("separated-input").contains(screen.getByRole("button", { name: "Suggested from shared state" }))).to.equal(true);
 
         await act(async () => {
             chatClient.handleAgentMessage(new AgentTextContentDelta({
@@ -1141,60 +1138,6 @@ describe("AgentThread", () => {
         );
 
         expect(screen.getByRole("button", { name: "Attach file" })).toBeTruthy();
-    });
-
-    it("renders follow-up suggestion pills and clears them after sending", async () => {
-        const room = fakeRoom();
-        const chatClient = new FakeChatClient();
-
-        const { rerender } = render(
-            <ThreadView
-                room={room}
-                path="thread-suggestions"
-                chatClient={chatClient}
-                agentName="codex"
-            />,
-        );
-
-        expect(screen.queryByRole("list", { name: "Follow-up suggestions" })).to.equal(null);
-        await act(async () => {
-            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-suggestions" }));
-        });
-
-        rerender(
-            <ThreadView
-                room={room}
-                path="thread-suggestions"
-                chatClient={chatClient}
-                agentName="codex"
-                suggestions={[
-                    { label: "Use the label" },
-                    { label: "Show a short label", prompt: "Send this longer follow-up question" },
-                ]}
-            />,
-        );
-
-        const suggestionList = screen.getByRole("list", { name: "Follow-up suggestions" });
-        const suggestionButton = screen.getByRole("button", { name: "Use the label" });
-        const suggestionItem = suggestionButton.parentElement;
-        const suggestionLabel = suggestionButton.querySelector("span");
-        expect(suggestionList.className).not.to.contain("overflow-x-auto");
-        expect(suggestionItem?.className).to.contain("min-w-0");
-        expect(suggestionItem?.className).to.contain("max-w-full");
-        expect(suggestionButton.className).to.contain("max-w-full");
-        expect(suggestionButton.getAttribute("title")).to.equal("Use the label");
-        expect(suggestionLabel?.className).to.contain("min-w-0");
-        expect(suggestionLabel?.className).to.contain("truncate");
-        fireEvent.click(screen.getByRole("button", { name: "Use the label" }));
-
-        await waitFor(() => {
-            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
-                message instanceof TurnStart
-            ));
-            expect(turnStarts).toHaveLength(1);
-            expect(turnStarts[0].toJson().content).to.deep.equal([{ type: "text", text: "Use the label" }]);
-            expect(screen.queryByRole("list", { name: "Follow-up suggestions" })).to.equal(null);
-        });
     });
 
     it("shows a spinner for an empty thread until replay loading completes", async () => {

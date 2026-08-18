@@ -8,13 +8,12 @@ import type {
     BaseChatClient,
     ClientToolkitDescription,
 } from "@meshagent/meshagent-agents";
-import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
+import type { AgentToolChoice } from "./agent-thread.js";
 import type { ChatFeedWidget } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
 import { defaultThreadDisplayNameFromPath } from "./conversation-descriptor.js";
 
 import { ChatInput } from "./chat-input.js";
-import { Button } from "../components/ui/button.js";
 import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
 import { Toaster } from "../components/ui/sonner.js";
 
@@ -38,7 +37,6 @@ export interface NewChatThreadProps {
     clientTools?: readonly Tool[];
     chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
-    suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
     onThreadStarted?: (
         threadId: string,
@@ -154,7 +152,6 @@ export function NewChatThread({
     clientTools,
     chatFeedWidgets,
     toolChoice,
-    suggestions,
     enableFileUpload = false,
     onThreadStarted,
 }: NewChatThreadProps): ReactElement {
@@ -337,40 +334,12 @@ export function NewChatThread({
         : creatingNewThread
             ? `Starting a thread with ${targetAgentLabel}.`
             : null;
-    const visibleSuggestions = useMemo(
-        () => (suggestions ?? []).filter((suggestion) => suggestion.label.trim() !== ""),
-        [suggestions],
-    );
-
     if (activePath !== null) {
         return builder(activePath);
     }
 
     const composer = (
         <div className="flex flex-col gap-1">
-            {visibleSuggestions.length > 0 ? (
-                <ul
-                    aria-label="Starter suggestions"
-                    className="mx-auto flex w-full max-w-[912px] flex-wrap gap-2 px-4 pt-2 pb-1">
-                    {visibleSuggestions.map((suggestion, index) => {
-                        const text = suggestion.prompt?.trim() || suggestion.label.trim();
-                        return (
-                            <li key={index} className="min-w-0 max-w-full">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-auto min-h-8 max-w-full overflow-hidden rounded-full px-3 py-1.5 text-left text-sm leading-snug"
-                                    title={suggestion.label}
-                                    disabled={creatingNewThread || waitingForAgent}
-                                    onClick={() => void handleCreateThread({ text })}>
-                                    <span className="min-w-0 truncate">{suggestion.label}</span>
-                                </Button>
-                            </li>
-                        );
-                    })}
-                </ul>
-            ) : null}
-
             <ChatInput
                 onSubmit={handleCreateThread}
                 attachments={newThreadAttachments}

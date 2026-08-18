@@ -11,7 +11,7 @@ import type {
 import { AlertTriangle } from "lucide-react";
 
 import { AgentThread } from "./agent-thread.js";
-import type { AgentThreadSuggestion, AgentToolChoice } from "./agent-thread.js";
+import type { AgentToolChoice } from "./agent-thread.js";
 import { ChatThreadDisplayMode, chatDocumentPath } from "./conversation-descriptor.js";
 import { DatasetAgentThread } from "./dataset-agent-thread.js";
 import type { DatasetThreadRowsLoader } from "./dataset-agent-thread.js";
@@ -42,7 +42,6 @@ export interface ThreadViewProps {
     chatFeedWidgets?: readonly ChatFeedWidget[];
     toolChoice?: AgentToolChoice;
     collapseMessages?: boolean;
-    suggestions?: readonly AgentThreadSuggestion[];
     enableFileUpload?: boolean;
     threadSource?: "session" | "dataset";
     rowsLoader?: DatasetThreadRowsLoader;
@@ -130,7 +129,6 @@ export function ThreadView({
     chatFeedWidgets,
     toolChoice,
     collapseMessages = true,
-    suggestions,
     enableFileUpload = false,
     threadSource = "session",
     rowsLoader,
@@ -173,7 +171,6 @@ export function ThreadView({
                     chatFeedWidgets={chatFeedWidgets}
                     toolChoice={toolChoice}
                     collapseMessages={collapseMessages}
-                    suggestions={suggestions}
                     enableFileUpload={enableFileUpload}
                     loadThread={loadThread}
                     injectPersistedEvents={injectPersistedEvents}
@@ -199,7 +196,6 @@ export function ThreadView({
                 chatFeedWidgets={chatFeedWidgets}
                 toolChoice={toolChoice}
                 collapseMessages={collapseMessages}
-                suggestions={suggestions}
                 enableFileUpload={enableFileUpload}
                 persistedEvents={persistedEvents}
                 loadThread={loadThread}
@@ -233,7 +229,6 @@ export function ThreadView({
             clientTools={clientTools}
             chatFeedWidgets={chatFeedWidgets}
             toolChoice={toolChoice}
-            suggestions={suggestions}
             enableFileUpload={enableFileUpload}
             onThreadStarted={onThreadStarted}
             builder={(threadPath) => (
@@ -252,7 +247,6 @@ export function ThreadView({
                         chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages}
-                        suggestions={suggestions}
                         enableFileUpload={enableFileUpload}
                         loadThread={loadThread}
                         injectPersistedEvents={injectPersistedEvents}
@@ -275,7 +269,6 @@ export function ThreadView({
                         chatFeedWidgets={chatFeedWidgets}
                         toolChoice={toolChoice}
                         collapseMessages={collapseMessages}
-                        suggestions={suggestions}
                         enableFileUpload={enableFileUpload}
                         persistedEvents={persistedEvents}
                         loadThread={loadThread}
