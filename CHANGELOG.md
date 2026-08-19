@@ -1,3 +1,6 @@
+## [0.50.1]
+- Stability
+
 ## [0.50.0]
 - Chat clients now support per-turn LLM authorization providers, and websocket chat tokens are optional for `auth=none` deployments.
 - The typed client gained `connectLlm`, optional access-subject IDs, service-account principals, room and service enabled flags, `llm_quota_manager`, and the `router` project settings document.
