@@ -92,6 +92,7 @@ import {
 	AgentThreadFeed,
 	AgentThreadInput,
 	AgentThreadProvider,
+	AgentThreadSubmitButton,
 } from "@meshagent/meshagent-tailwind";
 
 export function SeparatedAgentThread({ roomClient, chatClient, threadPath }) {
@@ -105,15 +106,18 @@ export function SeparatedAgentThread({ roomClient, chatClient, threadPath }) {
 			<main className="min-h-0 flex-1">
 				<AgentThreadFeed />
 			</main>
-			<footer>
-				<AgentThreadInput />
+			<footer className="flex items-end gap-2">
+				<div className="min-w-0 flex-1">
+					<AgentThreadInput showSubmitButton={false} />
+				</div>
+				<AgentThreadSubmitButton className="mb-1 mr-4" />
 			</footer>
 		</AgentThreadProvider>
 	);
 }
 ```
 
-Keep both connected components beneath the same provider. Use `AgentThread` when the standard combined feed-and-composer layout is sufficient.
+Keep all connected components beneath the same provider. By default, `AgentThreadInput` includes its Send button; set `showSubmitButton={false}` and place `AgentThreadSubmitButton` elsewhere when the layout needs to separate them. Use `AgentThread` when the standard combined feed-and-composer layout is sufficient.
 
 ## Meetings
 

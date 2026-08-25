@@ -36,10 +36,12 @@ import { Button } from "../components/ui/button.js";
 import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
 import { ChatInput } from "./chat-input.js";
+import { useAttachmentStatusVersion } from "./chat-input-state.js";
 import { ChatMessage } from "./chat-message.js";
+import { ComposerActionButton } from "./composer-action-button.js";
 import { ChatScroller } from "./chat-scroller.js";
 import { ChatTypingIndicator } from "./chat-typing-indicator.js";
-import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
+import { type FileUpload, MeshagentFileUpload, UploadStatus, fileToAsyncIterable } from "./file-attachment.js";
 import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
 import type { ChatFeedWidget, ToolCallStatus } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
@@ -121,7 +123,11 @@ interface AgentThreadContextValue {
     cancelTurn: () => Promise<void>;
     sendError: string | null;
     composerDisabled: boolean;
-    handleSend: (message: ChatMessage) => Promise<void>;
+    composerValue: string;
+    setComposerValue: (value: string) => void;
+    canSubmit: boolean;
+    handleComposerSubmit: (message: ChatMessage) => void;
+    submitDraft: () => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
     selectAttachments: (files: File[]) => void;
@@ -372,6 +378,7 @@ function dateFromString(value?: string): Date | null {
 
 function normalizeAttachmentPath(path: string): string {
     const prefix = "room:///";
+
     return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
 
@@ -1125,11 +1132,13 @@ export function AgentThreadProvider({
     onEventsChanged,
 }: AgentThreadProviderProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
+    const [composerValue, setComposerValue] = useState("");
     const [sendError, setSendError] = useState<string | null>(null);
     const [restorationError, setRestorationError] = useState<string | null>(null);
     const [restorationAttempt, setRestorationAttempt] = useState(0);
     const [version, setVersion] = useState(0);
     const [clientToolCallOverrides, setClientToolCallOverrides] = useState<Map<string, ClientToolCallOverride>>(() => new Map());
+    const attachmentStatusVersion = useAttachmentStatusVersion(attachments);
 
     const sessionRef = useRef<ChatThreadSession | null>(null);
     const mountedRef = useRef(true);
@@ -1565,6 +1574,31 @@ export function AgentThreadProvider({
         (injectPersistedEvents && restoredPathRef.current !== path) ||
         (agentParticipant == null && chatClient == null)
     );
+    const allAttachmentsUploaded = useMemo(
+        () => attachments.every((attachment) => attachment.status === UploadStatus.Completed),
+        [attachmentStatusVersion, attachments],
+    );
+    const canSubmit = (
+        !composerDisabled &&
+        (composerValue.trim() !== "" || attachments.length > 0) &&
+        allAttachmentsUploaded
+    );
+    const handleComposerSubmit = useCallback((message: ChatMessage) => {
+        if (!canSubmit) {
+            return;
+        }
+
+        void handleSend(message);
+        setComposerValue("");
+        setAttachments([]);
+    }, [canSubmit, handleSend]);
+    const submitDraft = useCallback(() => {
+        handleComposerSubmit(new ChatMessage({
+            id: uuidV4(),
+            text: composerValue.trim(),
+            attachments: attachments.map((attachment) => attachment.path),
+        }));
+    }, [attachments, composerValue, handleComposerSubmit]);
     const handleWidgetMessage = useCallback((message: string) => {
         const text = message.trim();
         if (text === "" || composerDisabled) {
@@ -1607,7 +1641,11 @@ export function AgentThreadProvider({
             cancelTurn,
             sendError,
             composerDisabled,
-            handleSend,
+            composerValue,
+            setComposerValue,
+            canSubmit,
+            handleComposerSubmit,
+            submitDraft,
             attachments,
             setAttachments,
             selectAttachments,
@@ -1721,12 +1759,18 @@ export function AgentThreadFeed(): ReactElement {
     );
 }
 
-export function AgentThreadInput(): ReactElement {
+export interface AgentThreadInputProps {
+    showSubmitButton?: boolean;
+}
+
+export function AgentThreadInput({ showSubmitButton = true }: AgentThreadInputProps = {}): ReactElement {
     const {
         agentName,
         sendError,
         composerDisabled,
-        handleSend,
+        composerValue,
+        setComposerValue,
+        handleComposerSubmit,
         attachments,
         setAttachments,
         selectAttachments,
@@ -1745,17 +1789,37 @@ export function AgentThreadInput(): ReactElement {
 
             <div className="flex flex-col gap-1">
                 <ChatInput
-                    onSubmit={handleSend}
+                    onSubmit={handleComposerSubmit}
                     attachments={attachments}
                     onFilesSelected={selectAttachments}
                     setAttachments={setAttachments}
                     enableFileUpload={enableFileUpload}
                     disabled={composerDisabled}
+                    clearOnSubmit={false}
+                    value={composerValue}
+                    onValueChange={setComposerValue}
+                    showSubmitButton={showSubmitButton}
                     placeholder={inputAvailable ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
 
                 <AgentUsageFooter usage={usage} className="mx-auto w-full max-w-[912px]" />
             </div>
         </>
+    );
+}
+
+export interface AgentThreadSubmitButtonProps {
+    className?: string;
+}
+
+export function AgentThreadSubmitButton({ className }: AgentThreadSubmitButtonProps = {}): ReactElement {
+    const { canSubmit, submitDraft } = useAgentThreadContext("AgentThreadSubmitButton");
+
+    return (
+        <ComposerActionButton
+            className={className}
+            disabled={!canSubmit}
+            onClick={submitDraft}
+        />
     );
 }
 

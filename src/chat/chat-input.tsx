@@ -1,14 +1,14 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import type { ReactElement, RefObject, KeyboardEvent, ChangeEvent } from "react";
-import { ArrowUp, LoaderCircle, X } from "lucide-react";
 import { v4 as uuidV4 } from "uuid";
 
 import { ChatMessage } from "./chat-message.js";
-import { Button } from "../components/ui/button.js";
 import { FileUploader } from "./file-uploader.js";
 import { UploadPill } from "./upload-pill.js";
 import { type FileUpload, UploadStatus } from "./file-attachment.js";
 import { cn } from "../lib/utils.js";
+import { ComposerActionButton } from "./composer-action-button.js";
+import { useAttachmentStatusVersion } from "./chat-input-state.js";
 
 const MIN_TEXTAREA_HEIGHT = 20;
 const MAX_TEXTAREA_HEIGHT = 160;
@@ -22,6 +22,7 @@ export interface ChatInputProps {
     onTextChange?: (text: string) => void;
     onCancelRequest?: () => void;
     showCancelButton?: boolean;
+    showSubmitButton?: boolean;
     placeholder?: string;
     disabled?: boolean;
     clearOnSubmit?: boolean;
@@ -31,29 +32,7 @@ export interface ChatInputProps {
     onValueChange?: (value: string) => void;
 }
 
-function useAttachmentStatusVersion(attachments: readonly FileUpload[]): number {
-    const [version, setVersion] = useState(0);
-
-    useEffect(() => {
-        const handleChange = () => {
-            setVersion((currentVersion) => currentVersion + 1);
-        };
-
-        for (const attachment of attachments) {
-            attachment.on("change", handleChange);
-        }
-
-        return () => {
-            for (const attachment of attachments) {
-                attachment.off("change", handleChange);
-            }
-        };
-    }, [attachments]);
-
-    return version;
-}
-
-function useAutoResizingTextarea(
+export function useAutoResizingTextarea(
     textareaRef: RefObject<HTMLTextAreaElement | null>,
     value: string,
 ): void {
@@ -79,46 +58,6 @@ function useAutoResizingTextarea(
     }, [textareaRef, value]);
 }
 
-function ComposerActionButton({
-    onClick,
-    disabled = false,
-    showCancelButton = false,
-}: {
-    onClick?: () => void;
-    disabled?: boolean;
-    showCancelButton?: boolean;
-}): ReactElement {
-    if (showCancelButton) {
-        return (
-            <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className={cn("relative size-9 rounded-full", disabled ? "opacity-55" : "cursor-pointer")}
-                disabled={disabled}
-                onClick={onClick}
-                title={disabled ? "Cancelling" : "Stop"}>
-                <LoaderCircle className="absolute h-9 w-9 animate-spin text-muted-foreground" />
-                <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background">
-                    <X className="h-3 w-3" />
-                </span>
-            </Button>
-        );
-    }
-
-    return (
-        <Button
-            type="button"
-            size="icon"
-            className={cn("size-9 rounded-full shadow-xs", !disabled && "cursor-pointer")}
-            disabled={disabled}
-            onClick={onClick}
-            title="Send">
-            <ArrowUp className="h-4 w-4" />
-        </Button>
-    );
-}
-
 export function ChatInput({
     onSubmit,
     onFilesSelected,
@@ -128,6 +67,7 @@ export function ChatInput({
     onTextChange,
     onCancelRequest,
     showCancelButton = false,
+    showSubmitButton = true,
     placeholder = "Message the room",
     disabled = false,
     clearOnSubmit = true,
@@ -212,9 +152,9 @@ export function ChatInput({
 
     const trailingButton = showCancelButton ? (
         <ComposerActionButton onClick={onCancelRequest} showCancelButton />
-    ) : (
+    ) : showSubmitButton ? (
         <ComposerActionButton onClick={handleSend} disabled={!canSend} />
-    );
+    ) : null;
 
     return (
         <div className="px-4 pt-2">
@@ -235,19 +175,20 @@ export function ChatInput({
                     {enableFileUpload ? (<FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />) : null}
 
                     <textarea
-                        ref={textareaRef}
-                        autoFocus={autoFocus}
-                        placeholder={placeholder}
-                        className={cn(
-                          "min-h-5 max-h-40",
-                          "flex-1 resize-none border-0 bg-transparent p-0 leading-5",
-                          "shadow-none outline-none ring-0 focus:ring-0 focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50",
-                          "md:text-sm",
-                        )}
-                        readOnly={disabled}
-                        value={value}
-                        onChange={handleChange}
-                        onKeyDown={handleKeyDown} />
+                      ref={textareaRef}
+                      autoFocus={autoFocus}
+                      placeholder={placeholder}
+                      className={cn(
+                        "min-h-5 max-h-40",
+                        "flex-1 resize-none border-0 bg-transparent p-0 leading-5",
+                        "shadow-none outline-none ring-0 focus:ring-0 focus-visible:ring-0",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
+                        "md:text-sm",
+                      )}
+                      readOnly={disabled}
+                      value={value}
+                      onChange={handleChange}
+                      onKeyDown={handleKeyDown} />
                     {trailingButton}
                 </div>
             </div>

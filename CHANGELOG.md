@@ -1,5 +1,6 @@
 ## [0.50.1]
 - Stability
+- Added a separately placeable `AgentThreadSubmitButton` while preserving the combined `AgentThreadInput` API.
 
 ## [0.50.0]
 - Chat clients now support per-turn LLM authorization providers, and websocket chat tokens are optional for `auth=none` deployments.

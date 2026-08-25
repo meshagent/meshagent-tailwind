@@ -42,6 +42,7 @@ import {
     AgentThreadFeed,
     AgentThreadInput,
     AgentThreadProvider,
+    AgentThreadSubmitButton,
     AgentUsageSnapshot,
     formatAgentUsageFooter,
     formatAgentUsageTooltip,
@@ -1111,6 +1112,153 @@ describe("AgentThread", () => {
         });
 
         expect(chatClient.sent.filter((message) => message instanceof OpenThread)).toHaveLength(1);
+    });
+
+    it("shares composer state with a separately placed submit button", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-separated-submit-button"
+                chatClient={chatClient}
+                agentName="codex"
+            >
+                <aside data-testid="composer-input">
+                    <AgentThreadInput showSubmitButton={false} />
+                </aside>
+                <footer data-testid="composer-submit">
+                    <AgentThreadSubmitButton className="external-submit" />
+                </footer>
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-separated-submit-button",
+            }));
+        });
+
+        const textarea = screen.getByPlaceholderText("Type a message") as HTMLTextAreaElement;
+        const sendButton = screen.getByTitle("Send") as HTMLButtonElement;
+        expect(screen.getAllByTitle("Send")).toHaveLength(1);
+        expect(screen.getByTestId("composer-input").contains(sendButton)).to.equal(false);
+        expect(screen.getByTestId("composer-submit").contains(sendButton)).to.equal(true);
+        expect(sendButton.className).to.contain("external-submit");
+        expect(sendButton.disabled).to.equal(true);
+
+        fireEvent.change(textarea, {
+            target: { value: "Sent from the external button." },
+        });
+        expect(sendButton.disabled).to.equal(false);
+        fireEvent.click(sendButton);
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(1);
+            expect(turnStarts[0].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent from the external button.",
+            }]);
+        });
+        expect(textarea.value).to.equal("");
+        expect(sendButton.disabled).to.equal(true);
+
+        fireEvent.change(textarea, {
+            target: { value: "Sent with Enter." },
+        });
+        fireEvent.keyDown(textarea, { key: "Enter" });
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(2);
+            expect(turnStarts[1].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent with Enter.",
+            }]);
+        });
+    });
+
+    it("keeps a separate submit button disabled until attachments finish uploading", async () => {
+        let completeUpload!: () => void;
+        const uploadGate = new Promise<void>((resolve) => {
+            completeUpload = resolve;
+        });
+        const room = fakeRoom();
+        Object.assign(room, {
+            storage: {
+                uploadStream: async (_path: string, stream: AsyncIterable<Uint8Array>) => {
+                    await uploadGate;
+                    for await (const _chunk of stream) {
+                        // Consume the upload stream like the real storage client.
+                    }
+                },
+                downloadUrl: async (path: string) => `https://example.test/${path}`,
+            },
+        });
+        const chatClient = new FakeChatClient();
+
+        const { container } = render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-separated-submit-upload"
+                chatClient={chatClient}
+                agentName="codex"
+                enableFileUpload
+            >
+                <AgentThreadInput showSubmitButton={false} />
+                <AgentThreadSubmitButton />
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-separated-submit-upload",
+            }));
+        });
+
+        const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+        expect(fileInput).not.to.equal(null);
+        fireEvent.change(fileInput!, {
+            target: { files: [new File(["attachment"], "notes.txt", { type: "text/plain" })] },
+        });
+
+        const sendButton = screen.getByTitle("Send") as HTMLButtonElement;
+        expect(await screen.findByText("notes.txt")).toBeTruthy();
+        expect(sendButton.disabled).to.equal(true);
+
+        completeUpload();
+        await waitFor(() => expect(sendButton.disabled).to.equal(false));
+        fireEvent.click(sendButton);
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(1);
+            expect(turnStarts[0].toJson().content).to.deep.equal([{
+                type: "file",
+                url: "room:///uploaded-files/notes.txt",
+            }]);
+        });
+        expect(screen.queryByText("notes.txt")).to.equal(null);
+        expect(sendButton.disabled).to.equal(true);
+    });
+
+    it("requires the separate submit button to use the shared thread provider", () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            expect(() => render(<AgentThreadSubmitButton />)).to.throw(
+                "AgentThreadSubmitButton must be rendered inside AgentThreadProvider.",
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
     });
 
     it("passes the file upload option through ChatBotView", () => {
