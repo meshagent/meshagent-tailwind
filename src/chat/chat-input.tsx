@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import { useRef, useState, useLayoutEffect, useMemo, useCallback } from "react";
 import type { ReactElement, RefObject, KeyboardEvent, ChangeEvent } from "react";
 import { v4 as uuidV4 } from "uuid";
 
@@ -12,6 +12,23 @@ import { useAttachmentStatusVersion } from "./chat-input-state.js";
 
 const MIN_TEXTAREA_HEIGHT = 20;
 const MAX_TEXTAREA_HEIGHT = 160;
+
+function resizeTextarea(element: HTMLTextAreaElement): void {
+    if (element.value === "") {
+        element.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
+        element.style.overflowY = "hidden";
+        return;
+    }
+
+    element.style.height = "0px";
+    element.style.overflowY = "hidden";
+    const contentHeight = element.scrollHeight;
+    element.style.height = `${Math.max(
+        MIN_TEXTAREA_HEIGHT,
+        Math.min(contentHeight, MAX_TEXTAREA_HEIGHT),
+    )}px`;
+    element.style.overflowY = contentHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
+}
 
 export interface ChatInputProps {
     onSubmit: (message: ChatMessage) => void | Promise<void>;
@@ -36,25 +53,13 @@ export function useAutoResizingTextarea(
     textareaRef: RefObject<HTMLTextAreaElement | null>,
     value: string,
 ): void {
-    useEffect(() => {
+    useLayoutEffect(() => {
         const element = textareaRef.current;
         if (!element) {
             return;
         }
 
-        if (value === "") {
-            element.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
-            element.style.overflowY = "hidden";
-        } else {
-            element.style.height = "0px";
-            element.style.overflowY = "hidden";
-            const contentHeight = element.scrollHeight;
-            element.style.height = `${Math.max(
-                MIN_TEXTAREA_HEIGHT,
-                Math.min(contentHeight, MAX_TEXTAREA_HEIGHT),
-            )}px`;
-            element.style.overflowY = contentHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
-        }
+        resizeTextarea(element);
     }, [textareaRef, value]);
 }
 
@@ -139,6 +144,7 @@ export function ChatInput({
 
     const handleChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
         const nextValue = event.currentTarget.value;
+        resizeTextarea(event.currentTarget);
         setValue(nextValue);
     }, [setValue]);
 
@@ -157,41 +163,44 @@ export function ChatInput({
     ) : null;
 
     return (
-        <div className="px-4 pt-2">
-            <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 rounded-md border border-input/70 bg-background px-2 py-1 shadow-xs focus-within:border-primary focus-within:[outline:1px_solid_var(--color-primary)]">
-                {attachments.length > 0 ? (
-                    <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1">
-                        {attachments.map((attachment, index) => (
-                            <UploadPill
-                                key={`${attachment.path}-${index}`}
-                                attachment={attachment}
-                                onCancel={cancelAttachment}
-                            />
-                        ))}
-                    </div>
-                ) : null}
+      <div className={cn(
+        "flex flex-col mx-auto w-full max-w-4xl gap-2",
+        "border border-input/70 rounded-md bg-background px-2 py-1 shadow-xs",
+        "focus-within:border-primary focus-within:[outline:1px_solid_var(--color-primary)]",
+      )}>
+          {attachments.length > 0 ? (
+              <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1">
+                  {attachments.map((attachment, index) => (
+                      <UploadPill
+                          key={`${attachment.path}-${index}`}
+                          attachment={attachment}
+                          onCancel={cancelAttachment}
+                      />
+                  ))}
+              </div>
+          ) : null}
 
-                <div className={cn("flex items-center gap-2", !enableFileUpload && "pl-1")}>
-                    {enableFileUpload ? (<FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />) : null}
+          <div className={cn("flex items-center gap-2", !enableFileUpload && "pl-1")}>
+              {enableFileUpload ? (<FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />) : null}
 
-                    <textarea
-                      ref={textareaRef}
-                      autoFocus={autoFocus}
-                      placeholder={placeholder}
-                      className={cn(
-                        "min-h-5 max-h-40",
-                        "flex-1 resize-none border-0 bg-transparent p-0 leading-5",
-                        "shadow-none outline-none ring-0 focus:ring-0 focus-visible:ring-0",
-                        "disabled:cursor-not-allowed disabled:opacity-50",
-                        "md:text-sm",
-                      )}
-                      readOnly={disabled}
-                      value={value}
-                      onChange={handleChange}
-                      onKeyDown={handleKeyDown} />
-                    {trailingButton}
-                </div>
-            </div>
-        </div>
+              <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  autoFocus={autoFocus}
+                  placeholder={placeholder}
+                  className={cn(
+                    "min-h-5 max-h-40",
+                    "flex-1 resize-none border-0 bg-transparent p-0 leading-5",
+                    "shadow-none outline-none ring-0 focus:ring-0 focus-visible:ring-0",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                    "md:text-sm",
+                  )}
+                  readOnly={disabled}
+                  value={value}
+                  onChange={handleChange}
+                  onKeyDown={handleKeyDown} />
+              {trailingButton}
+          </div>
+      </div>
     );
 }

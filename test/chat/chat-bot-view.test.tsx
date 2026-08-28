@@ -1129,7 +1129,12 @@ describe("AgentThread", () => {
                     <AgentThreadInput showSubmitButton={false} />
                 </aside>
                 <footer data-testid="composer-submit">
-                    <AgentThreadSubmitButton className="external-submit" />
+                    <AgentThreadSubmitButton
+                        className="external-submit size-10 rounded-sm"
+                        icon={<span data-testid="custom-submit-icon">Go</span>}
+                        title="Send question"
+                        ariaLabel="Send Pfister question"
+                    />
                 </footer>
             </AgentThreadProvider>,
         );
@@ -1141,16 +1146,27 @@ describe("AgentThread", () => {
         });
 
         const textarea = screen.getByPlaceholderText("Type a message") as HTMLTextAreaElement;
-        const sendButton = screen.getByTitle("Send") as HTMLButtonElement;
-        expect(screen.getAllByTitle("Send")).toHaveLength(1);
+        Object.defineProperty(textarea, "scrollHeight", {
+            configurable: true,
+            get: () => textarea.value.includes("\n") ? 60 : 20,
+        });
+        const sendButton = screen.getByTitle("Send question") as HTMLButtonElement;
+        expect(screen.getAllByTitle("Send question")).toHaveLength(1);
         expect(screen.getByTestId("composer-input").contains(sendButton)).to.equal(false);
         expect(screen.getByTestId("composer-submit").contains(sendButton)).to.equal(true);
+        expect(screen.getByTestId("custom-submit-icon")).toBeTruthy();
+        expect(sendButton.getAttribute("aria-label")).to.equal("Send Pfister question");
         expect(sendButton.className).to.contain("external-submit");
+        expect(sendButton.className).to.contain("size-10");
+        expect(sendButton.className).to.contain("rounded-sm");
+        expect(sendButton.className).not.to.contain("size-9");
+        expect(sendButton.className).not.to.contain("rounded-full");
         expect(sendButton.disabled).to.equal(true);
 
         fireEvent.change(textarea, {
-            target: { value: "Sent from the external button." },
+            target: { value: "Sent from the external button.\nWith a second line." },
         });
+        expect(textarea.style.height).to.equal("60px");
         expect(sendButton.disabled).to.equal(false);
         fireEvent.click(sendButton);
 
@@ -1161,10 +1177,11 @@ describe("AgentThread", () => {
             expect(turnStarts).toHaveLength(1);
             expect(turnStarts[0].toJson().content).to.deep.equal([{
                 type: "text",
-                text: "Sent from the external button.",
+                text: "Sent from the external button.\nWith a second line.",
             }]);
         });
         expect(textarea.value).to.equal("");
+        expect(textarea.style.height).to.equal("20px");
         expect(sendButton.disabled).to.equal(true);
 
         fireEvent.change(textarea, {

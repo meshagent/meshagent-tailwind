@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { ArrowUp, LoaderCircle, X } from "lucide-react";
 
 import { Button } from "../components/ui/button.js";
@@ -9,11 +9,17 @@ export function ComposerActionButton({
     disabled = false,
     showCancelButton = false,
     className,
+    icon,
+    title = "Send",
+    ariaLabel = title,
 }: {
     onClick?: () => void;
     disabled?: boolean;
     showCancelButton?: boolean;
     className?: string;
+    icon?: ReactNode;
+    title?: string;
+    ariaLabel?: string;
 }): ReactElement {
     if (showCancelButton) {
         return (
@@ -40,8 +46,9 @@ export function ComposerActionButton({
             className={cn("size-9 rounded-full shadow-xs", !disabled && "cursor-pointer", className)}
             disabled={disabled}
             onClick={onClick}
-            title="Send">
-            <ArrowUp className="h-4 w-4" />
+            title={title}
+            aria-label={ariaLabel}>
+            {icon ?? <ArrowUp className="h-4 w-4" />}
         </Button>
     );
 }

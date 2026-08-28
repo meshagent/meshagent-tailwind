@@ -30,6 +30,10 @@ describe("ChatInput", () => {
         const { rerender } = render(<ChatInput {...props} />);
 
         expect(screen.queryByRole("button", { name: "Attach file" })).to.equal(null);
+        const defaultSendButton = screen.getByRole("button", { name: "Send" });
+        expect(defaultSendButton.className).to.contain("size-9");
+        expect(defaultSendButton.className).to.contain("rounded-full");
+        expect(defaultSendButton.querySelector("svg")).not.to.equal(null);
 
         rerender(<ChatInput {...props} enableFileUpload />);
 

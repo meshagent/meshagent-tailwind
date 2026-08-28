@@ -1800,8 +1800,6 @@ export function AgentThreadInput({ showSubmitButton = true }: AgentThreadInputPr
                     onValueChange={setComposerValue}
                     showSubmitButton={showSubmitButton}
                     placeholder={inputAvailable ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
-
-                <AgentUsageFooter usage={usage} className="mx-auto w-full max-w-[912px]" />
             </div>
         </>
     );
@@ -1809,9 +1807,17 @@ export function AgentThreadInput({ showSubmitButton = true }: AgentThreadInputPr
 
 export interface AgentThreadSubmitButtonProps {
     className?: string;
+    icon?: ReactNode;
+    title?: string;
+    ariaLabel?: string;
 }
 
-export function AgentThreadSubmitButton({ className }: AgentThreadSubmitButtonProps = {}): ReactElement {
+export function AgentThreadSubmitButton({
+    className,
+    icon,
+    title,
+    ariaLabel,
+}: AgentThreadSubmitButtonProps = {}): ReactElement {
     const { canSubmit, submitDraft } = useAgentThreadContext("AgentThreadSubmitButton");
 
     return (
@@ -1819,6 +1825,9 @@ export function AgentThreadSubmitButton({ className }: AgentThreadSubmitButtonPr
             className={className}
             disabled={!canSubmit}
             onClick={submitDraft}
+            icon={icon}
+            title={title}
+            ariaLabel={ariaLabel}
         />
     );
 }

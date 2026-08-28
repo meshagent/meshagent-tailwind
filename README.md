@@ -94,6 +94,7 @@ import {
 	AgentThreadProvider,
 	AgentThreadSubmitButton,
 } from "@meshagent/meshagent-tailwind";
+import { MoveRight } from "lucide-react";
 
 export function SeparatedAgentThread({ roomClient, chatClient, threadPath }) {
 	return (
@@ -110,14 +111,17 @@ export function SeparatedAgentThread({ roomClient, chatClient, threadPath }) {
 				<div className="min-w-0 flex-1">
 					<AgentThreadInput showSubmitButton={false} />
 				</div>
-				<AgentThreadSubmitButton className="mb-1 mr-4" />
+				<AgentThreadSubmitButton
+					className="mb-1 mr-4 size-10 rounded-sm"
+					icon={<MoveRight />}
+				/>
 			</footer>
 		</AgentThreadProvider>
 	);
 }
 ```
 
-Keep all connected components beneath the same provider. By default, `AgentThreadInput` includes its Send button; set `showSubmitButton={false}` and place `AgentThreadSubmitButton` elsewhere when the layout needs to separate them. Use `AgentThread` when the standard combined feed-and-composer layout is sufficient.
+Keep all connected components beneath the same provider. By default, `AgentThreadInput` includes its Send button; set `showSubmitButton={false}` and place `AgentThreadSubmitButton` elsewhere when the layout needs to separate them. The separate button accepts `className`, `icon`, `title`, and `ariaLabel` overrides while retaining the standard SDK presentation by default. Use `AgentThread` when the standard combined feed-and-composer layout is sufficient.
 
 ## Meetings
 
