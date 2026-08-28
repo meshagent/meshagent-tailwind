@@ -1,3 +1,22 @@
+## [0.51.5]
+- Stability
+
+## [0.51.4]
+- Stability
+
+## [0.51.3]
+- Stability
+
+## [0.51.2]
+- Stability
+
+## [0.51.1]
+- Stability
+
+## [0.51.0]
+- Refactored the chat UI to split input from feed, simplifying thread and dataset views and removing suggestion-driven behavior.
+- Updated the JavaScript entrypoint and related tests to match the slimmer chat experience.
+
 ## [0.50.1]
 - Stability
 - Added a separately placeable `AgentThreadSubmitButton` while preserving the combined `AgentThreadInput` API.
