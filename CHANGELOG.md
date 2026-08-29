@@ -1,3 +1,7 @@
+## [0.51.6]
+- TypeScript route definitions now include `notFound` on content routes and `unavailable` on service routes, preserving the same route-shape constraints in the generated client.
+- The JavaScript client serializes and deserializes the new fallback fields so route configurations can round-trip without loss.
+
 ## [0.51.5]
 - Stability
 
