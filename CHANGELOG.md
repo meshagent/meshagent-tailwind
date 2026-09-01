@@ -1,3 +1,7 @@
+## [0.52.0]
+- Route specs now support `notFound` and `unavailable` fallback fields in the TypeScript client types and serializers.
+- Connected deploy builds no longer time out while the room remains connected, and readiness monitoring now follows replacement containers instead of failing on a restart.
+
 ## [0.51.5]
 - Stability
 
