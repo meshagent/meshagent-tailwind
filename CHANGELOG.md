@@ -1,12 +1,6 @@
-<<<<<<< HEAD
-## [0.51.6]
-- TypeScript route definitions now include `notFound` on content routes and `unavailable` on service routes, preserving the same route-shape constraints in the generated client.
-- The JavaScript client serializes and deserializes the new fallback fields so route configurations can round-trip without loss.
-=======
 ## [0.52.0]
 - Route specs now support `notFound` and `unavailable` fallback fields in the TypeScript client types and serializers.
 - Connected deploy builds no longer time out while the room remains connected, and readiness monitoring now follows replacement containers instead of failing on a restart.
->>>>>>> origin/main
 
 ## [0.51.5]
 - Stability
