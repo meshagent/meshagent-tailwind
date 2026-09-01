@@ -1,3 +1,6 @@
+## [0.52.1]
+- Clarified `getRoomStatus` and `listRoomEvents` in the TypeScript client so current room allocation state is separated from historical room lifecycle events.
+
 ## [0.52.0]
 - Route specs now support `notFound` and `unavailable` fallback fields in the TypeScript client types and serializers.
 - Connected deploy builds no longer time out while the room remains connected, and readiness monitoring now follows replacement containers instead of failing on a restart.
