@@ -48,6 +48,7 @@ import {
     formatAgentUsageTooltip,
     shouldReplaceAgentUsageSnapshot,
 } from "../../src/chat/agent-thread";
+import type { ChatThreadItem } from "../../src/chat/agent-thread";
 import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view";
 import { ThreadView } from "../../src/chat/thread-view";
 
@@ -1041,6 +1042,56 @@ describe("AgentUsageSnapshot", () => {
 });
 
 describe("AgentThread", () => {
+    it("renders local content after a feed item", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const handleRestore = vi.fn();
+        const renderAfterItem = vi.fn((item: ChatThreadItem) => (
+            <button type="button" onClick={() => handleRestore(item.id)}>
+                Restore {item.id}
+            </button>
+        ));
+
+        render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-feed-content"
+                chatClient={chatClient}
+                agentName="codex"
+            >
+                <AgentThreadFeed renderAfterItem={renderAfterItem} />
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-feed-content",
+            }));
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-feed-content",
+                turnId: "turn-feed-content",
+                itemId: "answer-feed-content",
+                phase: "final_answer",
+                text: "A feed item with local content.",
+            }));
+        });
+
+        const restoreButton = await screen.findByRole("button", {
+            name: "Restore answer-feed-content",
+        });
+        const message = screen.getByText("A feed item with local content.");
+        expect(message.compareDocumentPosition(restoreButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.to.equal(0);
+        expect(renderAfterItem).toHaveBeenCalledWith(expect.objectContaining({
+            id: "answer-feed-content",
+            kind: "message",
+            role: "agent",
+        }));
+
+        fireEvent.click(restoreButton);
+        expect(handleRestore).toHaveBeenCalledOnce();
+        expect(handleRestore).toHaveBeenCalledWith("answer-feed-content");
+    });
+
     it("shares one thread session between separately placed feed and input components", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();

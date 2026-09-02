@@ -24,6 +24,7 @@ import type {
 import { buildChatThreadTimeline, buildMergedChatThreadTimeline } from "./chat-thread-timeline.js";
 import type { AgentUsageSnapshot, ChatThreadItem } from "./chat-thread-timeline.js";
 export { AgentUsageSnapshot, shouldReplaceAgentUsageSnapshot } from "./chat-thread-timeline.js";
+export type { ChatThreadItem } from "./chat-thread-timeline.js";
 
 import { ChevronDown, ChevronRight, Download, FileText, ImageOff, Terminal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -1666,7 +1667,12 @@ function useAgentThreadContext(componentName: string): AgentThreadContextValue {
     return context;
 }
 
-export function AgentThreadFeed(): ReactElement {
+export interface AgentThreadFeedProps {
+    /** Renders application-owned content after a visible feed item without sending it to the agent. */
+    renderAfterItem?: (item: ChatThreadItem) => ReactNode;
+}
+
+export function AgentThreadFeed({ renderAfterItem }: AgentThreadFeedProps = {}): ReactElement {
     const {
         room,
         agentName,
@@ -1723,6 +1729,7 @@ export function AgentThreadFeed(): ReactElement {
                                     chatFeedWidgetsByName={chatFeedWidgetsByName}
                                     onSendMessage={handleWidgetMessage}
                                 />
+                                {renderAfterItem?.(item)}
                             </div>
                           );
                         }} />

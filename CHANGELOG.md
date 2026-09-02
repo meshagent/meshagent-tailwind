@@ -1,5 +1,6 @@
 ## [0.51.5]
 - Stability
+- Added an optional `AgentThreadFeed.renderAfterItem` presentation hook for rendering application-owned content after visible chat items.
 
 ## [0.51.4]
 - Stability
