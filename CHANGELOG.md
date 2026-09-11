@@ -1,3 +1,6 @@
+## [0.52.2]
+- Stability
+
 ## [0.52.1]
 - Clarified `getRoomStatus` and `listRoomEvents` in the TypeScript client so current room allocation state is separated from historical room lifecycle events.
 
