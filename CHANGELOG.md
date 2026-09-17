@@ -1,3 +1,6 @@
+## [0.52.4]
+- Stability
+
 ## [0.52.3]
 - Updated LLM proxy TypeScript examples for the current provider endpoints and configuration flow.
 - Updated Vitest to 4.1.11 and added `@vitest/browser-playwright` 4.1.11 for browser testing.
