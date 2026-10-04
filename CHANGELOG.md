@@ -1,3 +1,7 @@
+## [0.53.2]
+- Added project profile views, inheritance updates, typed profile models, and sysadmin global user search and profile administration.
+- Project updates now use project-local overrides and require `user_profile_editor`; global profile access is self-only and global annotations require sysadmin APIs.
+
 ## [0.53.1]
 - Stability
 
