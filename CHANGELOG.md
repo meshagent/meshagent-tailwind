@@ -1,4 +1,5 @@
 ## [0.53.2]
+- Exposed `useAgentThreadFeedState` and `AgentThreadFeed.renderUnanchored` for application-owned feed content and SDK compatibility.
 - Added project profile views, inheritance updates, typed profile models, and sysadmin global user search and profile administration.
 - Project updates now use project-local overrides and require `user_profile_editor`; global profile access is self-only and global annotations require sysadmin APIs.
 
@@ -732,3 +733,8 @@ START SUMMARY OF PYTHON API CHANGES END SUMMARY OF PYTHON API CHANGES
 
 ## [0.7.1]
 - Stability
+
+### Thread status customization
+
+- Added optional progress-overlay suppression, external interrupt controls, and
+  submission lifecycle callbacks. Existing status display remains the default.

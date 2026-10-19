@@ -3,6 +3,7 @@ export { ChatFeedWidget } from './chat/chat-feed-widget.js';
 export type { ToolCall, ToolCallStatus } from './chat/chat-feed-widget.js';
 export * from './chat/chat-hooks.js';
 export * from './chat/chat-input.js';
+export * from './chat/composer-action-button.js';
 export * from './chat/chat-message.js';
 export * from './chat/chat-typing-indicator.js';
 export * from './chat/conversation-descriptor.js';

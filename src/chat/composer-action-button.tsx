@@ -4,6 +4,16 @@ import { ArrowUp, LoaderCircle, X } from "lucide-react";
 import { Button } from "../components/ui/button.js";
 import { cn } from "../lib/utils.js";
 
+export interface ComposerActionButtonProps {
+    onClick?: () => void;
+    disabled?: boolean;
+    showCancelButton?: boolean;
+    className?: string;
+    icon?: ReactNode;
+    title?: string;
+    ariaLabel?: string;
+}
+
 export function ComposerActionButton({
     onClick,
     disabled = false,
@@ -12,15 +22,7 @@ export function ComposerActionButton({
     icon,
     title = "Send",
     ariaLabel = title,
-}: {
-    onClick?: () => void;
-    disabled?: boolean;
-    showCancelButton?: boolean;
-    className?: string;
-    icon?: ReactNode;
-    title?: string;
-    ariaLabel?: string;
-}): ReactElement {
+}: ComposerActionButtonProps): ReactElement {
     if (showCancelButton) {
         return (
             <Button

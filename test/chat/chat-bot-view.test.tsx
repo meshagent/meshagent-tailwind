@@ -1165,6 +1165,42 @@ describe("AgentThread", () => {
         expect(chatClient.sent.filter((message) => message instanceof OpenThread)).toHaveLength(1);
     });
 
+    it("uses a custom action component inside AgentThreadInput", async () => {
+        const chatClient = new FakeChatClient();
+        render(
+            <AgentThreadProvider
+                room={fakeRoom()}
+                path="thread-custom-submit"
+                chatClient={chatClient}
+                agentName="codex"
+            >
+                <AgentThreadInput submitButtonComponent={({ disabled, onClick, ariaLabel }) => (
+                    <button type="button" disabled={disabled} onClick={onClick}>
+                        Custom {ariaLabel}
+                    </button>
+                )} />
+            </AgentThreadProvider>,
+        );
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-custom-submit" }));
+        });
+        const button = screen.getByRole("button", { name: "Custom Send" });
+        expect(button).toHaveProperty("disabled", true);
+        fireEvent.change(screen.getByPlaceholderText("Type a message"), {
+            target: { value: "Sent through the custom component." },
+        });
+        expect(button).toHaveProperty("disabled", false);
+        fireEvent.click(button);
+        await waitFor(() => {
+            const turns = chatClient.sent.filter((message) => message instanceof TurnStart);
+            expect(turns).toHaveLength(1);
+            expect(turns[0].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent through the custom component.",
+            }]);
+        });
+    });
+
     it("shares composer state with a separately placed submit button", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();

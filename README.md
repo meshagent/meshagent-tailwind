@@ -123,6 +123,8 @@ export function SeparatedAgentThread({ roomClient, chatClient, threadPath }) {
 
 Keep all connected components beneath the same provider. By default, `AgentThreadInput` includes its Send button; set `showSubmitButton={false}` and place `AgentThreadSubmitButton` elsewhere when the layout needs to separate them. The separate button accepts `className`, `icon`, `title`, and `ariaLabel` overrides while retaining the standard SDK presentation by default. Use `AgentThread` when the standard combined feed-and-composer layout is sufficient.
 
+`useAgentThreadFeedState()` exposes `{ items }` in chronological order using the same visible, grouped items as `AgentThreadFeed`. Call it beneath `AgentThreadProvider` to anchor application-owned content to the current feed. `AgentThreadFeed.renderAfterItem(item)` renders content after an item; `renderUnanchored()` renders content before the oldest item, or replaces the empty state when it returns content. Both render inside the feed's scroll area without sending messages to the agent.
+
 ## Meetings
 
 The meeting components use a connected `RoomClient` to request LiveKit credentials before joining a meeting. Wrap `MeetingView` in `MeetingScope` and pass the same room client used by the rest of your app:
@@ -159,3 +161,12 @@ Pass a non-empty `breakoutRoom` to `MeetingScope` or `roomClient.livekit.getConn
 ## Next Steps and Examples
 
 To see examples of agents in action and to start building your own agents check out the MeshAgent docs at [docs.meshagent.com](https://docs.meshagent.com/)
+
+### Custom thread status presentation
+
+`AgentThreadFeed` accepts `showStatusIndicator={false}` to remove its progress
+overlay and reserved spacing. The default remains `true`.
+`useAgentThreadStatus()` exposes `{ canInterrupt, interrupt }` for a separate Stop
+control. `AgentThreadProvider.onSubmissionStarted(message, steeringTurnId?)` runs
+synchronously before sending; `onSubmissionFailed(message, error)` reports send
+failure. These callbacks cover the composer and feed-widget submissions.

@@ -1,5 +1,5 @@
 import { useRef, useState, useLayoutEffect, useMemo, useCallback } from "react";
-import type { ReactElement, RefObject, KeyboardEvent, ChangeEvent } from "react";
+import type { ComponentType, ReactElement, ReactNode, RefObject, KeyboardEvent, ChangeEvent } from "react";
 import { v4 as uuidV4 } from "uuid";
 
 import { ChatMessage } from "./chat-message.js";
@@ -7,30 +7,21 @@ import { FileUploader } from "./file-uploader.js";
 import { UploadPill } from "./upload-pill.js";
 import { type FileUpload, UploadStatus } from "./file-attachment.js";
 import { cn } from "../lib/utils.js";
-import { ComposerActionButton } from "./composer-action-button.js";
+import { ComposerActionButton, type ComposerActionButtonProps } from "./composer-action-button.js";
 import { useAttachmentStatusVersion } from "./chat-input-state.js";
 
 const MIN_TEXTAREA_HEIGHT = 20;
 const MAX_TEXTAREA_HEIGHT = 160;
 
-function resizeTextarea(element: HTMLTextAreaElement): void {
-    if (element.value === "") {
-        element.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
-        element.style.overflowY = "hidden";
-        return;
-    }
-
-    element.style.height = "0px";
-    element.style.overflowY = "hidden";
-    const contentHeight = element.scrollHeight;
-    element.style.height = `${Math.max(
-        MIN_TEXTAREA_HEIGHT,
-        Math.min(contentHeight, MAX_TEXTAREA_HEIGHT),
-    )}px`;
-    element.style.overflowY = contentHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
-}
-
 export interface ChatInputProps {
+    /** Classes for the outer composer wrapper. */
+    className?: string;
+    /** Classes for the row containing the buttons and textarea. */
+    inputRowClassName?: string;
+    /** Classes for the textarea. */
+    textareaClassName?: string;
+    /** Optional content before the file uploader and textarea. */
+    leadingButton?: ReactNode;
     onSubmit: (message: ChatMessage) => void | Promise<void>;
     onFilesSelected: (files: File[]) => void;
     attachments: FileUpload[];
@@ -40,6 +31,7 @@ export interface ChatInputProps {
     onCancelRequest?: () => void;
     showCancelButton?: boolean;
     showSubmitButton?: boolean;
+    submitButtonComponent?: ComponentType<ComposerActionButtonProps>;
     placeholder?: string;
     disabled?: boolean;
     clearOnSubmit?: boolean;
@@ -47,6 +39,23 @@ export interface ChatInputProps {
     value?: string;
     defaultValue?: string;
     onValueChange?: (value: string) => void;
+}
+
+function resizeTextarea(element: HTMLTextAreaElement): void {
+    if (element.value === "") {
+        element.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
+        element.style.overflowY = "hidden";
+
+    } else {
+        element.style.height = "0px";
+        element.style.overflowY = "hidden";
+
+        const contentHeight = element.scrollHeight;
+        const height = Math.max(MIN_TEXTAREA_HEIGHT, Math.min(contentHeight, MAX_TEXTAREA_HEIGHT));
+
+        element.style.height = `${height}px`;
+        element.style.overflowY = contentHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
+    }
 }
 
 export function useAutoResizingTextarea(
@@ -64,6 +73,10 @@ export function useAutoResizingTextarea(
 }
 
 export function ChatInput({
+    className,
+    inputRowClassName,
+    textareaClassName,
+    leadingButton,
     onSubmit,
     onFilesSelected,
     attachments,
@@ -73,6 +86,7 @@ export function ChatInput({
     onCancelRequest,
     showCancelButton = false,
     showSubmitButton = true,
+    submitButtonComponent: SubmitButton = ComposerActionButton,
     placeholder = "Message the room",
     disabled = false,
     clearOnSubmit = true,
@@ -157,16 +171,17 @@ export function ChatInput({
     }, [attachments, disabled, setAttachments]);
 
     const trailingButton = showCancelButton ? (
-        <ComposerActionButton onClick={onCancelRequest} showCancelButton />
+        <SubmitButton onClick={onCancelRequest} showCancelButton title="Stop" ariaLabel="Stop" />
     ) : showSubmitButton ? (
-        <ComposerActionButton onClick={handleSend} disabled={!canSend} />
+        <SubmitButton onClick={handleSend} disabled={!canSend} title="Send" ariaLabel="Send" />
     ) : null;
 
     return (
       <div className={cn(
         "flex flex-col mx-auto w-full max-w-4xl gap-2",
-        "border border-input/70 rounded-md bg-background px-2 py-1 shadow-xs",
+        "border border-input/70 rounded-md bg-background p-1 shadow-xs",
         "focus-within:border-primary focus-within:[outline:1px_solid_var(--color-primary)]",
+        className,
       )}>
           {attachments.length > 0 ? (
               <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1">
@@ -180,7 +195,8 @@ export function ChatInput({
               </div>
           ) : null}
 
-          <div className={cn("flex items-center gap-2", !enableFileUpload && "pl-1")}>
+          <div className={cn("flex items-center gap-2", !enableFileUpload && "pl-1", inputRowClassName)}>
+              {leadingButton}
               {enableFileUpload ? (<FileUploader onFilesSelected={onFilesSelected} disabled={disabled} />) : null}
 
               <textarea
@@ -194,6 +210,7 @@ export function ChatInput({
                     "shadow-none outline-none ring-0 focus:ring-0 focus-visible:ring-0",
                     "disabled:cursor-not-allowed disabled:opacity-50",
                     "md:text-sm",
+                    textareaClassName,
                   )}
                   readOnly={disabled}
                   value={value}
