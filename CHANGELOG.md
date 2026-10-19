@@ -1,3 +1,12 @@
+## [0.54.2]
+- Stability
+
+## [0.54.1]
+- Stability
+
+## [0.54.0]
+- Stability
+
 ## [0.53.5]
 - Added typed project and global profile models, project/user/merged views, project-local updates with inheritance, and sysadmin user search and profile administration.
 - Project member listings now default to merged profiles, with metadata and annotations included.
