@@ -8,7 +8,6 @@ import {
     AgentClientToolCallRequested,
     AgentFileContent,
     AgentThreadStatus,
-    AgentToolCallEnded,
     MessagingChatClient,
     TurnEnded,
     TurnStarted,
@@ -1179,18 +1178,15 @@ function processClientToolRequests({
         }
 
         replayingClientToolSessions.delete(session);
-        const completedItemIds = new Set(
-            session.messages
-                .map((event) => event.message)
-                .filter(
-                    (message): message is InstanceType<typeof AgentToolCallEnded> =>
-                        message instanceof AgentToolCallEnded && message.toolkit === "client",
-                )
-                .map((message) => message.itemId),
+        const completedRequestIds = new Set(
+            buildChatThreadTimeline(session.messages).items
+                .filter((item) => item.kind === "tool_call" && item.toolkit === "client" &&
+                    (item.state === "completed" || item.state === "failed"))
+                .map((item) => item.clientToolRequestId ?? item.id),
         );
 
         for (const request of requests) {
-            if (completedItemIds.has(request.requestId)) {
+            if (completedRequestIds.has(request.requestId)) {
                 handledRequests.add(request.requestId);
             }
         }
@@ -1586,7 +1582,7 @@ export function AgentThreadProvider({
                 const override =
                     session == null
                         ? undefined
-                        : clientToolCallOverrides.get(clientToolCallKey(session.threadPath, item.id));
+                        : clientToolCallOverrides.get(clientToolCallKey(session.threadPath, item.clientToolRequestId ?? item.id));
 
                 if (
                     override == null ||

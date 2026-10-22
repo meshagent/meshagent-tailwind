@@ -170,3 +170,15 @@ overlay and reserved spacing. The default remains `true`.
 control. `AgentThreadProvider.onSubmissionStarted(message, steeringTurnId?)` runs
 synchronously before sending; `onSubmissionFailed(message, error)` reports send
 failure. These callbacks cover the composer and feed-widget submissions.
+
+## Chat scrolling tests
+
+Run `npm test -- test/chat/chat-scroller.test.tsx` for deterministic resize and
+scroll-anchor tests. Run `npx playwright install chromium` once, then
+`npm run test:browser` for regressions with real browser layout and resize
+observers. The browser command builds the component stylesheet first.
+Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to use an existing Chromium installation.
+
+Widget resize corrections wait for 100 ms without height changes, with a 300 ms
+maximum wait during continuous resizing. The feed preserves the visible message
+or continues following the bottom; manual scrolling updates that choice.

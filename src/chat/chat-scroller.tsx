@@ -37,7 +37,7 @@ type MeasuredPageProps<TMessage extends ChatMessageBase> = {
   renderMessage: (message: TMessage, meta: RenderMessageMeta) => ReactNode;
   getMessageId: (message: TMessage) => string;
   getMessageAuthorId: (message: TMessage) => string | undefined;
-  onHeightChange: (pageIndex: number, height: number) => void;
+  registerPage: (pageIndex: number, element: HTMLDivElement) => () => void;
 };
 
 function MeasuredPage<TMessage extends ChatMessageBase>({
@@ -47,37 +47,19 @@ function MeasuredPage<TMessage extends ChatMessageBase>({
   renderMessage,
   getMessageId,
   getMessageAuthorId,
-  onHeightChange,
+  registerPage,
 }: MeasuredPageProps<TMessage>) {
   const pageRef = useRef<HTMLDivElement | null>(null);
 
-  // Measures this virtual page and reports height changes back to the scroller.
   useLayoutEffect(() => {
-    const pageElement = pageRef.current;
+    const element = pageRef.current;
 
-    if (!pageElement) {
-      return undefined;
-    }
-
-    const reportHeight = () => {
-      const height = pageElement.getBoundingClientRect().height;
-
-      onHeightChange(pageIndex, height);
-    };
-
-    reportHeight();
-
-    const resizeObserver = new ResizeObserver(reportHeight);
-    resizeObserver.observe(pageElement);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [onHeightChange, pageIndex]);
+    return element ? registerPage(pageIndex, element) : undefined;
+  }, [registerPage, pageIndex]);
 
   return (
     <div
-      className="chat-scroll__page flex flex-col gap-2 px-3 py-1"
+      className="chat-scroll__page flex shrink-0 flex-col gap-2 px-3 py-1"
       data-page-index={pageIndex}
       ref={pageRef}>
       {messages.map((message) => {
@@ -114,10 +96,10 @@ export function ChatScroller<TMessage extends ChatMessageBase>({
   const {
     scrollRef,
     visiblePages,
-    spacerHeight,
-    windowBottom,
+    spacerHeights,
     handleScroll,
-    handlePageHeightChange,
+    handleScrollIntent,
+    registerPage,
   } = useChatVirtualizer({
     messages,
     pageSize,
@@ -135,17 +117,28 @@ export function ChatScroller<TMessage extends ChatMessageBase>({
           : "chat-scroll relative box-border h-full min-h-0 overflow-y-auto overscroll-contain [overflow-anchor:none]"
       }
       onScroll={handleScroll}
+      onWheelCapture={handleScrollIntent}
+      onTouchMoveCapture={handleScrollIntent}
+      onPointerDownCapture={(event) => {
+        if (event.target === event.currentTarget) {
+          handleScrollIntent();
+        }
+      }}
+      onKeyDownCapture={(event) => {
+        if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
+          handleScrollIntent();
+        }
+      }}
       ref={scrollRef}
       style={style}>
 
       <div
         aria-hidden={visiblePages.length === 0 ? "true" : undefined}
-        className="chat-scroll__spacer relative min-h-full"
-        style={{ height: spacerHeight }}>
+        className="chat-scroll__spacer flex min-h-full flex-col justify-end">
+        <div aria-hidden="true" className="shrink-0" style={{ height: spacerHeights.top }} />
 
         <div
-          className="chat-scroll__window absolute right-0 left-0 flex flex-col"
-          style={{ bottom: windowBottom }}>
+          className="chat-scroll__window flex shrink-0 flex-col">
           {visiblePages.map((page) => (
             <MeasuredPage
               key={page.index}
@@ -153,11 +146,12 @@ export function ChatScroller<TMessage extends ChatMessageBase>({
               getMessageAuthorId={getMessageAuthorId}
               getMessageId={getMessageId}
               messages={page.items}
-              onHeightChange={handlePageHeightChange}
+              registerPage={registerPage}
               pageIndex={page.index}
               renderMessage={renderMessage} />
           ))}
         </div>
+        <div aria-hidden="true" className="shrink-0" style={{ height: spacerHeights.bottom }} />
       </div>
     </div>
   );

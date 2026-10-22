@@ -24,7 +24,10 @@ export const DEFAULT_PAGE_SIZE = 25;
 export const DEFAULT_OVERSCAN_PAGES = 2;
 
 // takes items and breaks tehm into a page
-export function createPages<T>(items: readonly T[], pageSize: number): Page<T>[] {
+export function createPages<T>(
+  items: readonly T[],
+  pageSize: number,
+): Page<T>[] {
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
     throw new Error("pageSize must be a positive integer.");
   }
@@ -54,7 +57,9 @@ export function buildPageHeights(
   for (let index = 0; index < pageCount; index += 1) {
     const measuredHeight = measuredHeights.get(index);
 
-    heights.push(measuredHeight !== undefined && measuredHeight > 0 ? measuredHeight : 0);
+    heights.push(
+      measuredHeight !== undefined && measuredHeight > 0 ? measuredHeight : 0,
+    );
   }
 
   return heights;
@@ -180,13 +185,8 @@ export function isNearBottom(args: {
   clientHeight: number;
   thresholdPx: number;
 }): boolean {
-  return args.scrollHeight - args.scrollTop - args.clientHeight <= Math.max(0, args.thresholdPx);
-}
-
-export function shouldAdjustScrollForHeightChange(args: {
-  changedPageIndex: number;
-  firstVisiblePageIndex: number;
-  isAtBottom: boolean;
-}): boolean {
-  return !args.isAtBottom && args.changedPageIndex <= Math.max(0, args.firstVisiblePageIndex);
+  return (
+    args.scrollHeight - args.scrollTop - args.clientHeight <=
+    Math.max(0, args.thresholdPx)
+  );
 }
