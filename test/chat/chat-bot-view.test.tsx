@@ -42,11 +42,13 @@ import {
     AgentThreadFeed,
     AgentThreadInput,
     AgentThreadProvider,
+    AgentThreadSubmitButton,
     AgentUsageSnapshot,
     formatAgentUsageFooter,
     formatAgentUsageTooltip,
     shouldReplaceAgentUsageSnapshot,
 } from "../../src/chat/agent-thread";
+import type { ChatThreadItem } from "../../src/chat/agent-thread";
 import { ChatBotView, ChatThreadDisplayMode } from "../../src/chat/chat-bot-view";
 import { ThreadView } from "../../src/chat/thread-view";
 
@@ -1040,6 +1042,56 @@ describe("AgentUsageSnapshot", () => {
 });
 
 describe("AgentThread", () => {
+    it("renders local content after a feed item", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+        const handleRestore = vi.fn();
+        const renderAfterItem = vi.fn((item: ChatThreadItem) => (
+            <button type="button" onClick={() => handleRestore(item.id)}>
+                Restore {item.id}
+            </button>
+        ));
+
+        render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-feed-content"
+                chatClient={chatClient}
+                agentName="codex"
+            >
+                <AgentThreadFeed renderAfterItem={renderAfterItem} />
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-feed-content",
+            }));
+            chatClient.handleAgentMessage(new AgentTextContentDelta({
+                threadId: "thread-feed-content",
+                turnId: "turn-feed-content",
+                itemId: "answer-feed-content",
+                phase: "final_answer",
+                text: "A feed item with local content.",
+            }));
+        });
+
+        const restoreButton = await screen.findByRole("button", {
+            name: "Restore answer-feed-content",
+        });
+        const message = screen.getByText("A feed item with local content.");
+        expect(message.compareDocumentPosition(restoreButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.to.equal(0);
+        expect(renderAfterItem).toHaveBeenCalledWith(expect.objectContaining({
+            id: "answer-feed-content",
+            kind: "message",
+            role: "agent",
+        }));
+
+        fireEvent.click(restoreButton);
+        expect(handleRestore).toHaveBeenCalledOnce();
+        expect(handleRestore).toHaveBeenCalledWith("answer-feed-content");
+    });
+
     it("shares one thread session between separately placed feed and input components", async () => {
         const room = fakeRoom();
         const chatClient = new FakeChatClient();
@@ -1111,6 +1163,206 @@ describe("AgentThread", () => {
         });
 
         expect(chatClient.sent.filter((message) => message instanceof OpenThread)).toHaveLength(1);
+    });
+
+    it("uses a custom action component inside AgentThreadInput", async () => {
+        const chatClient = new FakeChatClient();
+        render(
+            <AgentThreadProvider
+                room={fakeRoom()}
+                path="thread-custom-submit"
+                chatClient={chatClient}
+                agentName="codex"
+            >
+                <AgentThreadInput submitButtonComponent={({ disabled, onClick, ariaLabel }) => (
+                    <button type="button" disabled={disabled} onClick={onClick}>
+                        Custom {ariaLabel}
+                    </button>
+                )} />
+            </AgentThreadProvider>,
+        );
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({ threadId: "thread-custom-submit" }));
+        });
+        const button = screen.getByRole("button", { name: "Custom Send" });
+        expect(button).toHaveProperty("disabled", true);
+        fireEvent.change(screen.getByPlaceholderText("Type a message"), {
+            target: { value: "Sent through the custom component." },
+        });
+        expect(button).toHaveProperty("disabled", false);
+        fireEvent.click(button);
+        await waitFor(() => {
+            const turns = chatClient.sent.filter((message) => message instanceof TurnStart);
+            expect(turns).toHaveLength(1);
+            expect(turns[0].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent through the custom component.",
+            }]);
+        });
+    });
+
+    it("shares composer state with a separately placed submit button", async () => {
+        const room = fakeRoom();
+        const chatClient = new FakeChatClient();
+
+        render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-separated-submit-button"
+                chatClient={chatClient}
+                agentName="codex"
+            >
+                <aside data-testid="composer-input">
+                    <AgentThreadInput showSubmitButton={false} />
+                </aside>
+                <footer data-testid="composer-submit">
+                    <AgentThreadSubmitButton
+                        className="external-submit size-10 rounded-sm"
+                        icon={<span data-testid="custom-submit-icon">Go</span>}
+                        title="Send question"
+                        ariaLabel="Send Pfister question"
+                    />
+                </footer>
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-separated-submit-button",
+            }));
+        });
+
+        const textarea = screen.getByPlaceholderText("Type a message") as HTMLTextAreaElement;
+        Object.defineProperty(textarea, "scrollHeight", {
+            configurable: true,
+            get: () => textarea.value.includes("\n") ? 60 : 20,
+        });
+        const sendButton = screen.getByTitle("Send question") as HTMLButtonElement;
+        expect(screen.getAllByTitle("Send question")).toHaveLength(1);
+        expect(screen.getByTestId("composer-input").contains(sendButton)).to.equal(false);
+        expect(screen.getByTestId("composer-submit").contains(sendButton)).to.equal(true);
+        expect(screen.getByTestId("custom-submit-icon")).toBeTruthy();
+        expect(sendButton.getAttribute("aria-label")).to.equal("Send Pfister question");
+        expect(sendButton.className).to.contain("external-submit");
+        expect(sendButton.className).to.contain("size-10");
+        expect(sendButton.className).to.contain("rounded-sm");
+        expect(sendButton.className).not.to.contain("size-9");
+        expect(sendButton.className).not.to.contain("rounded-full");
+        expect(sendButton.disabled).to.equal(true);
+
+        fireEvent.change(textarea, {
+            target: { value: "Sent from the external button.\nWith a second line." },
+        });
+        expect(textarea.style.height).to.equal("60px");
+        expect(sendButton.disabled).to.equal(false);
+        fireEvent.click(sendButton);
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(1);
+            expect(turnStarts[0].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent from the external button.\nWith a second line.",
+            }]);
+        });
+        expect(textarea.value).to.equal("");
+        expect(textarea.style.height).to.equal("20px");
+        expect(sendButton.disabled).to.equal(true);
+
+        fireEvent.change(textarea, {
+            target: { value: "Sent with Enter." },
+        });
+        fireEvent.keyDown(textarea, { key: "Enter" });
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(2);
+            expect(turnStarts[1].toJson().content).to.deep.equal([{
+                type: "text",
+                text: "Sent with Enter.",
+            }]);
+        });
+    });
+
+    it("keeps a separate submit button disabled until attachments finish uploading", async () => {
+        let completeUpload!: () => void;
+        const uploadGate = new Promise<void>((resolve) => {
+            completeUpload = resolve;
+        });
+        const room = fakeRoom();
+        Object.assign(room, {
+            storage: {
+                uploadStream: async (_path: string, stream: AsyncIterable<Uint8Array>) => {
+                    await uploadGate;
+                    for await (const _chunk of stream) {
+                        // Consume the upload stream like the real storage client.
+                    }
+                },
+                downloadUrl: async (path: string) => `https://example.test/${path}`,
+            },
+        });
+        const chatClient = new FakeChatClient();
+
+        const { container } = render(
+            <AgentThreadProvider
+                room={room}
+                path="thread-separated-submit-upload"
+                chatClient={chatClient}
+                agentName="codex"
+                enableFileUpload
+            >
+                <AgentThreadInput showSubmitButton={false} />
+                <AgentThreadSubmitButton />
+            </AgentThreadProvider>,
+        );
+
+        await act(async () => {
+            chatClient.handleAgentMessage(new ThreadLoaded({
+                threadId: "thread-separated-submit-upload",
+            }));
+        });
+
+        const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+        expect(fileInput).not.to.equal(null);
+        fireEvent.change(fileInput!, {
+            target: { files: [new File(["attachment"], "notes.txt", { type: "text/plain" })] },
+        });
+
+        const sendButton = screen.getByTitle("Send") as HTMLButtonElement;
+        expect(await screen.findByText("notes.txt")).toBeTruthy();
+        expect(sendButton.disabled).to.equal(true);
+
+        completeUpload();
+        await waitFor(() => expect(sendButton.disabled).to.equal(false));
+        fireEvent.click(sendButton);
+
+        await waitFor(() => {
+            const turnStarts = chatClient.sent.filter((message): message is InstanceType<typeof TurnStart> => (
+                message instanceof TurnStart
+            ));
+            expect(turnStarts).toHaveLength(1);
+            expect(turnStarts[0].toJson().content).to.deep.equal([{
+                type: "file",
+                url: "room:///uploaded-files/notes.txt",
+            }]);
+        });
+        expect(screen.queryByText("notes.txt")).to.equal(null);
+        expect(sendButton.disabled).to.equal(true);
+    });
+
+    it("requires the separate submit button to use the shared thread provider", () => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            expect(() => render(<AgentThreadSubmitButton />)).to.throw(
+                "AgentThreadSubmitButton must be rendered inside AgentThreadProvider.",
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
     });
 
     it("passes the file upload option through ChatBotView", () => {

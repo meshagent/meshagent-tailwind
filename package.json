@@ -5,6 +5,7 @@
     "homepage": "https://github.com/meshagent/meshagent-tailwind",
     "scripts": {
         "test": "vitest run",
+        "test:browser": "npm run build:css && vitest run --config vitest.browser.config.mts",
         "build:deps": "npm --prefix ../meshagent-agents-ts run build && npm --prefix ../meshagent-livekit-ts run build",
         "build:js": "node build.js",
         "build:css": "tailwindcss -c tailwind.config.js -i styles.css -o dist/index.css --minify",

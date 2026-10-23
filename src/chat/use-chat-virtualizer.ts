@@ -1,57 +1,45 @@
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
-  type Dispatch,
-  type RefObject,
 } from "react";
 
 import {
   buildPageHeights,
   buildPrefixHeights,
   createPages,
-  getVirtualWindowMetrics,
+  getSpacerHeights,
   getVisiblePageRange,
   isNearBottom,
-  shouldAdjustScrollForHeightChange,
-  type Page,
   type VisiblePageRange,
 } from "./virtualization.js";
+
+const RESIZE_QUIET_MS = 100;
+const RESIZE_MAX_WAIT_MS = 300;
+const SCROLL_EPSILON = 1;
 
 type ScrollAnchor = {
   messageId: string;
   offsetTop: number;
-  pageIndex: number;
+};
+
+type MeasuredPage = {
+  element: HTMLDivElement;
+  height: number;
 };
 
 export type ChatVirtualizerState = {
   visibleRange: VisiblePageRange;
   measuredHeights: ReadonlyMap<number, number>;
-  bottomAdjustment: number;
 };
 
 export type ChatVirtualizerAction =
-  | {
-      type: "setVisibleRange";
-      range: VisiblePageRange;
-    }
-  | {
-      type: "syncPageWindow";
-      pageCount: number;
-      overscanPages: number;
-    }
-  | {
-      type: "measurePage";
-      pageIndex: number;
-      height: number;
-      shouldAdjustBottom: boolean;
-    }
-  | {
-      type: "clearBottomAdjustment";
-    };
+  | { type: "setVisibleRange"; range: VisiblePageRange }
+  | { type: "syncPageWindow"; pageCount: number; overscanPages: number }
+  | { type: "measurePages"; heights: ReadonlyMap<number, number> }
+  | { type: "reset"; pageCount: number; overscanPages: number };
 
 export type CreateChatVirtualizerStateArgs = {
   pageCount: number;
@@ -66,54 +54,47 @@ type UseChatVirtualizerOptions<TMessage> = {
   getMessageId: (message: TMessage) => string;
 };
 
-type UseChatVirtualizerResult<TMessage> = {
-  scrollRef: RefObject<HTMLDivElement | null>;
-  visiblePages: Page<TMessage>[];
-  spacerHeight: number;
-  windowBottom: number;
-  handleScroll: () => void;
-  handlePageHeightChange: (pageIndex: number, height: number) => void;
-};
-
 type RuntimeState = {
+  active: boolean;
   isAtBottom: boolean;
-  hasMounted: boolean;
-  lastMessageId: string | undefined;
-  anchor: ScrollAnchor | undefined;
+  anchors: ScrollAnchor[];
+  expectedScrollTop: number | undefined;
+  lastScrollTop: number;
+  lastScrollHeight: number;
+  userScrollIntent: boolean;
+  quietTimer: number | undefined;
+  maxTimer: number | undefined;
   frameId: number | undefined;
-  prefixHeights: readonly number[];
-  visibleRange: VisiblePageRange;
-  pageCount: number;
-  overscanPages: number;
-  bottomThresholdPx: number;
+  pages: Map<number, MeasuredPage>;
+  pending: Map<number, MeasuredPage>;
+  newPages: boolean;
+  needsRestore: boolean;
+  messageIds: Set<string>;
+  pageSize: number;
 };
 
 export function getInitialVisibleRange(
   pageCount: number,
   overscanPages: number,
 ): VisiblePageRange {
-  if (pageCount === 0) {
-    return { first: 0, last: -1 };
-  }
-
-  return {
-    first: Math.max(0, pageCount - 1 - Math.max(0, overscanPages)),
-    last: pageCount - 1,
-  };
+  return pageCount === 0
+    ? { first: 0, last: -1 }
+    : {
+        first: Math.max(0, pageCount - 1 - Math.max(0, overscanPages)),
+        last: pageCount - 1,
+      };
 }
 
 export function clampVisibleRange(
   range: VisiblePageRange,
   pageCount: number,
 ): VisiblePageRange {
-  if (pageCount === 0) {
-    return { first: 0, last: -1 };
-  }
-
-  return {
-    first: Math.min(pageCount - 1, Math.max(0, range.first)),
-    last: Math.min(pageCount - 1, Math.max(0, range.last)),
-  };
+  return pageCount === 0
+    ? { first: 0, last: -1 }
+    : {
+        first: Math.min(pageCount - 1, Math.max(0, range.first)),
+        last: Math.min(pageCount - 1, Math.max(0, range.last)),
+      };
 }
 
 export function createChatVirtualizerState({
@@ -122,32 +103,12 @@ export function createChatVirtualizerState({
 }: CreateChatVirtualizerStateArgs): ChatVirtualizerState {
   return {
     visibleRange: getInitialVisibleRange(pageCount, overscanPages),
-    measuredHeights: new Map<number, number>(),
-    bottomAdjustment: 0,
+    measuredHeights: new Map(),
   };
 }
 
-function areRangesEqual(firstRange: VisiblePageRange, secondRange: VisiblePageRange): boolean {
-  return firstRange.first === secondRange.first && firstRange.last === secondRange.last;
-}
-
-function pruneMeasuredHeights(
-  measuredHeights: ReadonlyMap<number, number>,
-  pageCount: number,
-): ReadonlyMap<number, number> {
-  let didPrune = false;
-  const nextMeasuredHeights = new Map<number, number>();
-
-  for (const [pageIndex, height] of measuredHeights) {
-    if (pageIndex >= pageCount) {
-      didPrune = true;
-      continue;
-    }
-
-    nextMeasuredHeights.set(pageIndex, height);
-  }
-
-  return didPrune ? nextMeasuredHeights : measuredHeights;
+function areRangesEqual(a: VisiblePageRange, b: VisiblePageRange): boolean {
+  return a.first === b.first && a.last === b.last;
 }
 
 export function chatVirtualizerReducer(
@@ -155,188 +116,130 @@ export function chatVirtualizerReducer(
   action: ChatVirtualizerAction,
 ): ChatVirtualizerState {
   switch (action.type) {
-    case "setVisibleRange": {
-      if (areRangesEqual(state.visibleRange, action.range)) {
-        return state;
-      }
-
-      return {
-        ...state,
-        visibleRange: action.range,
-      };
+    case "reset": {
+      return createChatVirtualizerState(action);
     }
-
+    case "setVisibleRange": {
+      return areRangesEqual(state.visibleRange, action.range)
+        ? state
+        : { ...state, visibleRange: action.range };
+    }
     case "syncPageWindow": {
       const visibleRange =
         state.visibleRange.last === -1
           ? getInitialVisibleRange(action.pageCount, action.overscanPages)
           : clampVisibleRange(state.visibleRange, action.pageCount);
-      const measuredHeights = pruneMeasuredHeights(state.measuredHeights, action.pageCount);
-
-      if (areRangesEqual(state.visibleRange, visibleRange) && measuredHeights === state.measuredHeights) {
-        return state;
-      }
-
-      return {
-        ...state,
-        visibleRange,
-        measuredHeights,
-      };
-    }
-
-    case "measurePage": {
-      const roundedHeight = Math.ceil(action.height);
-      const previousHeight = state.measuredHeights.get(action.pageIndex) ?? 0;
-
-      if (previousHeight === roundedHeight) {
-        return state;
-      }
-
-      const heightDelta = roundedHeight - previousHeight;
       const measuredHeights = new Map(state.measuredHeights);
 
-      if (roundedHeight > 0) {
-        measuredHeights.set(action.pageIndex, roundedHeight);
-      } else {
-        measuredHeights.delete(action.pageIndex);
+      for (const index of measuredHeights.keys()) {
+        if (index >= action.pageCount) {
+          measuredHeights.delete(index);
+        }
       }
 
-      return {
-        ...state,
-        measuredHeights,
-        bottomAdjustment: state.bottomAdjustment + (action.shouldAdjustBottom ? heightDelta : 0),
-      };
+      return areRangesEqual(state.visibleRange, visibleRange) &&
+        measuredHeights.size === state.measuredHeights.size
+        ? state
+        : { visibleRange, measuredHeights };
     }
+    case "measurePages": {
+      const measuredHeights = new Map(state.measuredHeights);
 
-    case "clearBottomAdjustment": {
-      if (state.bottomAdjustment === 0) {
-        return state;
+      for (const [index, height] of action.heights) {
+        measuredHeights.set(index, height);
       }
 
-      return {
-        ...state,
-        bottomAdjustment: 0,
-      };
+      return { ...state, measuredHeights };
     }
   }
 }
 
-function getMessageSelector(messageId: string): string {
-  const escapedMessageId =
-    typeof CSS !== "undefined" && typeof CSS.escape === "function"
-      ? CSS.escape(messageId)
-      : messageId.replace(/"/gu, "\\\"");
-
-  return ".chat-scroll__message[data-message-id=\"" + escapedMessageId + "\"]";
+function cancelResizeTimers(runtime: RuntimeState) {
+  window.clearTimeout(runtime.quietTimer);
+  window.clearTimeout(runtime.maxTimer);
+  runtime.quietTimer = undefined;
+  runtime.maxTimer = undefined;
 }
 
-function captureScrollAnchor(
-  scrollElement: HTMLDivElement | null,
-  runtime: RuntimeState,
-): ScrollAnchor | undefined {
-  if (!scrollElement || runtime.isAtBottom) {
-    runtime.anchor = undefined;
-    return undefined;
-  }
+function captureAnchors(element: HTMLDivElement, runtime: RuntimeState) {
+  const rect = element.getBoundingClientRect();
 
-  const scrollRect = scrollElement.getBoundingClientRect();
-  const messageElements = scrollElement.querySelectorAll<HTMLElement>(
-    ".chat-scroll__message[data-message-id]",
-  );
+  runtime.anchors = [];
+  runtime.lastScrollTop = element.scrollTop;
+  runtime.lastScrollHeight = element.scrollHeight;
 
-  for (let index = 0; index < messageElements.length; index += 1) {
-    const messageElement = messageElements.item(index);
-    const messageRect = messageElement.getBoundingClientRect();
-
-    if (messageRect.bottom > scrollRect.top) {
-      const messageId = messageElement.dataset.messageId;
-      const closestPageElement = messageElement.closest(
-        ".chat-scroll__page[data-page-index]",
-      );
-      const pageIndex = closestPageElement instanceof HTMLElement
-        ? Number(closestPageElement.dataset.pageIndex)
-        : Number.NaN;
-
-      if (messageId && Number.isInteger(pageIndex)) {
-        const anchor = {
-          messageId,
-          offsetTop: messageRect.top - scrollRect.top,
-          pageIndex,
-        };
-
-        runtime.anchor = anchor;
-        return anchor;
-      }
-
-      runtime.anchor = undefined;
-      return undefined;
-    }
-  }
-
-  runtime.anchor = undefined;
-  return undefined;
-}
-
-function restoreScrollAnchor(
-  scrollElement: HTMLDivElement | null,
-  runtime: RuntimeState,
-  bottomAdjustment: number,
-): boolean {
-  const anchor = runtime.anchor;
-
-  if (!anchor || !scrollElement || runtime.isAtBottom) {
-    runtime.anchor = undefined;
-    return bottomAdjustment !== 0;
-  }
-
-  const messageElement = scrollElement.querySelector<HTMLElement>(
-    getMessageSelector(anchor.messageId),
-  );
-
-  if (!messageElement) {
-    runtime.anchor = undefined;
-    return bottomAdjustment !== 0;
-  }
-
-  const scrollRect = scrollElement.getBoundingClientRect();
-  const messageRect = messageElement.getBoundingClientRect();
-  const nextOffsetTop = messageRect.top - scrollRect.top;
-  const offsetDelta = nextOffsetTop - anchor.offsetTop;
-
-  if (offsetDelta !== 0) {
-    scrollElement.scrollTop += offsetDelta;
-  }
-
-  if (bottomAdjustment !== 0) {
-    scrollElement.scrollTop += bottomAdjustment;
-  }
-
-  runtime.anchor = undefined;
-  return bottomAdjustment !== 0;
-}
-
-function updateVisibleRange(
-  scrollElement: HTMLDivElement | null,
-  runtime: RuntimeState,
-  dispatch: Dispatch<ChatVirtualizerAction>,
-) {
-  if (!scrollElement) {
+  if (runtime.isAtBottom) {
     return;
   }
 
-  const nextRange = getVisiblePageRange({
-    prefixHeights: runtime.prefixHeights,
-    scrollTop: scrollElement.scrollTop,
-    viewportHeight: scrollElement.clientHeight,
-    overscanPages: runtime.overscanPages,
-  });
-  const clampedNextRange = clampVisibleRange(nextRange, runtime.pageCount);
+  for (const message of Array.from(
+    element.querySelectorAll<HTMLElement>(
+      ".chat-scroll__message[data-message-id]",
+    ),
+  )) {
+    const messageRect = message.getBoundingClientRect();
 
-  if (!areRangesEqual(runtime.visibleRange, clampedNextRange)) {
-    captureScrollAnchor(scrollElement, runtime);
+    if (
+      messageRect.bottom > rect.top &&
+      messageRect.top < rect.bottom &&
+      message.dataset.messageId
+    ) {
+      runtime.anchors.push({
+        messageId: message.dataset.messageId,
+        offsetTop: messageRect.top - rect.top,
+      });
+    }
+  }
+}
+
+function writeScrollTop(
+  element: HTMLDivElement,
+  runtime: RuntimeState,
+  target: number,
+) {
+  const clampedTarget = Math.max(
+    0,
+    Math.min(target, element.scrollHeight - element.clientHeight),
+  );
+
+  if (Math.abs(element.scrollTop - clampedTarget) > SCROLL_EPSILON) {
+    element.scrollTop = clampedTarget;
+    runtime.expectedScrollTop = element.scrollTop;
+  }
+}
+
+function restoreAnchors(element: HTMLDivElement, runtime: RuntimeState) {
+  if (runtime.isAtBottom) {
+    writeScrollTop(element, runtime, element.scrollHeight);
+  } else {
+    const messages = new Map(
+      Array.from(
+        element.querySelectorAll<HTMLElement>(
+          ".chat-scroll__message[data-message-id]",
+        ),
+        (message) => [message.dataset.messageId, message] as const,
+      ),
+    );
+
+    for (const anchor of runtime.anchors) {
+      const message = messages.get(anchor.messageId);
+
+      if (message) {
+        const offset =
+          message.getBoundingClientRect().top -
+          element.getBoundingClientRect().top;
+
+        writeScrollTop(
+          element,
+          runtime,
+          element.scrollTop + offset - anchor.offsetTop,
+        );
+        break;
+      }
+    }
   }
 
-  dispatch({ type: "setVisibleRange", range: clampedNextRange });
+  captureAnchors(element, runtime);
 }
 
 export function useChatVirtualizer<TMessage>({
@@ -345,23 +248,33 @@ export function useChatVirtualizer<TMessage>({
   overscanPages,
   bottomThresholdPx,
   getMessageId,
-}: UseChatVirtualizerOptions<TMessage>): UseChatVirtualizerResult<TMessage> {
+}: UseChatVirtualizerOptions<TMessage>) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<RuntimeState>({
+    active: true,
     isAtBottom: true,
-    hasMounted: false,
-    lastMessageId: undefined,
-    anchor: undefined,
+    anchors: [],
+    expectedScrollTop: undefined,
+    lastScrollTop: 0,
+    lastScrollHeight: 0,
+    userScrollIntent: false,
+    quietTimer: undefined,
+    maxTimer: undefined,
     frameId: undefined,
-    prefixHeights: [0],
-    visibleRange: { first: 0, last: -1 },
-    pageCount: 0,
-    overscanPages,
-    bottomThresholdPx,
+    pages: new Map(),
+    pending: new Map(),
+    newPages: false,
+    needsRestore: true,
+    messageIds: new Set(),
+    pageSize,
   });
   const pages = useMemo(
     () => createPages([...messages].reverse(), pageSize),
     [messages, pageSize],
+  );
+  const messageIds = useMemo(
+    () => new Set(messages.map(getMessageId)),
+    [messages, getMessageId],
   );
   const pageCount = pages.length;
   const [state, dispatch] = useReducer(
@@ -369,134 +282,286 @@ export function useChatVirtualizer<TMessage>({
     { pageCount, overscanPages },
     createChatVirtualizerState,
   );
-
-  const clampedVisibleRange = clampVisibleRange(state.visibleRange, pageCount);
-  const pageHeights = useMemo(
-    () => buildPageHeights(pageCount, state.measuredHeights),
+  const visibleRange = clampVisibleRange(state.visibleRange, pageCount);
+  const prefixHeights = useMemo(
+    () =>
+      buildPrefixHeights(buildPageHeights(pageCount, state.measuredHeights)),
     [pageCount, state.measuredHeights],
   );
-  const prefixHeights = useMemo(() => buildPrefixHeights(pageHeights), [pageHeights]);
-  const virtualWindowMetrics = getVirtualWindowMetrics(prefixHeights, clampedVisibleRange);
-  const visiblePages =
-    clampedVisibleRange.last >= clampedVisibleRange.first
-      ? pages.slice(clampedVisibleRange.first, clampedVisibleRange.last + 1)
-      : [];
-
-  const runtime = runtimeRef.current;
-  runtime.prefixHeights = prefixHeights;
-  runtime.visibleRange = clampedVisibleRange;
-  runtime.pageCount = pageCount;
-  runtime.overscanPages = overscanPages;
-  runtime.bottomThresholdPx = bottomThresholdPx;
-
-  const handleScroll = useCallback(() => {
-    const scrollElement = scrollRef.current;
-    const currentRuntime = runtimeRef.current;
-
-    if (!scrollElement) {
-      return;
-    }
-
-    currentRuntime.isAtBottom = isNearBottom({
-      scrollTop: scrollElement.scrollTop,
-      scrollHeight: scrollElement.scrollHeight,
-      clientHeight: scrollElement.clientHeight,
-      thresholdPx: currentRuntime.bottomThresholdPx,
-    });
-
-    if (currentRuntime.frameId !== undefined) {
-      return;
-    }
-
-    currentRuntime.frameId = window.requestAnimationFrame(() => {
-      currentRuntime.frameId = undefined;
-      updateVisibleRange(scrollRef.current, currentRuntime, dispatch);
-    });
-  }, []);
-
-  const handlePageHeightChange = useCallback((pageIndex: number, height: number) => {
-    const currentRuntime = runtimeRef.current;
-    const anchor = captureScrollAnchor(scrollRef.current, currentRuntime);
-    const shouldAdjustBottom = anchor
-      ? shouldAdjustScrollForHeightChange({
-          changedPageIndex: pageIndex,
-          firstVisiblePageIndex: anchor.pageIndex,
-          isAtBottom: currentRuntime.isAtBottom,
-        })
-      : false;
-
-    dispatch({ type: "measurePage", pageIndex, height, shouldAdjustBottom });
-  }, []);
-
-  useLayoutEffect(() => {
-    const currentRuntime = runtimeRef.current;
-    const scrollElement = scrollRef.current;
-    const shouldClearBottomAdjustment = restoreScrollAnchor(
-      scrollElement,
-      currentRuntime,
-      state.bottomAdjustment,
-    );
-
-    if (shouldClearBottomAdjustment) {
-      dispatch({ type: "clearBottomAdjustment" });
-    }
-
-    if (!scrollElement || !currentRuntime.isAtBottom) {
-      return;
-    }
-
-    scrollElement.scrollTop = scrollElement.scrollHeight;
-    updateVisibleRange(scrollElement, currentRuntime, dispatch);
+  // Observer callbacks and scroll events always use the last committed geometry.
+  const geometryRef = useRef({
+    prefixHeights,
+    visibleRange,
+    pageCount,
+    overscanPages,
+    bottomThresholdPx,
   });
 
-  useLayoutEffect(() => {
-    const currentRuntime = runtimeRef.current;
-    const scrollElement = scrollRef.current;
-    const bottomMessage = messages[0];
-    const bottomMessageId = bottomMessage ? getMessageId(bottomMessage) : undefined;
-    const previousLastMessageId = currentRuntime.lastMessageId;
+  const flushMeasurements = useCallback(() => {
+    const runtime = runtimeRef.current;
+    const heights = new Map<number, number>();
 
-    dispatch({ type: "syncPageWindow", pageCount, overscanPages });
-    currentRuntime.lastMessageId = bottomMessageId;
+    cancelResizeTimers(runtime);
 
-    if (!scrollElement) {
+    for (const [index, page] of runtime.pending) {
+      if (runtime.pages.get(index) === page) {
+        heights.set(index, page.height);
+      }
+    }
+
+    runtime.pending.clear();
+
+    if (!runtime.active || heights.size === 0) {
+      return false;
+    }
+
+    runtime.needsRestore = true;
+    dispatch({ type: "measurePages", heights });
+    return true;
+  }, []);
+
+  const registerPage = useCallback(
+    (index: number, element: HTMLDivElement) => {
+      const runtime = runtimeRef.current;
+      const page = { element, height: element.getBoundingClientRect().height };
+      let observing = true;
+
+      runtime.active = true;
+      runtime.pages.set(index, page);
+      runtime.pending.set(index, page);
+      runtime.newPages = true;
+      runtime.needsRestore = true;
+
+      const observer = new ResizeObserver(() => {
+        if (
+          !observing ||
+          !runtime.active ||
+          runtime.pages.get(index) !== page
+        ) {
+          return;
+        }
+
+        const height = element.getBoundingClientRect().height;
+
+        if (page.height === height) {
+          return;
+        }
+
+        page.height = height;
+        runtime.pending.set(index, page);
+        window.clearTimeout(runtime.quietTimer);
+        runtime.quietTimer = window.setTimeout(
+          flushMeasurements,
+          RESIZE_QUIET_MS,
+        );
+
+        if (runtime.maxTimer === undefined) {
+          runtime.maxTimer = window.setTimeout(
+            flushMeasurements,
+            RESIZE_MAX_WAIT_MS,
+          );
+        }
+      });
+
+      observer.observe(element);
+
+      return () => {
+        observing = false;
+        observer.disconnect();
+
+        if (runtime.pages.get(index) === page) {
+          runtime.pages.delete(index);
+          runtime.pending.delete(index);
+        }
+
+        if (runtime.pending.size === 0) {
+          cancelResizeTimers(runtime);
+        }
+      };
+    },
+    [flushMeasurements],
+  );
+
+  const updateVisibleRange = useCallback(() => {
+    const element = scrollRef.current;
+    const runtime = runtimeRef.current;
+    const geometry = geometryRef.current;
+
+    if (!element || runtime.pending.size > 0) {
       return;
     }
 
-    if (!currentRuntime.hasMounted) {
-      scrollElement.scrollTop = scrollElement.scrollHeight;
-      currentRuntime.isAtBottom = true;
-      currentRuntime.hasMounted = true;
-      updateVisibleRange(scrollElement, currentRuntime, dispatch);
+    const range = clampVisibleRange(
+      getVisiblePageRange({
+        prefixHeights: geometry.prefixHeights,
+        scrollTop: element.scrollTop,
+        viewportHeight: element.clientHeight,
+        overscanPages: geometry.overscanPages,
+      }),
+      geometry.pageCount,
+    );
+
+    if (!areRangesEqual(range, geometry.visibleRange)) {
+      runtime.needsRestore = true;
+      dispatch({ type: "setVisibleRange", range });
+    }
+  }, []);
+
+  const handleScrollIntent = useCallback(() => {
+    runtimeRef.current.userScrollIntent = true;
+    runtimeRef.current.expectedScrollTop = undefined;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const element = scrollRef.current;
+    const runtime = runtimeRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const expected = runtime.expectedScrollTop;
+    const layoutClamped =
+      element.scrollHeight < runtime.lastScrollHeight &&
+      runtime.lastScrollTop > element.scrollHeight - element.clientHeight &&
+      Math.abs(
+        element.scrollTop -
+          Math.max(0, element.scrollHeight - element.clientHeight),
+      ) <= SCROLL_EPSILON;
+
+    if (
+      !runtime.userScrollIntent &&
+      ((expected !== undefined &&
+        Math.abs(expected - element.scrollTop) <= SCROLL_EPSILON) ||
+        layoutClamped)
+    ) {
+      runtime.expectedScrollTop = undefined;
+      return;
+    }
+
+    runtime.userScrollIntent = false;
+    runtime.expectedScrollTop = undefined;
+    runtime.isAtBottom = isNearBottom({
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      thresholdPx: geometryRef.current.bottomThresholdPx,
+    });
+    captureAnchors(element, runtime);
+
+    if (runtime.pending.size > 0) {
+      flushMeasurements();
+    }
+
+    if (runtime.frameId === undefined) {
+      runtime.frameId = window.requestAnimationFrame(() => {
+        runtime.frameId = undefined;
+        updateVisibleRange();
+      });
+    }
+  }, [flushMeasurements, updateVisibleRange]);
+
+  useLayoutEffect(() => {
+    const runtime = runtimeRef.current;
+    const element = scrollRef.current;
+    const replaced =
+      runtime.pageSize !== pageSize ||
+      (runtime.messageIds.size > 0 &&
+        !Array.from(messageIds).some((id) => runtime.messageIds.has(id)));
+    const addedPageAtBottom =
+      runtime.isAtBottom && pageCount > geometryRef.current.pageCount;
+
+    geometryRef.current = {
+      prefixHeights,
+      visibleRange,
+      pageCount,
+      overscanPages,
+      bottomThresholdPx,
+    };
+    runtime.active = true;
+    runtime.messageIds = messageIds;
+    runtime.pageSize = pageSize;
+
+    if (replaced) {
+      cancelResizeTimers(runtime);
+      window.cancelAnimationFrame(runtime.frameId ?? 0);
+      runtime.frameId = undefined;
+      runtime.pending.clear();
+      runtime.anchors = [];
+      runtime.expectedScrollTop = undefined;
+      runtime.isAtBottom = true;
+      runtime.userScrollIntent = false;
+      runtime.needsRestore = true;
+      runtime.newPages = true;
+
+      for (const [index, page] of runtime.pages) {
+        page.height = page.element.getBoundingClientRect().height;
+        runtime.pending.set(index, page);
+      }
+
+      dispatch({ type: "reset", pageCount, overscanPages });
       return;
     }
 
     if (
-      previousLastMessageId !== undefined &&
-      previousLastMessageId !== bottomMessageId &&
-      currentRuntime.isAtBottom
+      !areRangesEqual(state.visibleRange, visibleRange) ||
+      (state.visibleRange.last === -1 && pageCount > 0) ||
+      Array.from(state.measuredHeights.keys()).some(
+        (index) => index >= pageCount,
+      )
     ) {
-      scrollElement.scrollTop = scrollElement.scrollHeight;
-      updateVisibleRange(scrollElement, currentRuntime, dispatch);
+      dispatch({ type: "syncPageWindow", pageCount, overscanPages });
     }
-  }, [getMessageId, messages, overscanPages, pageCount]);
 
-  useEffect(() => {
-    return () => {
-      const frameId = runtimeRef.current.frameId;
+    if (addedPageAtBottom) {
+      runtime.needsRestore = true;
+      dispatch({
+        type: "setVisibleRange",
+        range: {
+          first: visibleRange.first,
+          last: pageCount - 1,
+        },
+      });
+    }
 
-      if (frameId !== undefined) {
-        window.cancelAnimationFrame(frameId);
+    // Newly mounted pages must be measured before paint, including during history scrolling.
+    if (runtime.newPages) {
+      runtime.newPages = false;
+
+      if (flushMeasurements()) {
+        return;
       }
-    };
-  }, []);
+    }
+
+    if (element && runtime.needsRestore && runtime.pending.size === 0) {
+      runtime.needsRestore = false;
+      restoreAnchors(element, runtime);
+      updateVisibleRange();
+    }
+  });
+
+  useLayoutEffect(
+    () => () => {
+      const runtime = runtimeRef.current;
+
+      runtime.active = false;
+      cancelResizeTimers(runtime);
+      window.cancelAnimationFrame(runtime.frameId ?? 0);
+      runtime.frameId = undefined;
+      runtime.pending.clear();
+    },
+    [],
+  );
 
   return {
     scrollRef,
-    visiblePages,
-    spacerHeight: virtualWindowMetrics.total,
-    windowBottom: virtualWindowMetrics.bottom + state.bottomAdjustment,
+    visiblePages:
+      visibleRange.last >= visibleRange.first
+        ? pages.slice(visibleRange.first, visibleRange.last + 1)
+        : [],
+    spacerHeights: getSpacerHeights(prefixHeights, visibleRange),
     handleScroll,
-    handlePageHeightChange,
+    handleScrollIntent,
+    registerPage,
   };
 }

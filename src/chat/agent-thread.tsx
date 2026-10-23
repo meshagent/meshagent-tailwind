@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Children, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 
 import { ErrorContent } from "@meshagent/meshagent";
@@ -8,7 +8,6 @@ import {
     AgentClientToolCallRequested,
     AgentFileContent,
     AgentThreadStatus,
-    AgentToolCallEnded,
     MessagingChatClient,
     TurnEnded,
     TurnStarted,
@@ -24,6 +23,7 @@ import type {
 import { buildChatThreadTimeline, buildMergedChatThreadTimeline } from "./chat-thread-timeline.js";
 import type { AgentUsageSnapshot, ChatThreadItem } from "./chat-thread-timeline.js";
 export { AgentUsageSnapshot, shouldReplaceAgentUsageSnapshot } from "./chat-thread-timeline.js";
+export type { ChatThreadItem } from "./chat-thread-timeline.js";
 
 import { ChevronDown, ChevronRight, Download, FileText, ImageOff, Terminal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -35,11 +35,13 @@ import { v4 as uuidV4 } from "uuid";
 import { Button } from "../components/ui/button.js";
 import { Spinner } from "../components/ui/spinner.js";
 import { cn } from "../lib/utils.js";
-import { ChatInput } from "./chat-input.js";
+import { ChatInput, type ChatInputProps } from "./chat-input.js";
+import { useAttachmentStatusVersion } from "./chat-input-state.js";
 import { ChatMessage } from "./chat-message.js";
+import { ComposerActionButton } from "./composer-action-button.js";
 import { ChatScroller } from "./chat-scroller.js";
 import { ChatTypingIndicator } from "./chat-typing-indicator.js";
-import { type FileUpload, MeshagentFileUpload, fileToAsyncIterable } from "./file-attachment.js";
+import { type FileUpload, MeshagentFileUpload, UploadStatus, fileToAsyncIterable } from "./file-attachment.js";
 import { filePreviewName, isImagePath } from "../file-preview/file-preview.js";
 import type { ChatFeedWidget, ToolCallStatus } from "./chat-feed-widget.js";
 import { resolveClientToolkitDescriptions } from "./chat-feed-widget.js";
@@ -88,6 +90,9 @@ export interface AgentThreadProps {
     closeThreadOnUnmount?: boolean;
     onPersistedEventsInjectionStarted?: () => void;
     onPersistedEventsInjected?: (error: unknown | null) => void;
+    /** Called before a valid local submission begins any asynchronous work. */
+    onSubmissionStarted?: (message: ChatMessage, steeringTurnId?: string) => void;
+    onSubmissionFailed?: (message: ChatMessage, error: unknown) => void;
     onEventsChanged?: (
         threadId: string,
         events: readonly AgentMessageEvent[],
@@ -121,7 +126,11 @@ interface AgentThreadContextValue {
     cancelTurn: () => Promise<void>;
     sendError: string | null;
     composerDisabled: boolean;
-    handleSend: (message: ChatMessage) => Promise<void>;
+    composerValue: string;
+    setComposerValue: (value: string) => void;
+    canSubmit: boolean;
+    handleComposerSubmit: (message: ChatMessage) => void;
+    submitDraft: () => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
     selectAttachments: (files: File[]) => void;
@@ -141,9 +150,7 @@ function mergeAgentMessageEvents(
     liveEvents: readonly AgentMessageEvent[],
 ): AgentMessageEvent[] {
     const merged = [...persistedEvents];
-    const indexByMessageId = new Map(
-        merged.map((event, index) => [event.message.messageId, index]),
-    );
+    const indexByMessageId = new Map(merged.map((event, index) => [event.message.messageId, index]));
     for (const event of liveEvents) {
         const existingIndex = indexByMessageId.get(event.message.messageId);
         if (existingIndex === undefined) {
@@ -195,7 +202,15 @@ function isShellTool(message: Pick<ChatThreadItem, "toolkit" | "tool" | "command
     const values = [message.toolkit, message.tool]
         .filter((value): value is string => typeof value === "string")
         .map((value) => value.trim().toLowerCase());
-    return values.some((value) => value === "shell" || value === "exec" || value === "local_shell" || value === "local_shell_call" || value.includes("shell") || value.includes("exec"));
+    return values.some(
+        (value) =>
+            value === "shell" ||
+            value === "exec" ||
+            value === "local_shell" ||
+            value === "local_shell_call" ||
+            value.includes("shell") ||
+            value.includes("exec"),
+    );
 }
 
 function canCollapseAsCommentary(message: ChatThreadItem): boolean {
@@ -217,18 +232,30 @@ function canRenderAsFinalAnswer(message: ChatThreadItem): boolean {
     return message.text.trim() !== "" || message.attachments.length > 0 || message.image != null;
 }
 
-function isChatFeedWidgetCall(message: ChatThreadItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
-    return message.kind === "tool_call" &&
+function isChatFeedWidgetCall(
+    message: ChatThreadItem,
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
+): boolean {
+    return (
+        message.kind === "tool_call" &&
         message.toolkit === "client" &&
         message.tool != null &&
-        chatFeedWidgetsByName.has(message.tool);
+        chatFeedWidgetsByName.has(message.tool)
+    );
 }
 
-function isIntrinsicDetail(message: ChatThreadItem, chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>): boolean {
-    return message.kind === "reasoning" ||
+function isIntrinsicDetail(
+    message: ChatThreadItem,
+    chatFeedWidgetsByName: ReadonlyMap<string, ChatFeedWidget>,
+): boolean {
+    return (
+        message.kind === "reasoning" ||
         message.kind === "event" ||
-        (message.kind === "tool_call" && message.failed !== true && !isChatFeedWidgetCall(message, chatFeedWidgetsByName)) ||
-        (canCollapseAsCommentary(message) && message.phase === "commentary");
+        (message.kind === "tool_call" &&
+            message.failed !== true &&
+            !isChatFeedWidgetCall(message, chatFeedWidgetsByName)) ||
+        (canCollapseAsCommentary(message) && message.phase === "commentary")
+    );
 }
 
 function nextUserMessageIndex(messages: ChatThreadItem[], start: number): number | null {
@@ -304,7 +331,6 @@ function groupThreadItems(
     return items;
 }
 
-
 function previousMessageItem(items: ChatThreadItem[], index: number): ChatThreadItem | null {
     return index > 0 ? items[index - 1] : null;
 }
@@ -350,14 +376,21 @@ export function formatAgentUsageTooltip(usage: AgentUsageSnapshot): string {
     return lines.join("\n");
 }
 
-export function AgentUsageFooter({ usage, className }: { usage: AgentUsageSnapshot | null; className?: string }): ReactElement {
+export function AgentUsageFooter({
+    usage,
+    className,
+}: {
+    usage: AgentUsageSnapshot | null;
+    className?: string;
+}): ReactElement {
     const tooltip = usage === null ? undefined : formatAgentUsageTooltip(usage);
     const label = usage === null ? "" : formatAgentUsageFooter(usage);
     return (
         <div
             className={cn("min-h-4 truncate px-2 text-right text-[11px] leading-4 text-muted-foreground", className)}
             title={tooltip}
-            aria-label={tooltip}>
+            aria-label={tooltip}
+        >
             {label}
         </div>
     );
@@ -372,6 +405,7 @@ function dateFromString(value?: string): Date | null {
 
 function normalizeAttachmentPath(path: string): string {
     const prefix = "room:///";
+
     return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
 
@@ -395,7 +429,6 @@ function attachmentImagePath(path: string): string | null {
     return isImagePath(normalized) ? normalized : null;
 }
 
-
 function MarkdownBlock({ text }: { text: string }): ReactElement {
     return (
         <ReactMarkdown
@@ -407,10 +440,23 @@ function MarkdownBlock({ text }: { text: string }): ReactElement {
                         {children}
                     </pre>
                 ),
-                p: ({ children, ...props }) => <p {...props} className="mb-2 last:mb-0">{children}</p>,
-                ul: ({ children, ...props }) => <ul {...props} className="mb-2 ml-6 list-disc last:mb-0">{children}</ul>,
-                ol: ({ children, ...props }) => <ol {...props} className="mb-2 ml-6 list-decimal last:mb-0">{children}</ol>,
-            }}>
+                p: ({ children, ...props }) => (
+                    <p {...props} className="mb-2 last:mb-0">
+                        {children}
+                    </p>
+                ),
+                ul: ({ children, ...props }) => (
+                    <ul {...props} className="mb-2 ml-6 list-disc last:mb-0">
+                        {children}
+                    </ul>
+                ),
+                ol: ({ children, ...props }) => (
+                    <ol {...props} className="mb-2 ml-6 list-decimal last:mb-0">
+                        {children}
+                    </ol>
+                ),
+            }}
+        >
             {text}
         </ReactMarkdown>
     );
@@ -421,10 +467,12 @@ function ChatBubble({ text, mine }: { text: string; mine: boolean }): ReactEleme
         return null;
     }
     return (
-        <div className={cn(
-            "w-fit max-w-[85%] rounded-md px-4 py-3 text-sm leading-6 shadow-xs sm:max-w-2xl",
-            mine ? "bg-secondary/85 text-foreground" : "bg-muted/70 text-foreground",
-        )}>
+        <div
+            className={cn(
+                "w-fit max-w-[85%] rounded-md px-4 py-3 text-sm leading-6 shadow-xs sm:max-w-2xl",
+                mine ? "bg-secondary/85 text-foreground" : "bg-muted/70 text-foreground",
+            )}
+        >
             <MarkdownBlock text={text} />
         </div>
     );
@@ -465,7 +513,16 @@ function trimShellText(value?: string): string | undefined {
     return value.length < 1024 ? value : value.slice(0, 1024) + "...";
 }
 
-export function ShellLine({ command, result, stdout, stderr, argumentsText, logs, title = "Terminal", className }: ShellLineProps): ReactElement | null {
+export function ShellLine({
+    command,
+    result,
+    stdout,
+    stderr,
+    argumentsText,
+    logs,
+    title = "Terminal",
+    className,
+}: ShellLineProps): ReactElement | null {
     const displayCommand = command?.trim() || title;
     const [expanded, setExpanded] = useState(title.toLowerCase().includes("error"));
     const trimmedResult = trimShellText(result);
@@ -473,7 +530,12 @@ export function ShellLine({ command, result, stdout, stderr, argumentsText, logs
     const trimmedStderr = trimShellText(stderr);
     const trimmedArguments = trimShellText(argumentsText);
     const trimmedLogs = logs == null || logs.length === 0 ? undefined : trimShellText(logs.join("\n"));
-    const hasDetails = trimmedResult != null || trimmedStdout != null || trimmedStderr != null || trimmedArguments != null || trimmedLogs != null;
+    const hasDetails =
+        trimmedResult != null ||
+        trimmedStdout != null ||
+        trimmedStderr != null ||
+        trimmedArguments != null ||
+        trimmedLogs != null;
 
     return (
         <div className={cn("mr-[50px] ml-1.5 overflow-hidden rounded-md border bg-background text-sm", className)}>
@@ -487,18 +549,46 @@ export function ShellLine({ command, result, stdout, stderr, argumentsText, logs
                     className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                     onClick={() => setExpanded((current) => !current)}
                     aria-expanded={expanded}
-                    aria-label={expanded ? "Collapse terminal output" : "Expand terminal output"}>
+                    aria-label={expanded ? "Collapse terminal output" : "Expand terminal output"}
+                >
                     {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
-                <pre className={cn("min-w-0 flex-1 overflow-hidden whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground", expanded ? null : "line-clamp-1")}>{displayCommand}</pre>
+                <pre
+                    className={cn(
+                        "min-w-0 flex-1 overflow-hidden whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground",
+                        expanded ? null : "line-clamp-1",
+                    )}
+                >
+                    {displayCommand}
+                </pre>
             </div>
             {expanded && hasDetails ? (
                 <div className="space-y-2 border-t px-4 py-3">
-                    {trimmedResult != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">{trimmedResult}</pre> : null}
-                    {trimmedStdout != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">{trimmedStdout}</pre> : null}
-                    {trimmedStderr != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-destructive">{trimmedStderr}</pre> : null}
-                    {trimmedArguments != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">{trimmedArguments}</pre> : null}
-                    {trimmedLogs != null ? <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">{trimmedLogs}</pre> : null}
+                    {trimmedResult != null ? (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">
+                            {trimmedResult}
+                        </pre>
+                    ) : null}
+                    {trimmedStdout != null ? (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-foreground">
+                            {trimmedStdout}
+                        </pre>
+                    ) : null}
+                    {trimmedStderr != null ? (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-destructive">
+                            {trimmedStderr}
+                        </pre>
+                    ) : null}
+                    {trimmedArguments != null ? (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">
+                            {trimmedArguments}
+                        </pre>
+                    ) : null}
+                    {trimmedLogs != null ? (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">
+                            {trimmedLogs}
+                        </pre>
+                    ) : null}
                 </div>
             ) : null}
         </div>
@@ -538,7 +628,13 @@ function eventLineDetails(details?: string | readonly string[] | null): string[]
     return lines.map((line: string) => line.trim()).filter((line: string) => line !== "");
 }
 
-export function EventLine({ headline, details, state = "info", failed = false, className }: EventLineProps): ReactElement | null {
+export function EventLine({
+    headline,
+    details,
+    state = "info",
+    failed = false,
+    className,
+}: EventLineProps): ReactElement | null {
     const normalizedHeadline = headline.trim();
     const detailLines = eventLineDetails(details);
     if (normalizedHeadline === "") {
@@ -582,7 +678,13 @@ function ToolCallLine({ message }: { message: ChatThreadItem }): ReactElement | 
     const hasDetails = detailLines.length > 0;
 
     if (!hasDetails) {
-        return <EventLine headline={message.text} state={message.state ?? (message.failed === true ? "failed" : "completed")} failed={message.failed} />;
+        return (
+            <EventLine
+                headline={message.text}
+                state={message.state ?? (message.failed === true ? "failed" : "completed")}
+                failed={message.failed}
+            />
+        );
     }
 
     return (
@@ -592,16 +694,32 @@ function ToolCallLine({ message }: { message: ChatThreadItem }): ReactElement | 
                 className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50"
                 onClick={() => setExpanded((current) => !current)}
                 aria-expanded={expanded}
-                aria-label={expanded ? "Collapse tool details" : "Expand tool details"}>
+                aria-label={expanded ? "Collapse tool details" : "Expand tool details"}
+            >
                 <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">
                     {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </span>
-                <span className={cn("min-w-0 flex-1 text-xs font-semibold leading-5", eventLineStateClass(message.state, message.failed))}>{message.text}</span>
+                <span
+                    className={cn(
+                        "min-w-0 flex-1 text-xs font-semibold leading-5",
+                        eventLineStateClass(message.state, message.failed),
+                    )}
+                >
+                    {message.text}
+                </span>
             </button>
             {expanded ? (
                 <div className="space-y-2 border-t px-4 py-3">
                     {detailLines.map((line, index) => (
-                        <pre key={index} className={cn("whitespace-pre-wrap break-words font-mono text-xs leading-5", message.failed === true ? "text-destructive" : "text-muted-foreground")}>{trimShellText(line)}</pre>
+                        <pre
+                            key={index}
+                            className={cn(
+                                "whitespace-pre-wrap break-words font-mono text-xs leading-5",
+                                message.failed === true ? "text-destructive" : "text-muted-foreground",
+                            )}
+                        >
+                            {trimShellText(line)}
+                        </pre>
                     ))}
                 </div>
             ) : null}
@@ -610,12 +728,18 @@ function ToolCallLine({ message }: { message: ChatThreadItem }): ReactElement | 
 }
 
 function AttachmentView({ room, path }: { room?: RoomClient; path: string }): ReactElement {
-    return attachmentImagePath(path) == null ? <AttachmentDownloadButton room={room} path={path} /> : <ChatImageAttachment room={room} path={path} />;
+    return attachmentImagePath(path) == null ? (
+        <AttachmentDownloadButton room={room} path={path} />
+    ) : (
+        <ChatImageAttachment room={room} path={path} />
+    );
 }
 
 function ChatImageAttachment({ room, path }: { room?: RoomClient; path: string }): ReactElement {
     const imagePath = attachmentImagePath(path) ?? path;
-    const [url, setUrl] = useState<string | null>(() => (isInlineImageUrl(imagePath) || isHttpUrl(imagePath) ? imagePath : null));
+    const [url, setUrl] = useState<string | null>(() =>
+        isInlineImageUrl(imagePath) || isHttpUrl(imagePath) ? imagePath : null,
+    );
     const [error, setError] = useState<unknown>(null);
 
     useEffect(() => {
@@ -633,7 +757,8 @@ function ChatImageAttachment({ room, path }: { room?: RoomClient; path: string }
             return;
         }
 
-        void room.storage.downloadUrl(imagePath)
+        void room.storage
+            .downloadUrl(imagePath)
             .then((nextUrl) => {
                 if (!cancelled) {
                     setUrl(nextUrl);
@@ -667,19 +792,31 @@ function ChatImageAttachment({ room, path }: { room?: RoomClient; path: string }
             type="button"
             className="block max-w-full overflow-hidden rounded-md shadow-xs transition-opacity hover:opacity-90"
             onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
-            title="Open image">
+            title="Open image"
+        >
             <img src={url} alt={filePreviewName(imagePath)} className="max-h-[312px] max-w-full object-contain" />
         </button>
     );
 }
 
-function AttachmentDownloadButton({ room, path, className }: { room?: RoomClient; path: string; className?: string }): ReactElement {
+function AttachmentDownloadButton({
+    room,
+    path,
+    className,
+}: {
+    room?: RoomClient;
+    path: string;
+    className?: string;
+}): ReactElement {
     const preview = normalizeAttachmentPath(path);
     const filename = filePreviewName(preview);
     return (
         <button
             type="button"
-            className={cn("inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80", className)}
+            className={cn(
+                "inline-flex max-w-full items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-left shadow-xs transition-colors hover:bg-muted/80",
+                className,
+            )}
             onClick={() => {
                 if (isInlineImageUrl(path) || isHttpUrl(path)) {
                     window.open(path, "_blank", "noopener,noreferrer");
@@ -689,18 +826,18 @@ function AttachmentDownloadButton({ room, path, className }: { room?: RoomClient
                 void room.storage.downloadUrl(preview).then((nextUrl) => {
                     window.open(nextUrl, "_blank", "noopener,noreferrer");
                 });
-            }}>
+            }}
+        >
             <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="truncate text-sm font-medium">{filename}</span>
-            {room != null || isInlineImageUrl(path) || isHttpUrl(path)
-                ? <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-                : <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>}
+            {room != null || isInlineImageUrl(path) || isHttpUrl(path) ? (
+                <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+                <span className="shrink-0 text-xs text-muted-foreground">Unavailable</span>
+            )}
         </button>
     );
 }
-
-
-
 
 export interface ChatThreadPreviewProps {
     room?: RoomClient;
@@ -712,7 +849,12 @@ export function ChatThreadPreview({ room, path, className }: ChatThreadPreviewPr
     const normalizedPath = normalizeAttachmentPath(path);
     if (attachmentImagePath(path) != null) {
         return (
-            <div className={cn("h-[312.5px] w-[312.5px] max-w-full overflow-hidden rounded-2xl bg-background", className)}>
+            <div
+                className={cn(
+                    "h-[312.5px] w-[312.5px] max-w-full overflow-hidden rounded-2xl bg-background",
+                    className,
+                )}
+            >
                 <ChatImageAttachment room={room} path={path} />
             </div>
         );
@@ -731,8 +873,11 @@ function GeneratedImageView({ image }: { image: NonNullable<ChatThreadItem["imag
                         key={`${entry.uri}:${index}`}
                         type="button"
                         className="overflow-hidden rounded-md shadow-xs transition-opacity hover:opacity-90"
-                        onClick={() => entry.uri != null ? window.open(entry.uri, "_blank", "noopener,noreferrer") : undefined}
-                        title="Open generated image">
+                        onClick={() =>
+                            entry.uri != null ? window.open(entry.uri, "_blank", "noopener,noreferrer") : undefined
+                        }
+                        title="Open generated image"
+                    >
                         <img src={entry.uri} alt="Generated image" className="max-h-[312px] w-full object-contain" />
                     </button>
                 ))}
@@ -746,7 +891,8 @@ function GeneratedImageView({ image }: { image: NonNullable<ChatThreadItem["imag
                 type="button"
                 className="max-w-[85%] overflow-hidden rounded-md shadow-xs transition-opacity hover:opacity-90 sm:max-w-2xl"
                 onClick={() => window.open(image.uri, "_blank", "noopener,noreferrer")}
-                title="Open generated image">
+                title="Open generated image"
+            >
                 <img src={image.uri} alt="Generated image" className="max-h-[312px] max-w-full object-contain" />
             </button>
         );
@@ -782,11 +928,7 @@ function ThreadMessageView({
     forceHideHeader?: boolean;
 }): ReactElement | null {
     if (message.kind === "error") {
-        return (
-            <div className="px-6 py-1 text-center text-sm text-destructive">
-                {message.text}
-            </div>
-        );
+        return <div className="px-6 py-1 text-center text-sm text-destructive">{message.text}</div>;
     }
 
     if (message.kind === "reasoning") {
@@ -798,7 +940,6 @@ function ThreadMessageView({
     }
 
     if (message.kind === "tool_call") {
-
         if (isShellTool(message)) {
             return (
                 <ShellLine
@@ -814,13 +955,16 @@ function ThreadMessageView({
             );
         }
 
-        const widget = message.toolkit === "client" && message.tool != null ? chatFeedWidgetsByName.get(message.tool) : undefined;
+        const widget =
+            message.toolkit === "client" && message.tool != null ? chatFeedWidgetsByName.get(message.tool) : undefined;
 
         if (widget != null) {
-            const status: ToolCallStatus = message.failed === true || message.state === "failed"
-                ? "failed"
-                : message.state === "completed" ? "completed"
-                    : message.state === "in_progress"
+            const status: ToolCallStatus =
+                message.failed === true || message.state === "failed"
+                    ? "failed"
+                    : message.state === "completed"
+                      ? "completed"
+                      : message.state === "in_progress"
                         ? "in_progress"
                         : "queued";
 
@@ -834,7 +978,8 @@ function ThreadMessageView({
                         output: message.output,
                         sendMessage: onSendMessage,
                     }}
-                    fallback={<ToolCallLine message={message} />} />
+                    fallback={<ToolCallLine message={message} />}
+                />
             );
         }
         return <ToolCallLine message={message} />;
@@ -842,7 +987,8 @@ function ThreadMessageView({
 
     const mine = message.role === "user";
     const authorName = message.authorName ?? (mine ? localParticipantName : displayParticipantName(agentName));
-    const previousAuthor = previous?.authorName ?? (previous?.role === "user" ? localParticipantName : displayParticipantName(agentName));
+    const previousAuthor =
+        previous?.authorName ?? (previous?.role === "user" ? localParticipantName : displayParticipantName(agentName));
     const shouldShowHeader = !forceHideHeader && (previous?.kind !== "message" || previousAuthor !== authorName);
 
     return (
@@ -850,8 +996,17 @@ function ThreadMessageView({
             {shouldShowHeader ? (
                 <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
                     <div className={cn("max-w-[85%] px-1 sm:max-w-2xl", mine ? "text-right" : "text-left")}>
-                        <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground", mine ? "justify-end" : "justify-start")}>
-                            {authorName.trim() !== "" ? <span className="font-semibold text-foreground">{displayParticipantName(authorName)}</span> : null}
+                        <div
+                            className={cn(
+                                "flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground",
+                                mine ? "justify-end" : "justify-start",
+                            )}
+                        >
+                            {authorName.trim() !== "" ? (
+                                <span className="font-semibold text-foreground">
+                                    {displayParticipantName(authorName)}
+                                </span>
+                            ) : null}
                             <span>{timeAgo(message.createdAt)}</span>
                         </div>
                     </div>
@@ -866,9 +1021,18 @@ function ThreadMessageView({
 
             {message.attachments.length > 0 ? (
                 <div className={cn("flex w-full", mine ? "justify-end" : "justify-start")}>
-                    <div className={cn("flex max-w-[85%] flex-wrap gap-3 px-1 sm:max-w-2xl", mine ? "justify-end" : "justify-start")}>
+                    <div
+                        className={cn(
+                            "flex max-w-[85%] flex-wrap gap-3 px-1 sm:max-w-2xl",
+                            mine ? "justify-end" : "justify-start",
+                        )}
+                    >
                         {message.attachments.map((attachment, index) => (
-                            <AttachmentView key={`${message.id}:attachment:${attachment}:${index}`} room={room} path={attachment} />
+                            <AttachmentView
+                                key={`${message.id}:attachment:${attachment}:${index}`}
+                                room={room}
+                                path={attachment}
+                            />
                         ))}
                     </div>
                 </div>
@@ -886,13 +1050,9 @@ function ThreadMessageView({
 function EmptyState({ title, description }: { title: string; description?: string }): ReactElement {
     return (
         <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-6 py-20 text-center">
-            <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                {title}
-            </h2>
+            <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{title}</h2>
             {description?.trim() ? (
-                <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-                    {description}
-                </p>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
             ) : null}
         </div>
     );
@@ -906,13 +1066,7 @@ function LoadingState(): ReactElement {
     );
 }
 
-function ErrorBanner({
-    message,
-    onRetry,
-}: {
-    message: string;
-    onRetry?: () => void;
-}): ReactElement {
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }): ReactElement {
     return (
         <div className="mx-auto flex w-full max-w-[912px] items-center justify-between gap-3 whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             <span>{message}</span>
@@ -933,18 +1087,11 @@ function describeError(error: unknown): string {
 }
 
 interface ParticipantAwareChatClient extends BaseChatClient {
-    waitForAgentParticipant(options?: {
-        waitKey?: string;
-        signal?: AbortSignal;
-        timeoutMs?: number;
-    }): Promise<unknown>;
+    waitForAgentParticipant(options?: { waitKey?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<unknown>;
 }
 
 function hasAgentParticipantWaiter(chatClient: BaseChatClient): chatClient is ParticipantAwareChatClient {
-    return (
-        "waitForAgentParticipant" in chatClient &&
-        typeof chatClient.waitForAgentParticipant === "function"
-    );
+    return "waitForAgentParticipant" in chatClient && typeof chatClient.waitForAgentParticipant === "function";
 }
 
 const persistedEventsParticipantWaitTimeoutMs = 30_000;
@@ -1001,17 +1148,17 @@ function processClientToolRequests({
     updateCall: (callKey: string, override: ClientToolCallOverride) => void;
     executeRequests: boolean;
 }): void {
-
     if (toolsByName.size === 0) {
         return;
     }
 
     const requests = session.messages
         .map((event) => event.message)
-        .filter((message): message is InstanceType<typeof AgentClientToolCallRequested> => message instanceof AgentClientToolCallRequested)
-        .filter((message) => (
-        message.toolkit === "client" && toolsByName.has(message.tool)
-    ));
+        .filter(
+            (message): message is InstanceType<typeof AgentClientToolCallRequested> =>
+                message instanceof AgentClientToolCallRequested,
+        )
+        .filter((message) => message.toolkit === "client" && toolsByName.has(message.tool));
 
     const handledRequests = handledRequestsForSession(session);
     if (!initializedClientToolSessions.has(session)) {
@@ -1031,15 +1178,15 @@ function processClientToolRequests({
         }
 
         replayingClientToolSessions.delete(session);
-        const completedItemIds = new Set(session.messages
-            .map((event) => event.message)
-            .filter((message): message is InstanceType<typeof AgentToolCallEnded> => (
-                message instanceof AgentToolCallEnded && message.toolkit === "client"
-            ))
-            .map((message) => message.itemId));
+        const completedRequestIds = new Set(
+            buildChatThreadTimeline(session.messages).items
+                .filter((item) => item.kind === "tool_call" && item.toolkit === "client" &&
+                    (item.state === "completed" || item.state === "failed"))
+                .map((item) => item.clientToolRequestId ?? item.id),
+        );
 
         for (const request of requests) {
-            if (completedItemIds.has(request.requestId)) {
+            if (completedRequestIds.has(request.requestId)) {
                 handledRequests.add(request.requestId);
             }
         }
@@ -1060,7 +1207,7 @@ function processClientToolRequests({
         handledRequests.add(request.requestId);
 
         updateCall(clientToolCallKey(session.threadPath, request.requestId), {
-          status: "in_progress"
+            status: "in_progress",
         });
 
         void (async () => {
@@ -1070,15 +1217,14 @@ function processClientToolRequests({
             try {
                 response = await tool.execute(request.arguments);
                 status = response instanceof ErrorContent ? "failed" : "completed";
-
             } catch (error) {
                 response = new ErrorContent({ text: describeError(error) });
                 status = "failed";
             }
 
             updateCall(clientToolCallKey(session.threadPath, request.requestId), {
-              status,
-              output: response,
+                status,
+                output: response,
             });
 
             try {
@@ -1088,7 +1234,6 @@ function processClientToolRequests({
                     response,
                 });
                 session.finishClientToolCall(request.requestId, { responseSent: true });
-
             } catch (error) {
                 session.finishClientToolCall(request.requestId, { responseSent: false });
                 updateCall(clientToolCallKey(session.threadPath, request.requestId), {
@@ -1123,13 +1268,19 @@ export function AgentThreadProvider({
     onPersistedEventsInjectionStarted,
     onPersistedEventsInjected,
     onEventsChanged,
+    onSubmissionStarted,
+    onSubmissionFailed,
 }: AgentThreadProviderProps): ReactElement {
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
+    const [composerValue, setComposerValue] = useState("");
     const [sendError, setSendError] = useState<string | null>(null);
     const [restorationError, setRestorationError] = useState<string | null>(null);
     const [restorationAttempt, setRestorationAttempt] = useState(0);
     const [version, setVersion] = useState(0);
-    const [clientToolCallOverrides, setClientToolCallOverrides] = useState<Map<string, ClientToolCallOverride>>(() => new Map());
+    const [clientToolCallOverrides, setClientToolCallOverrides] = useState<Map<string, ClientToolCallOverride>>(
+        () => new Map(),
+    );
+    const attachmentStatusVersion = useAttachmentStatusVersion(attachments);
 
     const sessionRef = useRef<ChatThreadSession | null>(null);
     const mountedRef = useRef(true);
@@ -1142,14 +1293,11 @@ export function AgentThreadProvider({
         timer: ReturnType<typeof setTimeout>;
     } | null>(null);
     const ownsChatClient = chatClient == null;
-    const activeChatClient = useMemo<BaseChatClient>(
-        () => {
-            if (chatClient != null) return chatClient;
-            if (room != null) return new MessagingChatClient({ room, agentName });
-            throw new Error("AgentThread requires either a room or a chat client.");
-        },
-        [agentName, chatClient, room],
-    );
+    const activeChatClient = useMemo<BaseChatClient>(() => {
+        if (chatClient != null) return chatClient;
+        if (room != null) return new MessagingChatClient({ room, agentName });
+        throw new Error("AgentThread requires either a room or a chat client.");
+    }, [agentName, chatClient, room]);
 
     const resolvedClientToolkits = useMemo(
         () => resolveClientToolkitDescriptions(clientToolkits, chatFeedWidgets, clientTools),
@@ -1167,10 +1315,11 @@ export function AgentThreadProvider({
     );
 
     const clientToolExecutorsByName = useMemo<ReadonlyMap<string, Tool>>(
-        () => new Map([
-            ...(clientTools ?? []).map((tool) => [tool.name, tool] as const),
-            ...(chatFeedWidgets ?? []).map((widget) => [widget.name, widget] as const),
-        ]),
+        () =>
+            new Map([
+                ...(clientTools ?? []).map((tool) => [tool.name, tool] as const),
+                ...(chatFeedWidgets ?? []).map((widget) => [widget.name, widget] as const),
+            ]),
         [chatFeedWidgets, clientTools],
     );
 
@@ -1185,10 +1334,10 @@ export function AgentThreadProvider({
         });
     }, []);
 
-    const localParticipantName = room == null
-        ? activeChatClient.localParticipantName() ?? ""
-        : getParticipantName(room.localParticipant);
-    const agentParticipant = activeChatClient.agentParticipant() ?? (room == null ? null : findAgentParticipant(room, agentName));
+    const localParticipantName =
+        room == null ? (activeChatClient.localParticipantName() ?? "") : getParticipantName(room.localParticipant);
+    const agentParticipant =
+        activeChatClient.agentParticipant() ?? (room == null ? null : findAgentParticipant(room, agentName));
 
     useEffect(() => {
         mountedRef.current = true;
@@ -1212,12 +1361,7 @@ export function AgentThreadProvider({
     }, [activeChatClient, disposeChatClient, ownsChatClient]);
 
     useEffect(() => {
-        restorationReadyRef.current = (
-            !loadThread && (
-                !injectPersistedEvents ||
-                restoredPathRef.current === path
-            )
-        );
+        restorationReadyRef.current = !loadThread && (!injectPersistedEvents || restoredPathRef.current === path);
         const session = activeChatClient.openThread(path, {
             load: loadThread,
             reloadIfOpen: loadThread && restorationAttempt > 0,
@@ -1241,10 +1385,7 @@ export function AgentThreadProvider({
             }
             if (session.isLoading) {
                 restorationReadyRef.current = false;
-                if (
-                    activeChatClient.agentParticipant() == null &&
-                    hasAgentParticipantWaiter(activeChatClient)
-                ) {
+                if (activeChatClient.agentParticipant() == null && hasAgentParticipantWaiter(activeChatClient)) {
                     clearThreadLoadTimeout();
                     return;
                 }
@@ -1255,7 +1396,9 @@ export function AgentThreadProvider({
                             return;
                         }
                         restorationReadyRef.current = false;
-                        setRestorationError("Unable to restore conversation context: the server thread did not finish loading within 30 seconds.");
+                        setRestorationError(
+                            "Unable to restore conversation context: the server thread did not finish loading within 30 seconds.",
+                        );
                         setVersion((current) => current + 1);
                     }, threadLoadTimeoutMs);
                 }
@@ -1266,20 +1409,14 @@ export function AgentThreadProvider({
             const loadError = session.loadState.error;
             if (loadError != null) {
                 restorationReadyRef.current = false;
-                if (
-                    activeChatClient.agentParticipant() == null &&
-                    hasAgentParticipantWaiter(activeChatClient)
-                ) {
+                if (activeChatClient.agentParticipant() == null && hasAgentParticipantWaiter(activeChatClient)) {
                     setRestorationError(null);
                     return;
                 }
                 setRestorationError(`Unable to restore conversation context: ${loadError}`);
                 return;
             }
-            restorationReadyRef.current = (
-                !injectPersistedEvents ||
-                restoredPathRef.current === path
-            );
+            restorationReadyRef.current = !injectPersistedEvents || restoredPathRef.current === path;
             setRestorationError(null);
         };
         const handleChange = () => {
@@ -1301,11 +1438,7 @@ export function AgentThreadProvider({
         session.addListener(handleChange);
         handleChange();
 
-        if (
-            loadThread &&
-            activeChatClient.agentParticipant() == null &&
-            hasAgentParticipantWaiter(activeChatClient)
-        ) {
+        if (loadThread && activeChatClient.agentParticipant() == null && hasAgentParticipantWaiter(activeChatClient)) {
             loadParticipantAbortController = new AbortController();
             const { signal } = loadParticipantAbortController;
             void (async () => {
@@ -1350,10 +1483,7 @@ export function AgentThreadProvider({
                     if (signal.aborted || sessionRef.current !== session) {
                         return;
                     }
-                    if (
-                        activeChatClient.agentParticipant() == null &&
-                        hasAgentParticipantWaiter(activeChatClient)
-                    ) {
+                    if (activeChatClient.agentParticipant() == null && hasAgentParticipantWaiter(activeChatClient)) {
                         await activeChatClient.waitForAgentParticipant({
                             waitKey: `persisted-events:${path}:${restorationAttempt}:${uuidV4()}`,
                             signal,
@@ -1446,38 +1576,51 @@ export function AgentThreadProvider({
             : buildMergedChatThreadTimeline(persistedEvents, session.messages, session.pendingInputs);
     }, [deferLiveEvents, persistedEvents, session, version]);
 
-    const timelineItems = useMemo(() => (timeline?.items ?? []).map((item) => {
-        const override = session == null
-            ? undefined
-            : clientToolCallOverrides.get(clientToolCallKey(session.threadPath, item.id));
+    const timelineItems = useMemo(
+        () =>
+            (timeline?.items ?? []).map((item) => {
+                const override =
+                    session == null
+                        ? undefined
+                        : clientToolCallOverrides.get(clientToolCallKey(session.threadPath, item.clientToolRequestId ?? item.id));
 
-        if (override == null || item.kind !== "tool_call" || (item.state === "completed" || item.state === "failed")) {
-            return item;
-        }
+                if (
+                    override == null ||
+                    item.kind !== "tool_call" ||
+                    item.state === "completed" ||
+                    item.state === "failed"
+                ) {
+                    return item;
+                }
 
-        return {
-            ...item,
-            state: override.status,
-            failed: override.status === "failed",
-            output: override.output ?? item.output,
-        };
-    }), [clientToolCallOverrides, session, timeline]);
+                return {
+                    ...item,
+                    state: override.status,
+                    failed: override.status === "failed",
+                    output: override.output ?? item.output,
+                };
+            }),
+        [clientToolCallOverrides, session, timeline],
+    );
 
     const showThreadLoading = (deferLiveEvents || session === null || session.isLoading) && timelineItems.length === 0;
     const feedTimelineItems = useMemo(
-        () => timelineItems.filter((item) => (
-            !(item.kind === "tool_call"
-                && item.toolkit === "client"
-                && item.tool != null
-                && clientToolsByName.has(item.tool))
-        )),
+        () =>
+            timelineItems.filter(
+                (item) =>
+                    !(
+                        item.kind === "tool_call" &&
+                        item.toolkit === "client" &&
+                        item.tool != null &&
+                        clientToolsByName.has(item.tool)
+                    ),
+            ),
         [clientToolsByName, timelineItems],
     );
-    const renderedItems = useMemo(() => (
-        collapseMessages
-            ? groupThreadItems(feedTimelineItems, chatFeedWidgetsByName)
-            : feedTimelineItems
-    ), [chatFeedWidgetsByName, collapseMessages, feedTimelineItems]);
+    const renderedItems = useMemo(
+        () => (collapseMessages ? groupThreadItems(feedTimelineItems, chatFeedWidgetsByName) : feedTimelineItems),
+        [chatFeedWidgetsByName, collapseMessages, feedTimelineItems],
+    );
 
     const status = useMemo(() => {
         if (session == null) return null;
@@ -1500,7 +1643,22 @@ export function AgentThreadProvider({
     const usage = timeline?.usage ?? null;
     const statusText = status?.status?.trim() || null;
     const turnId = stringValue(status?.turnId);
-    const canInterruptActiveTurn = turnId != null && (agentParticipant != null || chatClient != null);
+    const interruptibleTurnId = useMemo(() => {
+        let active: string | null = null;
+
+        for (const event of session?.messages ?? []) {
+            if (event.message instanceof TurnStarted) {
+                active = event.message.turnId;
+            }
+
+            if (event.message instanceof TurnEnded && event.message.turnId === active) {
+                active = null;
+            }
+        }
+
+        return active ?? turnId;
+    }, [session, version, turnId]);
+    const canInterruptActiveTurn = interruptibleTurnId != null && (agentParticipant != null || chatClient != null);
     const renderedItemsNewestFirst = useMemo(() => [...renderedItems].reverse(), [renderedItems]);
     const firstRenderedItemId = renderedItems[0]?.id;
     const lastRenderedItemId = renderedItems[renderedItems.length - 1]?.id;
@@ -1512,109 +1670,165 @@ export function AgentThreadProvider({
         return previousById;
     }, [renderedItems]);
 
-    const selectAttachments = useCallback((files: File[]) => {
-        if (room == null) return;
-        const nextAttachments = files.map((file) => new MeshagentFileUpload(
-            room,
-            `uploaded-files/${file.name}`,
-            fileToAsyncIterable(file),
-            file.size,
-        ));
-        setAttachments((current) => [...current, ...nextAttachments]);
-    }, [room]);
+    const selectAttachments = useCallback(
+        (files: File[]) => {
+            if (room == null) return;
+            const nextAttachments = files.map(
+                (file) =>
+                    new MeshagentFileUpload(room, `uploaded-files/${file.name}`, fileToAsyncIterable(file), file.size),
+            );
+            setAttachments((current) => [...current, ...nextAttachments]);
+        },
+        [room],
+    );
 
-    const handleSend = useCallback(async (message: ChatMessage) => {
-        if (message.text.trim() === "" && message.attachments.length === 0) {
-            return;
-        }
-        if (!agentParticipant && chatClient == null) {
-            setSendError("This thread requires an online agent that supports agent messages.");
-            return;
-        }
-        const openSession = sessionRef.current;
-        if (openSession === null) {
-            setSendError("No thread session is open.");
-            return;
-        }
+    const handleSend = useCallback(
+        async (message: ChatMessage) => {
+            if (message.text.trim() === "" && message.attachments.length === 0) {
+                return;
+            }
+            if (!agentParticipant && chatClient == null) {
+                setSendError("This thread requires an online agent that supports agent messages.");
+                return;
+            }
+            const openSession = sessionRef.current;
+            if (openSession === null) {
+                setSendError("No thread session is open.");
+                return;
+            }
 
-        const normalizedAttachments = message.attachments
-            .map(normalizeAgentAttachmentUrl)
-            .filter((attachment): attachment is string => attachment !== null);
+            const normalizedAttachments = message.attachments
+                .map(normalizeAgentAttachmentUrl)
+                .filter((attachment): attachment is string => attachment !== null);
 
-        try {
-            await openSession.sendText({
-                messageId: message.id,
-                text: message.text,
-                attachments: normalizedAttachments.map((url) => new AgentFileContent({ url })),
-                turnId,
-                steer: status?.mode === "steerable" && turnId != null,
-                senderName: localParticipantName.trim() || undefined,
-                clientToolkits: resolvedClientToolkits,
-            });
+            const steeringTurnId = status?.mode === "steerable" && turnId != null ? turnId : undefined;
 
-            setSendError(null);
-            setVersion((current) => current + 1);
-        } catch (error) {
-            setSendError(describeError(error));
-        }
-    }, [agentParticipant, chatClient, resolvedClientToolkits, localParticipantName, status?.mode, turnId]);
+            onSubmissionStarted?.(message, steeringTurnId);
 
-    const composerDisabled = (
+            try {
+                await openSession.sendText({
+                    messageId: message.id,
+                    text: message.text,
+                    attachments: normalizedAttachments.map((url) => new AgentFileContent({ url })),
+                    turnId,
+                    steer: status?.mode === "steerable" && turnId != null,
+                    senderName: localParticipantName.trim() || undefined,
+                    clientToolkits: resolvedClientToolkits,
+                });
+
+                setSendError(null);
+                setVersion((current) => current + 1);
+            } catch (error) {
+                onSubmissionFailed?.(message, error);
+                setSendError(describeError(error));
+            }
+        },
+        [
+            agentParticipant,
+            chatClient,
+            resolvedClientToolkits,
+            localParticipantName,
+            status?.mode,
+            turnId,
+            onSubmissionStarted,
+            onSubmissionFailed,
+        ],
+    );
+
+    const composerDisabled =
         composerDisabledProp ||
         (loadThread && !restorationReadyRef.current) ||
         (injectPersistedEvents && restoredPathRef.current !== path) ||
-        (agentParticipant == null && chatClient == null)
+        (agentParticipant == null && chatClient == null);
+    const allAttachmentsUploaded = useMemo(
+        () => attachments.every((attachment) => attachment.status === UploadStatus.Completed),
+        [attachmentStatusVersion, attachments],
     );
-    const handleWidgetMessage = useCallback((message: string) => {
-        const text = message.trim();
-        if (text === "" || composerDisabled) {
-            return;
-        }
-        void handleSend(new ChatMessage({
-            id: uuidV4(),
-            text,
-        }));
-    }, [composerDisabled, handleSend]);
+    const canSubmit =
+        !composerDisabled && (composerValue.trim() !== "" || attachments.length > 0) && allAttachmentsUploaded;
+    const handleComposerSubmit = useCallback(
+        (message: ChatMessage) => {
+            if (!canSubmit) {
+                return;
+            }
+
+            void handleSend(message);
+            setComposerValue("");
+            setAttachments([]);
+        },
+        [canSubmit, handleSend],
+    );
+    const submitDraft = useCallback(() => {
+        handleComposerSubmit(
+            new ChatMessage({
+                id: uuidV4(),
+                text: composerValue.trim(),
+                attachments: attachments.map((attachment) => attachment.path),
+            }),
+        );
+    }, [attachments, composerValue, handleComposerSubmit]);
+    const handleWidgetMessage = useCallback(
+        (message: string) => {
+            const text = message.trim();
+            if (text === "" || composerDisabled) {
+                return;
+            }
+            void handleSend(
+                new ChatMessage({
+                    id: uuidV4(),
+                    text,
+                }),
+            );
+        },
+        [composerDisabled, handleSend],
+    );
 
     const cancelTurn = useCallback(async () => {
         const openSession = sessionRef.current;
-        if (openSession === null || turnId == null) {
+        if (openSession === null || interruptibleTurnId == null) {
             return;
         }
-        await openSession.interruptTurn(turnId);
-    }, [turnId]);
+
+        await openSession.interruptTurn(interruptibleTurnId);
+    }, [interruptibleTurnId]);
 
     return (
-        <AgentThreadContext.Provider value={{
-            room,
-            agentName,
-            emptyStateTitle,
-            emptyStateDescription,
-            chatFeedWidgetsByName,
-            timelineItems,
-            renderedItemsNewestFirst,
-            firstRenderedItemId,
-            lastRenderedItemId,
-            previousItemById,
-            showThreadLoading,
-            localParticipantName,
-            status,
-            statusText,
-            canInterruptActiveTurn,
-            restorationError,
-            retryRestoration,
-            handleWidgetMessage,
-            cancelTurn,
-            sendError,
-            composerDisabled,
-            handleSend,
-            attachments,
-            setAttachments,
-            selectAttachments,
-            enableFileUpload: enableFileUpload && room != null,
-            inputAvailable: agentParticipant != null || chatClient != null,
-            usage,
-        }}>
+        <AgentThreadContext.Provider
+            value={{
+                room,
+                agentName,
+                emptyStateTitle,
+                emptyStateDescription,
+                chatFeedWidgetsByName,
+                timelineItems,
+                renderedItemsNewestFirst,
+                firstRenderedItemId,
+                lastRenderedItemId,
+                previousItemById,
+                showThreadLoading,
+                localParticipantName,
+                status,
+                statusText,
+                canInterruptActiveTurn,
+                restorationError,
+                retryRestoration,
+                handleWidgetMessage,
+                cancelTurn,
+                sendError,
+                composerDisabled,
+                composerValue,
+                setComposerValue,
+                canSubmit,
+                handleComposerSubmit,
+                submitDraft,
+                attachments,
+                setAttachments,
+                selectAttachments,
+                enableFileUpload: enableFileUpload && room != null,
+                inputAvailable: agentParticipant != null || chatClient != null,
+                usage,
+            }}
+        >
             {children}
         </AgentThreadContext.Provider>
     );
@@ -1628,14 +1842,43 @@ function useAgentThreadContext(componentName: string): AgentThreadContextValue {
     return context;
 }
 
-export function AgentThreadFeed(): ReactElement {
+export interface AgentThreadFeedState {
+    /** Visible feed items in chronological order, including grouped tool calls. */
+    items: readonly ChatThreadItem[];
+}
+
+export function useAgentThreadFeedState(): AgentThreadFeedState {
+    const { renderedItemsNewestFirst } = useAgentThreadContext("useAgentThreadFeedState");
+    return useMemo(() => ({ items: [...renderedItemsNewestFirst].reverse() }), [renderedItemsNewestFirst]);
+}
+
+/** Controls for application-owned turn status presentations. */
+export function useAgentThreadStatus() {
+    const { canInterruptActiveTurn, cancelTurn } = useAgentThreadContext("useAgentThreadStatus");
+
+    return { canInterrupt: canInterruptActiveTurn, interrupt: cancelTurn };
+}
+
+export interface AgentThreadFeedProps {
+    /** Show the built-in progress overlay and reserve its bottom spacing. Defaults to true. */
+    showStatusIndicator?: boolean;
+    /** Renders application-owned content after a visible feed item without sending it to the agent. */
+    renderAfterItem?: (item: ChatThreadItem) => ReactNode;
+    /** Renders local content before the oldest item, or in place of the empty state. */
+    renderUnanchored?: () => ReactNode;
+}
+
+export function AgentThreadFeed({
+    renderAfterItem,
+    renderUnanchored,
+    showStatusIndicator = true,
+}: AgentThreadFeedProps = {}): ReactElement {
     const {
         room,
         agentName,
         emptyStateTitle,
         emptyStateDescription,
         chatFeedWidgetsByName,
-        timelineItems,
         renderedItemsNewestFirst,
         firstRenderedItemId,
         lastRenderedItemId,
@@ -1650,6 +1893,8 @@ export function AgentThreadFeed(): ReactElement {
         handleWidgetMessage,
         cancelTurn,
     } = useAgentThreadContext("AgentThreadFeed");
+    const unanchoredContent = renderUnanchored?.();
+    const hasUnanchoredContent = Children.toArray(unanchoredContent).length > 0;
 
     return (
         <>
@@ -1658,10 +1903,16 @@ export function AgentThreadFeed(): ReactElement {
                     <div className="min-h-0 flex-1 overflow-hidden">
                         <LoadingState />
                     </div>
-                ) : timelineItems.length === 0 ? (
-                    <div className="min-h-0 flex-1 overflow-hidden">
-                        <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
-                    </div>
+                ) : renderedItemsNewestFirst.length === 0 ? (
+                    hasUnanchoredContent ? (
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                            <div className="mx-auto w-full max-w-[912px] px-4 py-3">{unanchoredContent}</div>
+                        </div>
+                    ) : (
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                            <EmptyState title={emptyStateTitle} description={emptyStateDescription} />
+                        </div>
+                    )
                 ) : (
                     <ChatScroller
                         bottomThresholdPx={24}
@@ -1670,27 +1921,36 @@ export function AgentThreadFeed(): ReactElement {
                         getMessageAuthorId={(item) => item.role}
                         messages={renderedItemsNewestFirst}
                         renderMessage={(item) => {
-                          return (
-                            <div className={cn(
-                                "mx-auto w-full max-w-[912px] px-1 py-3",
-                                item.id === firstRenderedItemId ? "pt-6" : null,
-                                item.id === lastRenderedItemId ? (statusText ? "pb-24" : "pb-6") : null)}>
-
-                                <ThreadMessageView
-                                    room={room}
-                                    message={item}
-                                    previous={previousItemById.get(item.id) ?? null}
-                                    localParticipantName={localParticipantName}
-                                    agentName={agentName}
-                                    chatFeedWidgetsByName={chatFeedWidgetsByName}
-                                    onSendMessage={handleWidgetMessage}
-                                />
-                            </div>
-                          );
-                        }} />
+                            return (
+                                <div
+                                    className={cn(
+                                        "mx-auto w-full max-w-[912px] px-1 py-3",
+                                        item.id === firstRenderedItemId ? "pt-6" : null,
+                                        item.id === lastRenderedItemId
+                                            ? showStatusIndicator && statusText
+                                                ? "pb-24"
+                                                : "pb-6"
+                                            : null,
+                                    )}
+                                >
+                                    {item.id === firstRenderedItemId ? unanchoredContent : null}
+                                    <ThreadMessageView
+                                        room={room}
+                                        message={item}
+                                        previous={previousItemById.get(item.id) ?? null}
+                                        localParticipantName={localParticipantName}
+                                        agentName={agentName}
+                                        chatFeedWidgetsByName={chatFeedWidgetsByName}
+                                        onSendMessage={handleWidgetMessage}
+                                    />
+                                    {renderAfterItem?.(item)}
+                                </div>
+                            );
+                        }}
+                    />
                 )}
 
-                {statusText ? (
+                {showStatusIndicator && statusText ? (
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-4">
                         <div className="pointer-events-auto w-full max-w-[912px]">
                             <ChatTypingIndicator
@@ -1711,22 +1971,34 @@ export function AgentThreadFeed(): ReactElement {
 
             {restorationError ? (
                 <div className="px-4 pb-2">
-                    <ErrorBanner
-                        message={restorationError}
-                        onRetry={retryRestoration}
-                    />
+                    <ErrorBanner message={restorationError} onRetry={retryRestoration} />
                 </div>
             ) : null}
         </>
     );
 }
 
-export function AgentThreadInput(): ReactElement {
+export interface AgentThreadInputProps
+    extends Pick<ChatInputProps, "className" | "inputRowClassName" | "textareaClassName" | "leadingButton"> {
+    showSubmitButton?: boolean;
+    submitButtonComponent?: ChatInputProps["submitButtonComponent"];
+}
+
+export function AgentThreadInput({
+    className,
+    inputRowClassName,
+    textareaClassName,
+    leadingButton,
+    showSubmitButton = true,
+    submitButtonComponent,
+}: AgentThreadInputProps = {}): ReactElement {
     const {
         agentName,
         sendError,
         composerDisabled,
-        handleSend,
+        composerValue,
+        setComposerValue,
+        handleComposerSubmit,
         attachments,
         setAttachments,
         selectAttachments,
@@ -1745,17 +2017,52 @@ export function AgentThreadInput(): ReactElement {
 
             <div className="flex flex-col gap-1">
                 <ChatInput
-                    onSubmit={handleSend}
+                    className={className}
+                    inputRowClassName={inputRowClassName}
+                    textareaClassName={textareaClassName}
+                    leadingButton={leadingButton}
+                    onSubmit={handleComposerSubmit}
                     attachments={attachments}
                     onFilesSelected={selectAttachments}
                     setAttachments={setAttachments}
                     enableFileUpload={enableFileUpload}
                     disabled={composerDisabled}
-                    placeholder={inputAvailable ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`} />
-
-                <AgentUsageFooter usage={usage} className="mx-auto w-full max-w-[912px]" />
+                    clearOnSubmit={false}
+                    value={composerValue}
+                    onValueChange={setComposerValue}
+                    showSubmitButton={showSubmitButton}
+                    submitButtonComponent={submitButtonComponent}
+                    placeholder={inputAvailable ? "Type a message" : `Waiting for ${displayParticipantName(agentName)}`}
+                />
             </div>
         </>
+    );
+}
+
+export interface AgentThreadSubmitButtonProps {
+    className?: string;
+    icon?: ReactNode;
+    title?: string;
+    ariaLabel?: string;
+}
+
+export function AgentThreadSubmitButton({
+    className,
+    icon,
+    title,
+    ariaLabel,
+}: AgentThreadSubmitButtonProps = {}): ReactElement {
+    const { canSubmit, submitDraft } = useAgentThreadContext("AgentThreadSubmitButton");
+
+    return (
+        <ComposerActionButton
+            className={className}
+            disabled={!canSubmit}
+            onClick={submitDraft}
+            icon={icon}
+            title={title}
+            ariaLabel={ariaLabel}
+        />
     );
 }
 

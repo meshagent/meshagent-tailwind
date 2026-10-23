@@ -57,6 +57,8 @@ export interface ChatThreadItem {
   turnId?: string;
   toolkit?: string;
   tool?: string;
+  /** Execution request associated with this lifecycle row. */
+  clientToolRequestId?: string;
   command?: string;
   argumentsText?: string;
   input?: Record<string, unknown>;
@@ -197,6 +199,7 @@ function stringValue(value: unknown): string | undefined {
 function inputContent(message: InputContentMessage): { text: string; attachments: string[] } {
   const textParts: string[] = [];
   const attachments: string[] = [];
+
   for (const item of message.content ?? []) {
     if (item.type === "text" && item.text.trim() !== "") {
       textParts.push(item.text);
@@ -204,7 +207,11 @@ function inputContent(message: InputContentMessage): { text: string; attachments
       attachments.push(item.url);
     }
   }
-  return { text: textParts.join("\n"), attachments };
+
+  return {
+    text: textParts.join("\n"),
+    attachments,
+  };
 }
 
 function inputItemFromMessage(message: AgentMessage, createdAt: Date): ChatThreadItem | null {
@@ -424,7 +431,7 @@ function turnEndedErrorItem(message: TurnEndedMessage, createdAt: Date): ChatThr
   };
 }
 
-export function buildChatThreadTimeline(
+function buildRawChatThreadTimeline(
   events: readonly AgentMessageEvent[],
   pendingInputs: readonly PendingAgentInput[] = [],
 ): ChatThreadTimeline {
@@ -521,10 +528,12 @@ export function buildChatThreadTimeline(
         state: existing?.state ?? "in_progress", failed: existing?.failed,
       });
     } else if (isTypedMessage<ClientToolCallRequestedMessage>(message, AgentClientToolCallRequested)) {
+      const existing = items.get(message.requestId);
+
       upsertItem(items, {
-        id: message.requestId, kind: "tool_call", role: "agent", text: `Waiting for client tool ${toolCallLabel(message)}`,
+        id: message.requestId, kind: "tool_call", role: "agent", text: existing?.text ?? `Waiting for client tool ${toolCallLabel(message)}`,
         attachments: [], createdAt, turnId: message.turnId, toolkit: message.toolkit, tool: message.tool,
-        argumentsText: formatJsonValue(message.arguments), input: message.arguments, state: "queued",
+        argumentsText: formatJsonValue(message.arguments), input: message.arguments, state: existing?.state ?? "queued",
       });
     } else if (isTypedMessage<SecretRequestedMessage>(message, AgentSecretRequested)) {
       const prompt = message.prompt?.trim();
@@ -567,23 +576,124 @@ export function buildChatThreadTimeline(
   };
 }
 
+function clientToolInputKey(input: Record<string, unknown>): string {
+  return JSON.stringify(input, (_key, value: unknown) => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+  });
+}
+
+function mergeClientToolRequests(items: readonly ChatThreadItem[], events: readonly AgentMessageEvent[]): ChatThreadItem[] {
+  const requests = new Map<string, ClientToolCallRequestedMessage>();
+  const lifecycleIds = new Set<string>();
+  const replacements = new Map<string, ChatThreadItem>();
+  const consumedRequests = new Set<string>();
+  const matchesScope = (item: ChatThreadItem, request: ClientToolCallRequestedMessage) =>
+    item.turnId === request.turnId &&
+    item.toolkit === request.toolkit &&
+    item.tool === request.tool;
+
+  const pair = (item: ChatThreadItem, request: ClientToolCallRequestedMessage) => {
+    replacements.set(item.id, {
+      ...item,
+      clientToolRequestId: request.requestId,
+      input: item.input ?? request.arguments,
+      argumentsText: item.argumentsText ?? formatJsonValue(request.arguments),
+    });
+    consumedRequests.add(request.requestId);
+  };
+
+  for (const { message } of events) {
+    if (isTypedMessage<ClientToolCallRequestedMessage>(message, AgentClientToolCallRequested) && message.toolkit === "client") {
+      requests.set(message.requestId, message);
+    }
+
+    if (
+      isTypedMessage<ToolMessage>(message, AgentToolCallPending) ||
+      isTypedMessage<ToolMessage>(message, AgentToolCallInProgress) ||
+      isTypedMessage<ToolMessage>(message, AgentToolCallStarted) ||
+      isTypedMessage<ToolMessage>(message, AgentToolCallEnded)
+    ) {
+      lifecycleIds.add(message.itemId);
+    }
+  }
+
+  const lifecycles = items.filter((item) => item.toolkit === "client" && lifecycleIds.has(item.id));
+
+  // Reserve exact identities first so an identical earlier call cannot consume them.
+  for (const item of lifecycles) {
+    const request = requests.get(item.id);
+
+    if (request && matchesScope(item, request)) {
+      pair(item, request);
+    }
+  }
+
+  // Lifecycle item IDs and execution request IDs are separate protocol identities.
+  // Pair by turn, tool and structured input, consuming each occurrence only once.
+  for (const request of requests.values()) {
+    const item = lifecycles.find((candidate) => !replacements.has(candidate.id) &&
+        matchesScope(candidate, request) &&
+        candidate.input != null &&
+        clientToolInputKey(candidate.input) === clientToolInputKey(request.arguments),
+    );
+
+    if (!consumedRequests.has(request.requestId) && item) {
+      pair(item, request);
+    }
+  }
+
+  // A replay may contain only a completion and a request. Without lifecycle input,
+  // correlate only an unambiguous pair; never collapse indistinguishable calls.
+  for (const request of requests.values()) {
+    const candidates = lifecycles.filter((item) => !replacements.has(item.id) && matchesScope(item, request));
+    const peers = [...requests.values()].filter((other) => !consumedRequests.has(other.requestId) &&
+      other.turnId === request.turnId && other.toolkit === request.toolkit && other.tool === request.tool);
+
+    const item = candidates[0];
+
+    if (!consumedRequests.has(request.requestId) && candidates.length === 1 && peers.length === 1 && item.input == null) {
+      pair(item, request);
+    }
+  }
+
+  return items
+    .filter((item) => !consumedRequests.has(item.id) || replacements.has(item.id))
+    .map((item) => replacements.get(item.id) ?? item);
+}
+
+export function buildChatThreadTimeline(
+  events: readonly AgentMessageEvent[],
+  pendingInputs: readonly PendingAgentInput[] = [],
+): ChatThreadTimeline {
+  const timeline = buildRawChatThreadTimeline(events, pendingInputs);
+
+  return { ...timeline, items: mergeClientToolRequests(timeline.items, events) };
+}
+
 export function buildMergedChatThreadTimeline(
   persistedEvents: readonly AgentMessageEvent[],
   liveEvents: readonly AgentMessageEvent[],
   pendingInputs: readonly PendingAgentInput[] = [],
 ): ChatThreadTimeline {
-  const persisted = buildChatThreadTimeline(persistedEvents);
-  const live = buildChatThreadTimeline(liveEvents, pendingInputs);
+  const persisted = buildRawChatThreadTimeline(persistedEvents);
+  const live = buildRawChatThreadTimeline(liveEvents, pendingInputs);
   const items = persisted.items.map((item) => ({ ...item }));
   const indexes = new Map(items.map((item, index) => [item.id, index]));
 
   for (const liveItem of live.items) {
     const existingIndex = indexes.get(liveItem.id);
+
     if (existingIndex == null) {
       indexes.set(liveItem.id, items.length);
       items.push({ ...liveItem });
+
       continue;
     }
+
     items[existingIndex] = mergeChatThreadItem(items[existingIndex], liveItem);
   }
 
@@ -591,7 +701,11 @@ export function buildMergedChatThreadTimeline(
   if (live.usage != null && shouldReplaceAgentUsageSnapshot(usage, live.usage)) {
     usage = live.usage;
   }
-  return { items, usage };
+
+  return {
+    items: mergeClientToolRequests(items, [...persistedEvents, ...liveEvents]),
+    usage,
+  };
 }
 
 function mergeChatThreadItem(persisted: ChatThreadItem, live: ChatThreadItem): ChatThreadItem {
@@ -671,6 +785,7 @@ function finiteNumber(value: unknown): number | null {
 
 function integerNumber(value: unknown): number | null {
   const numeric = finiteNumber(value);
+
   return numeric == null ? null : Math.trunc(numeric);
 }
 
@@ -678,9 +793,15 @@ function sumUsageKeys(rawUsage: Record<string, unknown>, names: Set<string>): nu
   let total = 0;
   let found = false;
   for (const [key, value] of Object.entries(rawUsage)) {
-    if (![...names].some((name) => key === name || key.endsWith(`.${name}`))) continue;
+    if (![...names].some((name) => key === name || key.endsWith(`.${name}`))) {
+      continue;
+    }
+
     const numeric = finiteNumber(value);
-    if (numeric == null) continue;
+    if (numeric == null) {
+      continue;
+    }
+
     total += numeric;
     found = true;
   }
@@ -689,12 +810,16 @@ function sumUsageKeys(rawUsage: Record<string, unknown>, names: Set<string>): nu
 
 function usageTotalTokens(rawUsage: Record<string, unknown>): number | null {
   const explicit = sumUsageKeys(rawUsage, new Set(["total_tokens"]));
-  if (explicit != null) return explicit;
+  if (explicit != null) {
+    return explicit;
+  }
+
   const input = sumUsageKeys(rawUsage, new Set(["input_tokens", "audio_input_tokens", "image_input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]));
   const output = sumUsageKeys(rawUsage, new Set(["output_tokens", "audio_output_tokens", "image_output_tokens"]));
   const cached = sumUsageKeys(rawUsage, new Set(["cached_tokens", "audio_cached_tokens", "image_cached_tokens"]));
   const reasoning = sumUsageKeys(rawUsage, new Set(["reasoning_tokens"]));
   const values = [input ?? cached, output ?? reasoning].filter((value): value is number => value != null);
+
   return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0);
 }
 

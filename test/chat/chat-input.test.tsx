@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ChatInput } from "../../src/chat/chat-input.js";
+import { ComposerActionButton, type ComposerActionButtonProps } from "../../src/chat/composer-action-button.js";
 import { FileAttachment, UploadStatus, type FileUpload } from "../../src/chat/file-attachment.js";
 
 class TestUpload extends FileAttachment {
@@ -20,6 +21,69 @@ afterEach(() => {
 });
 
 describe("ChatInput", () => {
+    it("passes draft readiness and submission to a custom action component", () => {
+        const onSubmit = vi.fn();
+        const upload = new TestUpload("uploaded-files/notes.txt");
+        function CustomSubmit(props: ComposerActionButtonProps) {
+            return <ComposerActionButton {...props} ariaLabel="Send custom message" />;
+        }
+        const props = {
+            attachments: [] as FileUpload[],
+            setAttachments: vi.fn(),
+            onFilesSelected: vi.fn(),
+            onSubmit,
+            submitButtonComponent: CustomSubmit,
+        };
+        const { rerender } = render(<ChatInput {...props} />);
+        const button = screen.getByRole("button", { name: "Send custom message" });
+        expect(button).toHaveProperty("disabled", true);
+        fireEvent.click(button);
+        expect(onSubmit).not.toHaveBeenCalled();
+
+        fireEvent.change(screen.getByRole("textbox"), { target: { value: "  Custom draft  " } });
+        expect(button).toHaveProperty("disabled", false);
+        rerender(<ChatInput {...props} attachments={[upload]} />);
+        expect(button).toHaveProperty("disabled", true);
+        rerender(<ChatInput {...props} disabled />);
+        expect(button).toHaveProperty("disabled", true);
+        rerender(<ChatInput {...props} />);
+        fireEvent.click(button);
+
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+        expect(onSubmit.mock.calls[0]?.[0].text).to.equal("Custom draft");
+        expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+        expect(button).toHaveProperty("disabled", true);
+        rerender(<ChatInput {...props} showSubmitButton={false} />);
+        expect(screen.queryByRole("button", { name: "Send custom message" })).to.equal(null);
+    });
+
+    it("passes cancellation to the custom action component", () => {
+        const onCancelRequest = vi.fn();
+        const onSubmit = vi.fn();
+        function CustomAction(props: ComposerActionButtonProps) {
+            return (
+                <button type="button" disabled={props.disabled} onClick={props.onClick}>
+                    {props.showCancelButton ? props.ariaLabel : "Custom send"}
+                </button>
+            );
+        }
+        render(
+            <ChatInput
+                attachments={[]}
+                setAttachments={() => undefined}
+                onFilesSelected={() => undefined}
+                onSubmit={onSubmit}
+                onCancelRequest={onCancelRequest}
+                showCancelButton
+                showSubmitButton={false}
+                submitButtonComponent={CustomAction}
+            />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+        expect(onCancelRequest).toHaveBeenCalledTimes(1);
+        expect(onSubmit).not.toHaveBeenCalled();
+    });
+
     it("shows file upload only when enabled", () => {
         const props = {
             attachments: [],
@@ -30,6 +94,10 @@ describe("ChatInput", () => {
         const { rerender } = render(<ChatInput {...props} />);
 
         expect(screen.queryByRole("button", { name: "Attach file" })).to.equal(null);
+        const defaultSendButton = screen.getByRole("button", { name: "Send" });
+        expect(defaultSendButton.className).to.contain("size-9");
+        expect(defaultSendButton.className).to.contain("rounded-full");
+        expect(defaultSendButton.querySelector("svg")).not.to.equal(null);
 
         rerender(<ChatInput {...props} enableFileUpload />);
 

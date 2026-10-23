@@ -25,6 +25,7 @@
 - Stability
 
 ## [0.53.2]
+- Exposed `useAgentThreadFeedState` and `AgentThreadFeed.renderUnanchored` for application-owned feed content and SDK compatibility.
 - Added project profile views, inheritance updates, typed profile models, and sysadmin global user search and profile administration.
 - Project updates now use project-local overrides and require `user_profile_editor`; global profile access is self-only and global annotations require sysadmin APIs.
 
@@ -54,6 +55,7 @@
 
 ## [0.51.5]
 - Stability
+- Added an optional `AgentThreadFeed.renderAfterItem` presentation hook for rendering application-owned content after visible chat items.
 
 ## [0.51.4]
 - Stability
@@ -73,6 +75,8 @@
 
 ## [0.50.1]
 - Stability
+- Added a separately placeable `AgentThreadSubmitButton` while preserving the combined `AgentThreadInput` API.
+- Added presentation overrides for the separate submit button while preserving its default icon and styling.
 
 ## [0.50.0]
 - Chat clients now support per-turn LLM authorization providers, and websocket chat tokens are optional for `auth=none` deployments.
@@ -755,3 +759,8 @@ START SUMMARY OF PYTHON API CHANGES END SUMMARY OF PYTHON API CHANGES
 
 ## [0.7.1]
 - Stability
+
+### Thread status customization
+
+- Added optional progress-overlay suppression, external interrupt controls, and
+  submission lifecycle callbacks. Existing status display remains the default.
