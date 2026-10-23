@@ -1,3 +1,11 @@
+## [0.55.2]
+- Added independently placeable agent-thread submit buttons and customizable composer action buttons, including custom icons, labels, ARIA text, styles, and layout slots while retaining existing defaults.
+- Added agent-feed composition APIs for rendering application-owned content after feed items or before the oldest item, and for accessing visible feed state in chronological order.
+- Added optional status-indicator suppression, external active-turn interruption controls, and submission-started/submission-failed callbacks.
+- Stabilized virtualized chat scrolling across dynamic resizing, history loading, user scrolling, and bottom-following behavior.
+- Improved client-tool request correlation so duplicate and replayed requests retain the correct lifecycle and execution status.
+- Updated bundled synchronization redo handling to accept valid remote map changes.
+
 ## [0.55.1]
 - Added SQLite replication modes and settings, create-time replication options, database-settings retrieval and updates, and explicit database flushing.
 
