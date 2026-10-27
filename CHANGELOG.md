@@ -1,3 +1,6 @@
+## [0.56.0]
+- Stability
+
 ## [0.55.2]
 - Added independently placeable agent-thread submit buttons and customizable composer action buttons, including custom icons, labels, ARIA text, styles, and layout slots while retaining existing defaults.
 - Added agent-feed composition APIs for rendering application-owned content after feed items or before the oldest item, and for accessing visible feed state in chronological order.
