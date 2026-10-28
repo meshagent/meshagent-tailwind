@@ -1,3 +1,6 @@
+## [0.56.2]
+- Breaking change: the TypeScript effective-access method now requires a roles array and sends roles separately from capability relations.
+
 ## [0.56.1]
 - Stability
 
