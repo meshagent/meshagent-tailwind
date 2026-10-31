@@ -1,3 +1,6 @@
+## [0.57.0]
+- Added TypeScript support for registering existing external Lance datasets as read-only room tables without transferring credentials.
+
 ## [0.56.2]
 - Breaking change: the TypeScript effective-access method now requires a roles array and sends roles separately from capability relations.
 
