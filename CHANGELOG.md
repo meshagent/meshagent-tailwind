@@ -1,3 +1,6 @@
+## [0.57.1]
+- Added optional ETag matching to TypeScript file uploads, including validation that the ETag is non-empty.
+
 ## [0.57.0]
 - Added TypeScript support for registering existing external Lance datasets as read-only room tables without transferring credentials.
 
