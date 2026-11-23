@@ -1,3 +1,6 @@
+## [0.57.2]
+- Stability
+
 ## [0.57.1]
 - Added optional ETag matching to TypeScript file uploads, including validation that the ETag is non-empty.
 
