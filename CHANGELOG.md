@@ -1,3 +1,6 @@
+## [0.58.1]
+- Managed Agent route specifications now support IAP-protected file content while continuing to reject service-port options.
+
 ## [0.58.0]
 - Stability
 
