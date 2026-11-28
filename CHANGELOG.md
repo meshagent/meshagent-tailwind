@@ -1,3 +1,6 @@
+## [0.58.2]
+- Updated TypeScript `listVersions` to transparently fetch paginated dataset histories while preserving oldest-to-newest results and validating pagination cursors.
+
 ## [0.58.1]
 - Managed Agent route specifications now support IAP-protected file content while continuing to reject service-port options.
 
